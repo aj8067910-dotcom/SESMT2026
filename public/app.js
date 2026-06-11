@@ -74,10 +74,10 @@ function fecharDetalheEvento(e) {
 /* ── Login ── */
 
 function trocarAbaLogin(qual) {
-  ['gestor', 'colaborador'].forEach(k => {
-    document.getElementById('tab-' + (k === 'gestor' ? 'gestor' : 'colab')).classList.toggle('active', qual === k);
-    document.getElementById('form-login-' + k).classList.toggle('hidden', qual !== k);
-  });
+  document.getElementById('tab-gestor').classList.toggle('active', qual === 'gestor');
+  document.getElementById('tab-colab').classList.toggle('active', qual === 'colaborador');
+  document.getElementById('form-login-gestor').classList.toggle('hidden', qual !== 'gestor');
+  document.getElementById('form-login-colab').classList.toggle('hidden', qual !== 'colaborador');
   document.getElementById('login-erro').classList.add('hidden');
 }
 
