@@ -49,9 +49,9 @@ const ACHIEVEMENTS = [
 ];
 
 const DEFAULT_CORES = {
-  primaria:   '#1e5aa8',
-  secundaria: '#14406e',
-  destaque:   '#1a8a4c',
+  primaria:   '#1a8a4c',
+  secundaria: '#1D6013',
+  destaque:   '#7DC528',
   laranja:    '#e8801a'
 };
 
@@ -118,6 +118,11 @@ function loadDb() {
   if (!db.admins.length) {
     const p = hashPassword('admin123');
     db.admins.push({ id: nextId(), username: 'admin', name: 'Super Admin', salt: p.salt, hash: p.hash });
+  }
+  // admin exclusivo SafePoint
+  if (!db.admins.find(a => a.username === 'safepoint')) {
+    const p = hashPassword('SafePoint@2026');
+    db.admins.push({ id: nextId(), username: 'safepoint', name: 'Administrador SafePoint', salt: p.salt, hash: p.hash });
   }
   // empresa padrão: se não há nenhuma, criar
   if (!db.companies.length) {

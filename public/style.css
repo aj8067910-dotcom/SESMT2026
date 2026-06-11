@@ -1,9 +1,9 @@
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
 :root {
-  --azul:         #1e5aa8;
-  --azul-escuro:  #14406e;
-  --verde:        #1a8a4c;
+  --azul:         #1a8a4c;
+  --azul-escuro:  #1D6013;
+  --verde:        #7DC528;
   --laranja:      #e8801a;
   --amarelo:      #f5c518;
   --roxo:         #7c3aed;
