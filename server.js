@@ -6,9 +6,10 @@
  */
 'use strict';
 
-const http = require('http');
-const fs = require('fs');
-const path = require('path');
+const http  = require('http');
+const https = require('https');
+const fs    = require('fs');
+const path  = require('path');
 const crypto = require('crypto');
 
 const PORT = process.env.PORT || 3000;
@@ -180,7 +181,96 @@ let saveTimer = null;
 function saveDb() {
   if (db) db.seq = seqCounter;
   clearTimeout(saveTimer);
-  saveTimer = setTimeout(() => fs.writeFileSync(DB_FILE, JSON.stringify(db, null, 2)), 50);
+  saveTimer = setTimeout(() => {
+    fs.writeFileSync(DB_FILE, JSON.stringify(db, null, 2));
+    scheduleSupabaseBackup();
+  }, 50);
+}
+
+/* ── Supabase backup — persiste dados entre deploys no Render ────
+ *  Configure no Render → Environment:
+ *    SUPABASE_URL = https://xxxx.supabase.co
+ *    SUPABASE_KEY = (anon public key do projeto)
+ *  No Supabase SQL Editor rode uma vez:
+ *    CREATE TABLE safepoint_backup (
+ *      id TEXT PRIMARY KEY,
+ *      payload TEXT NOT NULL,
+ *      updated_at TIMESTAMPTZ DEFAULT NOW()
+ *    );
+ *    ALTER TABLE safepoint_backup ENABLE ROW LEVEL SECURITY;
+ *    CREATE POLICY allow_all ON safepoint_backup FOR ALL USING (true) WITH CHECK (true);
+ * ────────────────────────────────────────────────────────────── */
+const SUPA_URL = process.env.SUPABASE_URL || '';
+const SUPA_KEY = process.env.SUPABASE_KEY || '';
+const USE_SUPA = !!(SUPA_URL && SUPA_KEY);
+
+function supaFetch(method, urlPath, body) {
+  return new Promise((resolve, reject) => {
+    const u = new URL('/rest/v1/' + urlPath, SUPA_URL);
+    const payload = body ? JSON.stringify(body) : null;
+    const opts = {
+      hostname: u.hostname,
+      port: 443,
+      path: u.pathname + u.search,
+      method,
+      headers: {
+        'apikey':        SUPA_KEY,
+        'Authorization': 'Bearer ' + SUPA_KEY,
+        'Content-Type':  'application/json',
+        'Prefer':        'resolution=merge-duplicates'
+      }
+    };
+    if (payload) opts.headers['Content-Length'] = Buffer.byteLength(payload);
+    const req = https.request(opts, res => {
+      let data = '';
+      res.on('data', c => data += c);
+      res.on('end', () => { try { resolve(JSON.parse(data)); } catch { resolve(data); } });
+    });
+    req.on('error', reject);
+    if (payload) req.write(payload);
+    req.end();
+  });
+}
+
+let supaTimer = null;
+function scheduleSupabaseBackup() {
+  if (!USE_SUPA) return;
+  clearTimeout(supaTimer);
+  supaTimer = setTimeout(() => {
+    const snapshot = JSON.stringify(db);
+    supaFetch('POST', 'safepoint_backup', {
+      id: 'main',
+      payload: snapshot,
+      updated_at: new Date().toISOString()
+    }).then(() => {
+      console.log('[Supabase] backup salvo:', new Date().toLocaleTimeString());
+    }).catch(e => console.error('[Supabase] erro no backup:', e.message));
+  }, 3000);
+}
+
+async function restoreFromSupabase() {
+  if (!USE_SUPA) return false;
+  try {
+    const rows = await supaFetch('GET', 'safepoint_backup?id=eq.main&select=payload');
+    if (Array.isArray(rows) && rows[0] && rows[0].payload) {
+      db = JSON.parse(rows[0].payload);
+      if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
+      fs.writeFileSync(DB_FILE, JSON.stringify(db, null, 2));
+      console.log('[Supabase] dados restaurados com sucesso!');
+      return true;
+    }
+  } catch (e) {
+    console.error('[Supabase] erro ao restaurar:', e.message);
+  }
+  return false;
+}
+
+async function initDb() {
+  if (!fs.existsSync(DB_FILE)) {
+    console.log('[DB] arquivo local não encontrado, tentando restaurar do Supabase...');
+    await restoreFromSupabase();
+  }
+  loadDb(); // carrega arquivo (restaurado ou cria banco novo)
 }
 
 /* ── Sessões ─────────────────────────────────────────────────── */
@@ -1032,9 +1122,9 @@ const server = http.createServer(async (req, res) => {
   }
 });
 
-loadDb();
-server.listen(PORT, () => {
-  console.log(`SafePoint rodando em http://localhost:${PORT}`);
-  console.log('Login admin: "admin" / "admin123"');
-  console.log('Login gestor: "gestor" / "admin123"');
+initDb().then(() => {
+  server.listen(PORT, () => {
+    console.log(`SafePoint rodando em http://localhost:${PORT}`);
+    console.log(`Supabase backup: ${USE_SUPA ? 'ATIVO' : 'inativo (configure SUPABASE_URL e SUPABASE_KEY)'}`);
+  });
 });
