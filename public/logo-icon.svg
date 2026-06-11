@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 60" fill="none">
+  <defs>
+    <linearGradient id="shieldGrad" x1="0" y1="0" x2="48" y2="60" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#2563eb"/>
+      <stop offset="100%" stop-color="#0d9488"/>
+    </linearGradient>
+    <radialGradient id="innerGlow" cx="50%" cy="30%" r="55%" fx="50%" fy="20%">
+      <stop offset="0%" stop-color="#ffffff" stop-opacity="0.25"/>
+      <stop offset="100%" stop-color="#ffffff" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <!-- Shield body -->
+  <path d="M24 2 L44 10 L44 28 C44 42 34 53 24 58 C14 53 4 42 4 28 L4 10 Z" rx="4" fill="url(#shieldGrad)"/>
+  <!-- Rounded top corners via clip -->
+  <path d="M8 6 Q24 2 40 6 L44 10 L44 28 C44 42 34 53 24 58 C14 53 4 42 4 28 L4 10 Z" fill="url(#shieldGrad)"/>
+  <!-- Inner glow overlay -->
+  <path d="M8 6 Q24 2 40 6 L44 10 L44 28 C44 42 34 53 24 58 C14 53 4 42 4 28 L4 10 Z" fill="url(#innerGlow)"/>
+  <!-- Location pin: teardrop body -->
+  <path d="M24 36 C24 36 15 27 15 21 C15 16 19 13 24 13 C29 13 33 16 33 21 C33 27 24 36 24 36 Z" fill="white" opacity="0.95"/>
+  <!-- Location pin: outer circle head -->
+  <circle cx="24" cy="21" r="5.5" fill="white" opacity="0.95"/>
+  <!-- Location pin: inner blue dot -->
+  <circle cx="24" cy="21" r="2.5" fill="#2563eb"/>
+</svg>

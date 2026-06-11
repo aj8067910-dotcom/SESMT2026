@@ -278,3 +278,61 @@ hr { border: none; border-top: 1px solid var(--cinza-borda); margin: 16px 0; }
 /* ── Recompensa edit row ── */
 .recomp-row { display: grid; grid-template-columns: 2fr 3fr 1fr auto; gap: 8px; margin-bottom: 8px; align-items: center; }
 @media (max-width: 600px) { .recomp-row { grid-template-columns: 1fr 1fr; } }
+
+/* ── Login extras ── */
+.login-logo { margin-bottom: 10px; }
+.login-platform { font-size: 11px; color: var(--texto-suave); margin-top: 16px; opacity: .7; }
+.login-tab-admin { background: #f0e8ff !important; color: #5b21b6 !important; }
+.login-tab-admin.active { background: #7c3aed !important; color: #fff !important; border-color: #7c3aed !important; }
+
+/* ── Topbar brand ── */
+.topbar-brand { display: flex; align-items: center; gap: 10px; }
+.topbar-logo-icon { height: 32px; width: auto; filter: brightness(0) invert(1); }
+.topbar-empresa { font-size: 12px; color: rgba(255,255,255,.65); margin-left: 2px; max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.topbar-empresa-logo { height: 28px; width: auto; border-radius: 4px; background: rgba(255,255,255,.9); padding: 2px 4px; }
+
+/* ── Admin topbar ── */
+.topbar-admin { background: #3b1fa8; }
+.badge-admin { background: #7c3aed; }
+
+/* ── Empresas grid ── */
+.empresas-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 16px; }
+.empresa-card {
+  background: #fff; border: 1px solid var(--cinza-borda); border-radius: 16px;
+  padding: 20px; position: relative; transition: box-shadow .15s;
+}
+.empresa-card:hover { box-shadow: 0 4px 24px rgba(0,0,0,.1); }
+.empresa-card-header { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
+.empresa-card-logo {
+  width: 56px; height: 56px; border-radius: 10px; object-fit: contain;
+  border: 1px solid var(--cinza-borda); background: #f8fafc; padding: 4px;
+}
+.empresa-card-logo-placeholder {
+  width: 56px; height: 56px; border-radius: 10px; background: #eef3fa;
+  border: 1px dashed var(--cinza-borda); display: flex; align-items: center; justify-content: center;
+  font-size: 24px;
+}
+.empresa-card-info h3 { font-size: 16px; color: var(--azul-escuro); }
+.empresa-card-info .cnpj { font-size: 12px; color: var(--texto-suave); margin-top: 2px; font-family: monospace; }
+.empresa-card-cores { display: flex; gap: 6px; margin: 10px 0; }
+.cor-bolinha { width: 18px; height: 18px; border-radius: 50%; border: 1px solid rgba(0,0,0,.1); }
+.empresa-card-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 10px; }
+.empresa-stat { text-align: center; background: #f8fafc; border-radius: 8px; padding: 8px; }
+.empresa-stat .n { font-size: 22px; font-weight: 800; color: var(--azul); }
+.empresa-stat .l { font-size: 11px; color: var(--texto-suave); }
+.empresa-card-acoes { display: flex; gap: 6px; margin-top: 14px; flex-wrap: wrap; }
+.empresa-inativa { opacity: .55; }
+.empresa-inativa::after {
+  content: 'Inativa'; position: absolute; top: 12px; right: 12px;
+  background: var(--vermelho); color: #fff; font-size: 10px; font-weight: 700;
+  padding: 2px 8px; border-radius: 8px;
+}
+
+/* ── Color picker grade ── */
+.cor-grade { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 6px; }
+.cor-item { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--texto-suave); }
+.cor-item input[type="color"] { width: 100%; height: 38px; border: 1px solid var(--cinza-borda); border-radius: 8px; cursor: pointer; padding: 2px; }
+
+/* ── Logo preview ── */
+.logo-preview { max-height: 80px; max-width: 200px; border-radius: 8px; border: 1px solid var(--cinza-borda); padding: 6px; background: #f8fafc; }
+.logo-sem-preview { font-size: 13px; color: var(--texto-suave); font-style: italic; }

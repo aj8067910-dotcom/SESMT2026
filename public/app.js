@@ -1,4 +1,4 @@
-/* SESMT 2026 — Frontend */
+/* SafePoint — Frontend */
 'use strict';
 
 let CONFIG = { tipos: [], pontos: {}, conquistas: [], codigoValidade: 60, recompensas: [] };
@@ -7,10 +7,13 @@ let COLABORADORES = [];
 let OBSERVACOES = [];
 let SUGESTOES = [];
 let RANKING = [];
+let EMPRESAS = [];
+let GESTORES_ADMIN = [];
 let CHECKIN_PENDENTE = null;
 let AVAL_CHECKIN_ID = null;
 let ESTRELAS_SEL = 0;
 let codigoTimer = null;
+let LOGO_PENDENTE = null;
 
 /* ── Util ── */
 
@@ -56,6 +59,40 @@ function toast(msg, tipo = '') {
   toastTimer = setTimeout(() => el.classList.add('hidden'), 4000);
 }
 
+/* ── Branding ── */
+
+function aplicarBranding(branding) {
+  if (!branding) return;
+  const { cores, logo, nome } = branding;
+  if (cores) {
+    if (cores.primaria)   document.documentElement.style.setProperty('--azul', cores.primaria);
+    if (cores.secundaria) document.documentElement.style.setProperty('--azul-escuro', cores.secundaria);
+    if (cores.destaque)   document.documentElement.style.setProperty('--verde', cores.destaque);
+    if (cores.laranja)    document.documentElement.style.setProperty('--laranja', cores.laranja);
+  }
+  // logo da empresa na topbar do gestor
+  const gestorLogoWrap = document.getElementById('empresa-logo-wrap');
+  if (gestorLogoWrap) {
+    if (logo) {
+      gestorLogoWrap.innerHTML = `<img src="${logo}" alt="${esc(nome || '')}" class="topbar-empresa-logo">`;
+    } else if (nome) {
+      gestorLogoWrap.innerHTML = `<span class="topbar-empresa">${esc(nome)}</span>`;
+    }
+  }
+  // logo da empresa na topbar do colaborador
+  const colabLogoWrap = document.getElementById('colab-logo-wrap');
+  if (colabLogoWrap) {
+    if (logo) {
+      colabLogoWrap.innerHTML = `<img src="${logo}" alt="${esc(nome || '')}" class="topbar-empresa-logo">`;
+    } else if (nome) {
+      colabLogoWrap.innerHTML = `<span class="topbar-empresa">${esc(nome)}</span>`;
+    }
+  }
+  // nome da empresa no gestor
+  const gestorEmpresaNome = document.getElementById('gestor-empresa-nome');
+  if (gestorEmpresaNome && nome && !logo) gestorEmpresaNome.textContent = nome;
+}
+
 /* ── Modal genérico ── */
 
 function abrirModal(titulo, corpoHtml) {
@@ -76,8 +113,10 @@ function fecharDetalheEvento(e) {
 function trocarAbaLogin(qual) {
   document.getElementById('tab-gestor').classList.toggle('active', qual === 'gestor');
   document.getElementById('tab-colab').classList.toggle('active', qual === 'colaborador');
+  document.getElementById('tab-admin').classList.toggle('active', qual === 'admin');
   document.getElementById('form-login-gestor').classList.toggle('hidden', qual !== 'gestor');
   document.getElementById('form-login-colab').classList.toggle('hidden', qual !== 'colaborador');
+  document.getElementById('form-login-admin').classList.toggle('hidden', qual !== 'admin');
   document.getElementById('login-erro').classList.add('hidden');
 }
 
@@ -89,7 +128,8 @@ function mostrarErroLogin(msg) {
 async function loginGestor(e) {
   e.preventDefault();
   try {
-    await api('/api/login', { method: 'POST', body: { perfil: 'gestor', usuario: document.getElementById('login-usuario').value, senha: document.getElementById('login-senha').value } });
+    const r = await api('/api/login', { method: 'POST', body: { perfil: 'gestor', usuario: document.getElementById('login-usuario').value, senha: document.getElementById('login-senha').value } });
+    if (r.branding) aplicarBranding(r.branding);
     await iniciar();
   } catch (err) { mostrarErroLogin(err.message); }
   return false;
@@ -98,7 +138,17 @@ async function loginGestor(e) {
 async function loginColaborador(e) {
   e.preventDefault();
   try {
-    await api('/api/login', { method: 'POST', body: { perfil: 'colaborador', matricula: document.getElementById('login-matricula').value } });
+    const r = await api('/api/login', { method: 'POST', body: { perfil: 'colaborador', matricula: document.getElementById('login-matricula').value } });
+    if (r.branding) aplicarBranding(r.branding);
+    await iniciar();
+  } catch (err) { mostrarErroLogin(err.message); }
+  return false;
+}
+
+async function loginAdmin(e) {
+  e.preventDefault();
+  try {
+    await api('/api/login', { method: 'POST', body: { perfil: 'admin', usuario: document.getElementById('login-admin-usuario').value, senha: document.getElementById('login-admin-senha').value } });
     await iniciar();
   } catch (err) { mostrarErroLogin(err.message); }
   return false;
@@ -116,14 +166,26 @@ async function iniciar() {
   document.getElementById('tela-login').classList.toggle('hidden', me.autenticado);
   document.getElementById('app-gestor').classList.add('hidden');
   document.getElementById('app-colab').classList.add('hidden');
+  document.getElementById('app-admin').classList.add('hidden');
   if (!me.autenticado) { document.getElementById('tela-login').classList.remove('hidden'); return; }
+
+  if (me.perfil === 'admin') {
+    document.getElementById('admin-nome').textContent = me.nome;
+    document.getElementById('app-admin').classList.remove('hidden');
+    await carregarAdmin();
+    return;
+  }
+
+  if (me.branding) aplicarBranding(me.branding);
   CONFIG = await api('/api/config');
+
   if (me.perfil === 'gestor') {
     document.getElementById('gestor-nome').textContent = me.nome;
     document.getElementById('app-gestor').classList.remove('hidden');
     preencherFiltroTipos();
     await Promise.all([carregarColaboradores(), carregarEventos()]);
     navegar('dashboard');
+    carregarBrandingConfig();
   } else {
     document.getElementById('colab-nome').textContent = me.nome;
     document.getElementById('app-colab').classList.remove('hidden');
@@ -144,7 +206,7 @@ async function navegar(view) {
   if (view === 'observacoes') await carregarObservacoes();
   if (view === 'sugestoes') await carregarSugestoes();
   if (view === 'ranking') await carregarRanking();
-  if (view === 'config') renderConfig();
+  if (view === 'config') { renderConfig(); carregarBrandingConfig(); }
 }
 
 async function navegarColab(view) {
@@ -155,6 +217,317 @@ async function navegarColab(view) {
   if (view === 'observar') await carregarMinhasObservacoes();
   if (view === 'sugerir') await carregarMinhasSugestoes();
   if (view === 'historico') await carregarHistoricoCompleto();
+}
+
+async function navegarAdmin(view) {
+  document.querySelectorAll('#app-admin .nav-btn').forEach(b => b.classList.toggle('active', b.dataset.aview === view));
+  document.querySelectorAll('#app-admin .aview').forEach(v => v.classList.add('hidden'));
+  document.getElementById('aview-' + view).classList.remove('hidden');
+  if (view === 'empresas') await carregarEmpresas();
+  if (view === 'gestores') await carregarGestoresAdmin();
+}
+
+/* ── Admin ── */
+
+async function carregarAdmin() {
+  await navegarAdmin('empresas');
+}
+
+async function carregarEmpresas() {
+  EMPRESAS = await api('/api/admin/empresas');
+  renderEmpresas();
+}
+
+function renderEmpresas() {
+  const grid = document.getElementById('empresas-grid');
+  if (!grid) return;
+  if (!EMPRESAS.length) {
+    grid.innerHTML = '<p class="hint" style="padding:20px">Nenhuma empresa cadastrada ainda.</p>';
+    return;
+  }
+  grid.innerHTML = EMPRESAS.map(e => `
+    <div class="empresa-card${e.ativo === false ? ' empresa-inativa' : ''}">
+      <div class="empresa-card-header">
+        ${e.logo && e.logo !== '[logo]'
+          ? `<img src="${e.logo}" alt="${esc(e.nome)}" class="empresa-card-logo">`
+          : `<div class="empresa-card-logo-placeholder">🏢</div>`}
+        <div class="empresa-card-info">
+          <h3>${esc(e.nome)}</h3>
+          <div class="cnpj">${e.cnpj ? esc(e.cnpj) : 'CNPJ não informado'}</div>
+        </div>
+      </div>
+      <div class="empresa-card-cores">
+        ${e.cores ? Object.values(e.cores).map(c => `<span class="cor-bolinha" style="background:${esc(c)}" title="${esc(c)}"></span>`).join('') : ''}
+      </div>
+      <div class="empresa-card-stats">
+        <div class="empresa-stat"><div class="n">${e.totalGestores || 0}</div><div class="l">Gestores</div></div>
+        <div class="empresa-stat"><div class="n">${e.totalColaboradores || 0}</div><div class="l">Colaboradores</div></div>
+      </div>
+      <div class="empresa-card-acoes">
+        <button class="btn btn-sm btn-primary" onclick="abrirEditarEmpresa(${e.id})">Editar</button>
+        <button class="btn btn-sm" onclick="abrirBrandingEmpresa(${e.id})">🎨 Visual</button>
+        <button class="btn btn-sm" onclick="abrirAdicionarGestor(${e.id}, '${esc(e.nome)}')">+ Gestor</button>
+        <button class="btn btn-sm btn-perigo" onclick="inativarEmpresa(${e.id})">${e.ativo === false ? 'Reativar' : 'Inativar'}</button>
+      </div>
+    </div>`).join('');
+}
+
+function abrirNovaEmpresa() {
+  abrirModal('Nova empresa', formEmpresaHtml(null));
+}
+
+function abrirEditarEmpresa(id) {
+  const e = EMPRESAS.find(x => x.id === id);
+  if (e) abrirModal('Editar empresa', formEmpresaHtml(e));
+}
+
+function formEmpresaHtml(e) {
+  const unidades = e && e.unidades ? e.unidades : [{ nome: 'Matriz', endereco: '', cidade: '', estado: '' }];
+  return `
+    <label>Nome da empresa *</label>
+    <input type="text" id="emp-nome" value="${e ? esc(e.nome) : ''}">
+    <label>CNPJ</label>
+    <input type="text" id="emp-cnpj" value="${e ? esc(e.cnpj || '') : ''}" placeholder="00.000.000/0001-00">
+    <label>Unidades / Filiais</label>
+    <div id="emp-unidades">
+      ${unidades.map((u, i) => `
+        <div class="linha-3" style="margin-bottom:8px" data-ui="${i}">
+          <div><input type="text" placeholder="Nome da unidade *" value="${esc(u.nome || '')}" data-u="${i}" data-f="nome"></div>
+          <div><input type="text" placeholder="Cidade" value="${esc(u.cidade || '')}" data-u="${i}" data-f="cidade"></div>
+          <div><input type="text" placeholder="Estado (UF)" maxlength="2" value="${esc(u.estado || '')}" data-u="${i}" data-f="estado"></div>
+        </div>`).join('')}
+    </div>
+    <button class="btn btn-sm" onclick="adicionarUnidade()" style="margin-bottom:12px">+ Unidade</button>
+    <div class="modal-rodape">
+      <button class="btn" onclick="fecharModal()">Cancelar</button>
+      <button class="btn btn-primary" onclick="salvarEmpresa(${e ? e.id : 'null'})">Salvar</button>
+    </div>`;
+}
+
+function adicionarUnidade() {
+  const cont = document.getElementById('emp-unidades');
+  if (!cont) return;
+  const idx = cont.querySelectorAll('[data-ui]').length;
+  const div = document.createElement('div');
+  div.className = 'linha-3';
+  div.style.marginBottom = '8px';
+  div.dataset.ui = idx;
+  div.innerHTML = `
+    <div><input type="text" placeholder="Nome da unidade *" data-u="${idx}" data-f="nome"></div>
+    <div><input type="text" placeholder="Cidade" data-u="${idx}" data-f="cidade"></div>
+    <div><input type="text" placeholder="Estado (UF)" maxlength="2" data-u="${idx}" data-f="estado"></div>`;
+  cont.appendChild(div);
+}
+
+function lerUnidades() {
+  const cont = document.getElementById('emp-unidades');
+  if (!cont) return [];
+  const map = {};
+  cont.querySelectorAll('input[data-u]').forEach(el => {
+    const i = el.dataset.u;
+    if (!map[i]) map[i] = {};
+    map[i][el.dataset.f] = el.value.trim();
+  });
+  return Object.values(map).filter(u => u.nome);
+}
+
+async function salvarEmpresa(id) {
+  const nome = document.getElementById('emp-nome').value.trim();
+  if (!nome) return toast('Nome da empresa é obrigatório.', 'erro');
+  const body = {
+    nome,
+    cnpj: document.getElementById('emp-cnpj').value.trim(),
+    unidades: lerUnidades()
+  };
+  try {
+    if (id) await api('/api/admin/empresas/' + id, { method: 'PUT', body });
+    else await api('/api/admin/empresas', { method: 'POST', body });
+    fecharModal();
+    toast('Empresa salva.', 'ok');
+    await carregarEmpresas();
+  } catch (err) { toast(err.message, 'erro'); }
+}
+
+async function inativarEmpresa(id) {
+  const e = EMPRESAS.find(x => x.id === id);
+  if (!e) return;
+  const ativar = e.ativo === false;
+  if (!confirm(`${ativar ? 'Reativar' : 'Inativar'} a empresa "${e.nome}"?`)) return;
+  try {
+    await api('/api/admin/empresas/' + id, { method: 'PUT', body: { ativo: ativar } });
+    toast(`Empresa ${ativar ? 'reativada' : 'inativada'}.`, 'ok');
+    await carregarEmpresas();
+  } catch (err) { toast(err.message, 'erro'); }
+}
+
+function abrirBrandingEmpresa(id) {
+  const e = EMPRESAS.find(x => x.id === id);
+  if (!e) return;
+  const cores = e.cores || {};
+  abrirModal(`Visual — ${e.nome}`, `
+    <div class="grid-2">
+      <div>
+        <label>Logo da empresa</label>
+        <div id="adm-logo-preview" style="margin-bottom:10px">
+          ${e.logo && e.logo !== '[logo]' ? `<img src="${e.logo}" class="logo-preview" alt="logo">` : '<span class="logo-sem-preview">Sem logo</span>'}
+        </div>
+        <input type="file" id="adm-logo-upload" accept="image/*" onchange="previewAdminLogo(this, ${id})">
+        <div style="display:flex;gap:6px;margin-top:8px">
+          <button class="btn btn-primary" style="flex:1" onclick="salvarBrandingAdmin(${id})">Salvar logo</button>
+          <button class="btn btn-perigo" onclick="removerLogoAdmin(${id})">Remover</button>
+        </div>
+      </div>
+      <div>
+        <label>Cores</label>
+        <div class="cor-grade">
+          <div class="cor-item"><span>Primária</span><input type="color" id="adm-cor-primaria" value="${esc(cores.primaria || '#1e5aa8')}"></div>
+          <div class="cor-item"><span>Secundária</span><input type="color" id="adm-cor-secundaria" value="${esc(cores.secundaria || '#14406e')}"></div>
+          <div class="cor-item"><span>Destaque</span><input type="color" id="adm-cor-destaque" value="${esc(cores.destaque || '#1a8a4c')}"></div>
+          <div class="cor-item"><span>Alertas</span><input type="color" id="adm-cor-laranja" value="${esc(cores.laranja || '#e8801a')}"></div>
+        </div>
+        <button class="btn btn-primary" style="margin-top:10px;width:100%" onclick="salvarCoresAdmin(${id})">Aplicar cores</button>
+      </div>
+    </div>
+    <div class="modal-rodape"><button class="btn" onclick="fecharModal()">Fechar</button></div>`);
+}
+
+let admLogoTemp = {};
+function previewAdminLogo(input, empresaId) {
+  const file = input.files && input.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    admLogoTemp[empresaId] = reader.result;
+    const prev = document.getElementById('adm-logo-preview');
+    if (prev) prev.innerHTML = `<img src="${reader.result}" class="logo-preview" alt="logo">`;
+  };
+  reader.readAsDataURL(file);
+}
+
+async function salvarBrandingAdmin(empresaId) {
+  const logo = admLogoTemp[empresaId];
+  if (!logo) return toast('Selecione uma imagem primeiro.', 'erro');
+  try {
+    await api('/api/admin/empresas/' + empresaId + '/branding', { method: 'PUT', body: { logo } });
+    delete admLogoTemp[empresaId];
+    toast('Logo salva.', 'ok');
+    await carregarEmpresas();
+  } catch (err) { toast(err.message, 'erro'); }
+}
+
+async function removerLogoAdmin(empresaId) {
+  try {
+    await api('/api/admin/empresas/' + empresaId + '/branding', { method: 'PUT', body: { logo: null } });
+    toast('Logo removida.', 'ok');
+    fecharModal();
+    await carregarEmpresas();
+  } catch (err) { toast(err.message, 'erro'); }
+}
+
+async function salvarCoresAdmin(empresaId) {
+  const cores = {
+    primaria:   document.getElementById('adm-cor-primaria').value,
+    secundaria: document.getElementById('adm-cor-secundaria').value,
+    destaque:   document.getElementById('adm-cor-destaque').value,
+    laranja:    document.getElementById('adm-cor-laranja').value
+  };
+  try {
+    await api('/api/admin/empresas/' + empresaId + '/branding', { method: 'PUT', body: { cores } });
+    toast('Cores atualizadas.', 'ok');
+    await carregarEmpresas();
+  } catch (err) { toast(err.message, 'erro'); }
+}
+
+function abrirAdicionarGestor(empresaId, empresaNome) {
+  abrirModal(`Novo Gestor SST — ${empresaNome}`, `
+    <label>Usuário (login) *</label>
+    <input type="text" id="novo-gestor-usuario" placeholder="ex: gestor.empresa">
+    <label>Nome completo *</label>
+    <input type="text" id="novo-gestor-nome">
+    <label>Senha inicial</label>
+    <input type="password" id="novo-gestor-senha" placeholder="sesmt123 (padrão)">
+    <div class="modal-rodape">
+      <button class="btn" onclick="fecharModal()">Cancelar</button>
+      <button class="btn btn-primary" onclick="salvarNovoGestor(${empresaId})">Criar gestor</button>
+    </div>`);
+}
+
+async function salvarNovoGestor(empresaId) {
+  const usuario = document.getElementById('novo-gestor-usuario').value.trim();
+  const nome = document.getElementById('novo-gestor-nome').value.trim();
+  const senha = document.getElementById('novo-gestor-senha').value.trim() || 'sesmt123';
+  if (!usuario || !nome) return toast('Usuário e nome são obrigatórios.', 'erro');
+  try {
+    await api('/api/admin/empresas/' + empresaId + '/gestores', { method: 'POST', body: { usuario, nome, senha } });
+    fecharModal();
+    toast(`Gestor "${usuario}" criado.`, 'ok');
+    await carregarEmpresas();
+  } catch (err) { toast(err.message, 'erro'); }
+}
+
+async function carregarGestoresAdmin() {
+  GESTORES_ADMIN = await api('/api/admin/gestores');
+  renderGestoresAdmin();
+}
+
+function renderGestoresAdmin() {
+  const tbl = document.getElementById('tabela-gestores');
+  if (!tbl) return;
+  let h = '<tr><th>Usuário</th><th>Nome</th><th>Empresa</th><th></th></tr>';
+  if (!GESTORES_ADMIN.length) h += '<tr><td colspan="4" class="vazio">Nenhum gestor cadastrado.</td></tr>';
+  for (const g of GESTORES_ADMIN) {
+    h += `<tr>
+      <td>${esc(g.username)}</td>
+      <td>${esc(g.name)}</td>
+      <td>${esc(g.nomeEmpresa || '—')}</td>
+      <td class="acoes">
+        <button class="btn btn-sm btn-perigo" onclick="excluirGestor(${g.id}, '${esc(g.username)}')">✕ Remover</button>
+      </td>
+    </tr>`;
+  }
+  tbl.innerHTML = h;
+}
+
+function abrirNovoGestor() {
+  if (!EMPRESAS.length) return toast('Cadastre uma empresa antes de criar um gestor.', 'erro');
+  abrirModal('Novo Gestor SST', `
+    <label>Empresa *</label>
+    <select id="novo-gestor-empresa">
+      ${EMPRESAS.filter(e => e.ativo !== false).map(e => `<option value="${e.id}">${esc(e.nome)}</option>`).join('')}
+    </select>
+    <label>Usuário (login) *</label>
+    <input type="text" id="novo-gestor-usuario2" placeholder="ex: gestor.empresa">
+    <label>Nome completo *</label>
+    <input type="text" id="novo-gestor-nome2">
+    <label>Senha inicial</label>
+    <input type="password" id="novo-gestor-senha2" placeholder="sesmt123 (padrão)">
+    <div class="modal-rodape">
+      <button class="btn" onclick="fecharModal()">Cancelar</button>
+      <button class="btn btn-primary" onclick="salvarNovoGestor2()">Criar gestor</button>
+    </div>`);
+}
+
+async function salvarNovoGestor2() {
+  const empresaId = Number(document.getElementById('novo-gestor-empresa').value);
+  const usuario = document.getElementById('novo-gestor-usuario2').value.trim();
+  const nome = document.getElementById('novo-gestor-nome2').value.trim();
+  const senha = document.getElementById('novo-gestor-senha2').value.trim() || 'sesmt123';
+  if (!usuario || !nome) return toast('Usuário e nome são obrigatórios.', 'erro');
+  try {
+    await api('/api/admin/empresas/' + empresaId + '/gestores', { method: 'POST', body: { usuario, nome, senha } });
+    fecharModal();
+    toast(`Gestor "${usuario}" criado.`, 'ok');
+    await carregarGestoresAdmin();
+  } catch (err) { toast(err.message, 'erro'); }
+}
+
+async function excluirGestor(id, username) {
+  if (!confirm(`Remover o gestor "${username}"?`)) return;
+  try {
+    await api('/api/admin/gestores/' + id, { method: 'DELETE' });
+    toast('Gestor removido.', 'ok');
+    await carregarGestoresAdmin();
+  } catch (err) { toast(err.message, 'erro'); }
 }
 
 /* ── Dashboard ── */
@@ -177,7 +550,6 @@ async function carregarDashboard() {
   }
   document.getElementById('dash-tipos').innerHTML = linhas;
   document.getElementById('dash-top10').innerHTML = htmlRankingCompacto(d.top10);
-  // observações abertas
   const obsAbertas = OBSERVACOES.length ? OBSERVACOES.filter(o => o.status === 'aberta').slice(0, 8) : await api('/api/observacoes').then(l => l.filter(o => o.status === 'aberta').slice(0, 8));
   let obsHtml = '<tr><th>Colaborador</th><th>Tipo</th><th>Criticidade</th></tr>';
   if (!obsAbertas.length) obsHtml += '<tr><td colspan="3" class="vazio">Nenhuma observação aberta.</td></tr>';
@@ -343,7 +715,6 @@ async function abrirCodigoCheckin(eventId) {
     </div>
     <div id="checkins-evento" style="margin-top:18px"></div>`;
   abrirModal('Código de Check-in', body);
-  // verificar se já existe código ativo
   try {
     const r = await api('/api/eventos/' + eventId + '/codigo');
     if (r.ativo) mostrarCodigo(r.code, r.expiraEm, eventId);
@@ -410,13 +781,10 @@ async function abrirDetalheEvento(eventId) {
   if (!ev) return;
   document.getElementById('detalhe-titulo').textContent = `${ev.tipo} — ${ev.tema || 'sem tema'}`;
   const checkins = await api('/api/eventos/' + eventId + '/avaliacoes').catch(() => []);
-  // coleta feedbacks
   const feedbacks = checkins.filter(c => c.avaliacao && (c.avaliacao.gostou || c.avaliacao.melhorar || c.avaliacao.livre));
   const mediaStr = checkins.length > 0
     ? (checkins.reduce((s, c) => s + (c.avaliacao.estrelas || 0), 0) / checkins.length).toFixed(1)
     : '—';
-
-  // análise simples de palavras-chave
   const palavras = {};
   checkins.forEach(c => {
     if (!c.avaliacao) return;
@@ -424,7 +792,6 @@ async function abrirDetalheEvento(eventId) {
     texto.split(/\W+/).filter(w => w.length > 4).forEach(w => { palavras[w] = (palavras[w] || 0) + 1; });
   });
   const topPalavras = Object.entries(palavras).sort((a, b) => b[1] - a[1]).slice(0, 10);
-
   document.getElementById('detalhe-corpo').innerHTML = `
     <div class="cards" style="margin-bottom:16px">
       <div class="card"><div class="num">${ev.totalCheckins || 0}</div><div class="rotulo">Check-ins</div></div>
@@ -467,7 +834,6 @@ async function abrirDetalheEvento(eventId) {
 
 async function abrirPresencaManual(eventId) {
   await carregarColaboradores();
-  const selecionados = new Set();
   const ativos = COLABORADORES.filter(c => c.ativo !== false);
   const html = `
     <p class="hint">Adicione colaboradores à lista de presença manualmente (sem avaliação).</p>
@@ -792,14 +1158,12 @@ async function salvarAvaliacao(id) {
 
 async function carregarRanking() {
   RANKING = await api('/api/ranking');
-  // preencher filtros
   const setores = [...new Set(RANKING.map(r => r.setor).filter(Boolean))].sort();
   const equipes = [...new Set(RANKING.map(r => r.equipe).filter(Boolean))].sort();
   const selSetor = document.getElementById('filtro-rank-setor');
   const selEquipe = document.getElementById('filtro-rank-equipe');
   if (selSetor) selSetor.innerHTML = '<option value="">Todos os setores</option>' + setores.map(s => `<option value="${esc(s)}">${esc(s)}</option>`).join('');
   if (selEquipe) selEquipe.innerHTML = '<option value="">Todas as equipes</option>' + equipes.map(e => `<option value="${esc(e)}">${esc(e)}</option>`).join('');
-  // resumo conquistas
   const resumo = {};
   CONFIG.conquistas.forEach(a => { resumo[a.key] = 0; });
   RANKING.forEach(r => { if (r.conquista) resumo[r.conquista.key]++; });
@@ -847,8 +1211,24 @@ function renderConfig() {
     '<button class="btn btn-primary" type="submit" style="margin-top:10px">Salvar pontuações</button>';
   const cfgVal = document.getElementById('cfg-validade');
   if (cfgVal) cfgVal.value = CONFIG.codigoValidade || 60;
-  // recompensas
   renderRecompensas();
+}
+
+async function carregarBrandingConfig() {
+  try {
+    const b = await api('/api/empresa/branding');
+    const logoPreview = document.getElementById('logo-preview-wrap');
+    if (logoPreview) {
+      logoPreview.innerHTML = b.logo
+        ? `<img src="${b.logo}" class="logo-preview" alt="logo"><br><small class="hint">Logo atual da empresa</small>`
+        : '<span class="logo-sem-preview">Nenhuma logo cadastrada</span>';
+    }
+    const cores = b.cores || {};
+    ['primaria', 'secundaria', 'destaque', 'laranja'].forEach(k => {
+      const el = document.getElementById('cor-' + k);
+      if (el && cores[k]) el.value = cores[k];
+    });
+  } catch { /* ignore */ }
 }
 
 async function salvarPontos(e) {
@@ -881,6 +1261,78 @@ async function alterarSenha(e) {
     toast('Senha alterada.', 'ok');
   } catch (err) { toast(err.message, 'erro'); }
   return false;
+}
+
+/* ── Branding do Gestor ── */
+
+function previewLogo(input) {
+  const file = input.files && input.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    LOGO_PENDENTE = reader.result;
+    const prev = document.getElementById('logo-preview-wrap');
+    if (prev) prev.innerHTML = `<img src="${LOGO_PENDENTE}" class="logo-preview" alt="logo"><br><small class="hint">Pré-visualização</small>`;
+  };
+  reader.readAsDataURL(file);
+}
+
+async function salvarLogo() {
+  if (!LOGO_PENDENTE) return toast('Selecione uma imagem primeiro.', 'erro');
+  try {
+    await api('/api/empresa/branding', { method: 'PUT', body: { logo: LOGO_PENDENTE } });
+    aplicarBranding({ logo: LOGO_PENDENTE });
+    LOGO_PENDENTE = null;
+    toast('Logo salva com sucesso!', 'ok');
+  } catch (err) { toast(err.message, 'erro'); }
+}
+
+async function removerLogo() {
+  if (!confirm('Remover a logo da empresa?')) return;
+  try {
+    await api('/api/empresa/branding', { method: 'PUT', body: { logo: null } });
+    const prev = document.getElementById('logo-preview-wrap');
+    if (prev) prev.innerHTML = '<span class="logo-sem-preview">Nenhuma logo cadastrada</span>';
+    aplicarBranding({ logo: null });
+    toast('Logo removida.', 'ok');
+  } catch (err) { toast(err.message, 'erro'); }
+}
+
+function previewCores() {
+  const cores = {
+    primaria:   document.getElementById('cor-primaria').value,
+    secundaria: document.getElementById('cor-secundaria').value,
+    destaque:   document.getElementById('cor-destaque').value,
+    laranja:    document.getElementById('cor-laranja').value
+  };
+  aplicarBranding({ cores });
+}
+
+async function salvarCores() {
+  const cores = {
+    primaria:   document.getElementById('cor-primaria').value,
+    secundaria: document.getElementById('cor-secundaria').value,
+    destaque:   document.getElementById('cor-destaque').value,
+    laranja:    document.getElementById('cor-laranja').value
+  };
+  try {
+    await api('/api/empresa/branding', { method: 'PUT', body: { cores } });
+    aplicarBranding({ cores });
+    toast('Cores aplicadas!', 'ok');
+  } catch (err) { toast(err.message, 'erro'); }
+}
+
+async function resetarCores() {
+  const defaults = { primaria: '#1e5aa8', secundaria: '#14406e', destaque: '#1a8a4c', laranja: '#e8801a' };
+  document.getElementById('cor-primaria').value = defaults.primaria;
+  document.getElementById('cor-secundaria').value = defaults.secundaria;
+  document.getElementById('cor-destaque').value = defaults.destaque;
+  document.getElementById('cor-laranja').value = defaults.laranja;
+  try {
+    await api('/api/empresa/branding', { method: 'PUT', body: { cores: defaults } });
+    aplicarBranding({ cores: defaults });
+    toast('Cores restauradas ao padrão.', 'ok');
+  } catch (err) { toast(err.message, 'erro'); }
 }
 
 function renderRecompensas() {
@@ -964,7 +1416,6 @@ async function carregarPainelColaborador() {
   document.getElementById('colab-tipos').innerHTML = tipos;
   document.getElementById('colab-top10').innerHTML = htmlRankingCompacto(p.top10);
 
-  // Loja de recompensas
   const recomp = CONFIG.recompensas || [];
   const recompEl = document.getElementById('colab-recompensas');
   if (recompEl) {

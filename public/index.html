@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>SESMT 2026 — SST Gamificado</title>
+<title>SafePoint — SST Gamificado</title>
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -11,12 +11,14 @@
 <!-- ═══════════════ LOGIN ═══════════════ -->
 <div id="tela-login" class="login-wrap hidden">
   <div class="login-card">
-    <div class="login-logo">🦺</div>
-    <h1>SESMT 2026</h1>
+    <div class="login-logo">
+      <img src="/logo.svg" alt="SafePoint" style="height:64px;width:auto">
+    </div>
     <p class="login-sub">Gestão de Segurança do Trabalho Gamificada</p>
     <div class="login-tabs">
-      <button id="tab-gestor" class="login-tab active" onclick="trocarAbaLogin('gestor')">Gestor SST</button>
-      <button id="tab-colab"  class="login-tab"        onclick="trocarAbaLogin('colaborador')">Colaborador</button>
+      <button id="tab-gestor" class="login-tab active"      onclick="trocarAbaLogin('gestor')">Gestor SST</button>
+      <button id="tab-colab"  class="login-tab"             onclick="trocarAbaLogin('colaborador')">Colaborador</button>
+      <button id="tab-admin"  class="login-tab login-tab-admin" onclick="trocarAbaLogin('admin')">Admin</button>
     </div>
     <form id="form-login-gestor" onsubmit="return loginGestor(event)">
       <label>Usuário</label>
@@ -31,14 +33,25 @@
       <button type="submit" class="btn btn-primary btn-block">Acessar meu painel</button>
       <p class="hint">Consulte pontos, histórico, faça check-in e registre observações.</p>
     </form>
+    <form id="form-login-admin" class="hidden" onsubmit="return loginAdmin(event)">
+      <label>Usuário administrador</label>
+      <input type="text" id="login-admin-usuario" autocomplete="username" required>
+      <label>Senha</label>
+      <input type="password" id="login-admin-senha" autocomplete="current-password" required>
+      <button type="submit" class="btn btn-primary btn-block">Entrar como Administrador</button>
+    </form>
     <p id="login-erro" class="erro hidden"></p>
+    <p class="login-platform">SafePoint &mdash; SST Gamificado</p>
   </div>
 </div>
 
 <!-- ═══════════════ APP GESTOR ═══════════════ -->
 <div id="app-gestor" class="hidden">
   <header class="topbar">
-    <div class="topbar-title">🦺 SESMT 2026 <span class="badge">Gestor</span></div>
+    <div class="topbar-brand">
+      <img src="/logo-icon.svg" alt="SafePoint" class="topbar-logo-icon">
+      <span id="empresa-logo-wrap"></span>
+    </div>
     <nav class="topbar-nav">
       <button data-view="dashboard"      class="nav-btn active" onclick="navegar('dashboard')">Painel</button>
       <button data-view="eventos"        class="nav-btn"        onclick="navegar('eventos')">Atividades</button>
@@ -48,7 +61,11 @@
       <button data-view="ranking"        class="nav-btn"        onclick="navegar('ranking')">Ranking</button>
       <button data-view="config"         class="nav-btn"        onclick="navegar('config')">Config</button>
     </nav>
-    <div class="topbar-user"><span id="gestor-nome"></span><button class="btn btn-sm" onclick="sair()">Sair</button></div>
+    <div class="topbar-user">
+      <span id="gestor-nome"></span>
+      <span id="gestor-empresa-nome" class="topbar-empresa"></span>
+      <button class="btn btn-sm" onclick="sair()">Sair</button>
+    </div>
   </header>
 
   <main class="container">
@@ -184,6 +201,42 @@
         </div>
       </div>
       <div class="panel" style="margin-top:14px">
+        <h3>🎨 Identidade Visual da Empresa</h3>
+        <p class="hint">Personalize logo e cores do SafePoint para a sua empresa.</p>
+        <div class="grid-2" style="margin-top:14px">
+          <div>
+            <label>Logo da empresa</label>
+            <div id="logo-preview-wrap" style="margin-bottom:10px"></div>
+            <input type="file" id="logo-upload" accept="image/*" onchange="previewLogo(this)">
+            <button class="btn btn-primary" style="margin-top:8px;width:100%" onclick="salvarLogo()">Salvar logo</button>
+            <button class="btn btn-perigo" style="margin-top:6px;width:100%" onclick="removerLogo()">Remover logo</button>
+          </div>
+          <div>
+            <label>Cores da plataforma</label>
+            <div class="cor-grade">
+              <div class="cor-item">
+                <span>Cor primária</span>
+                <input type="color" id="cor-primaria" value="#1e5aa8" onchange="previewCores()">
+              </div>
+              <div class="cor-item">
+                <span>Cor secundária</span>
+                <input type="color" id="cor-secundaria" value="#14406e" onchange="previewCores()">
+              </div>
+              <div class="cor-item">
+                <span>Destaque / pontos</span>
+                <input type="color" id="cor-destaque" value="#1a8a4c" onchange="previewCores()">
+              </div>
+              <div class="cor-item">
+                <span>Alertas</span>
+                <input type="color" id="cor-laranja" value="#e8801a" onchange="previewCores()">
+              </div>
+            </div>
+            <button class="btn btn-primary" style="margin-top:10px;width:100%" onclick="salvarCores()">Aplicar cores</button>
+            <button class="btn" style="margin-top:6px;width:100%" onclick="resetarCores()">Restaurar padrão</button>
+          </div>
+        </div>
+      </div>
+      <div class="panel" style="margin-top:14px">
         <h3>Loja de Recompensas</h3>
         <p class="hint">Configure itens que colaboradores podem resgatar com seus pontos.</p>
         <div id="recompensas-lista"></div>
@@ -198,7 +251,10 @@
 <!-- ═══════════════ APP COLABORADOR ═══════════════ -->
 <div id="app-colab" class="hidden">
   <header class="topbar">
-    <div class="topbar-title">🦺 SESMT 2026 <span class="badge badge-green">Colaborador</span></div>
+    <div class="topbar-brand">
+      <img src="/logo-icon.svg" alt="SafePoint" class="topbar-logo-icon">
+      <span id="colab-logo-wrap"></span>
+    </div>
     <nav class="topbar-nav">
       <button data-cview="painel"      class="nav-btn active" onclick="navegarColab('painel')">Meu Painel</button>
       <button data-cview="checkin"     class="nav-btn"        onclick="navegarColab('checkin')">Check-in</button>
@@ -206,7 +262,11 @@
       <button data-cview="sugerir"     class="nav-btn"        onclick="navegarColab('sugerir')">Sugestões</button>
       <button data-cview="historico"   class="nav-btn"        onclick="navegarColab('historico')">Histórico</button>
     </nav>
-    <div class="topbar-user"><span id="colab-nome"></span><button class="btn btn-sm" onclick="sair()">Sair</button></div>
+    <div class="topbar-user">
+      <span id="colab-nome"></span>
+      <span class="badge badge-green">Colaborador</span>
+      <button class="btn btn-sm" onclick="sair()">Sair</button>
+    </div>
   </header>
 
   <main class="container">
@@ -303,6 +363,46 @@
         <h3>Histórico completo de participações</h3>
         <table class="tabela" id="colab-historico"></table>
       </div>
+    </section>
+
+  </main>
+</div>
+
+<!-- ═══════════════ APP ADMINISTRADOR ═══════════════ -->
+<div id="app-admin" class="hidden">
+  <header class="topbar topbar-admin">
+    <div class="topbar-brand">
+      <img src="/logo.svg" alt="SafePoint" style="height:36px;width:auto;filter:brightness(0) invert(1)">
+    </div>
+    <nav class="topbar-nav">
+      <button data-aview="empresas"  class="nav-btn active" onclick="navegarAdmin('empresas')">Empresas</button>
+      <button data-aview="gestores"  class="nav-btn"        onclick="navegarAdmin('gestores')">Gestores</button>
+    </nav>
+    <div class="topbar-user">
+      <span id="admin-nome"></span>
+      <span class="badge badge-admin">Super Admin</span>
+      <button class="btn btn-sm" onclick="sair()">Sair</button>
+    </div>
+  </header>
+
+  <main class="container">
+
+    <!-- Empresas -->
+    <section id="aview-empresas" class="aview">
+      <div class="view-head">
+        <h2>Empresas cadastradas</h2>
+        <button class="btn btn-primary" onclick="abrirNovaEmpresa()">+ Nova empresa</button>
+      </div>
+      <div id="empresas-grid" class="empresas-grid"></div>
+    </section>
+
+    <!-- Gestores -->
+    <section id="aview-gestores" class="aview hidden">
+      <div class="view-head">
+        <h2>Gestores SST</h2>
+        <button class="btn btn-primary" onclick="abrirNovoGestor()">+ Novo gestor</button>
+      </div>
+      <table class="tabela" id="tabela-gestores"></table>
     </section>
 
   </main>
