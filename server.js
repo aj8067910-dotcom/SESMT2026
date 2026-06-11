@@ -1,9 +1,7 @@
 /*
- * SESMT 2026 - Servidor de Gestão de Segurança do Trabalho
+ * SESMT 2026 — Sistema Gamificado de SST
  * Node.js puro, sem dependências externas.
- *
- * Executar:  node server.js   (porta padrão 3000, configurável via PORT)
- * Login inicial do gestor:  usuário "gestor" / senha "admin123"
+ * Login gestor: usuário "gestor" / senha "admin123"
  */
 'use strict';
 
@@ -23,19 +21,33 @@ const ACTIVITY_TYPES = [
   'Oficina de Percepção de Risco',
   'CIPA em Movimento',
   'Treinamento',
-  'Sala de Orientação'
+  'Sala de Orientação',
+  'Quiz de Segurança',
+  'Participação em Campanha'
 ];
 
 const DEFAULT_POINTS = {
-  'DDS': 1,
-  'DESC': 2,
-  'Oficina de Percepção de Risco': 3,
-  'CIPA em Movimento': 2,
-  'Treinamento': 3,
-  'Sala de Orientação': 1
+  'DDS': 10,
+  'DESC': 15,
+  'Oficina de Percepção de Risco': 20,
+  'CIPA em Movimento': 20,
+  'Treinamento': 30,
+  'Sala de Orientação': 15,
+  'Quiz de Segurança': 5,
+  'Participação em Campanha': 15,
+  'Registro de Desvio': 25,
+  'Sugestão Aprovada': 50
 };
 
-/* ---------------- Persistência ---------------- */
+const ACHIEVEMENTS = [
+  { key: 'bronze',   nome: 'Bronze',               emoji: '🥉', minPontos: 50 },
+  { key: 'prata',    nome: 'Prata',                 emoji: '🥈', minPontos: 150 },
+  { key: 'ouro',     nome: 'Ouro',                  emoji: '🥇', minPontos: 300 },
+  { key: 'diamante', nome: 'Diamante',               emoji: '💎', minPontos: 500 },
+  { key: 'guardiao', nome: 'Guardião da Segurança',  emoji: '🏆', minPontos: 1000 }
+];
+
+/* ── Persistência ────────────────────────────────────────────── */
 
 let db = null;
 
@@ -53,18 +65,51 @@ function loadDb() {
     const admin = hashPassword('admin123');
     db = {
       seq: 1,
-      settings: { points: { ...DEFAULT_POINTS } },
-      managers: [
-        { id: nextIdRaw(), username: 'gestor', name: 'Gestor SESMT', salt: admin.salt, hash: admin.hash }
-      ],
+      settings: {
+        points: { ...DEFAULT_POINTS },
+        codigoValidade: 60,
+        recompensas: []
+      },
+      managers: [{ id: nextIdRaw(), username: 'gestor', name: 'Gestor SESMT', salt: admin.salt, hash: admin.hash }],
       employees: [],
-      events: []
+      events: [],
+      checkins: [],
+      activeCodes: [],
+      observations: [],
+      suggestions: []
     };
     saveDb();
   }
-  // garante que novos tipos tenham pontuação padrão
+  // garantir campos novos em DBs antigos
+  if (!db.checkins)     db.checkins = [];
+  if (!db.activeCodes)  db.activeCodes = [];
+  if (!db.observations) db.observations = [];
+  if (!db.suggestions)  db.suggestions = [];
+  if (!db.settings.recompensas)   db.settings.recompensas = [];
+  if (!db.settings.codigoValidade) db.settings.codigoValidade = 60;
   for (const t of ACTIVITY_TYPES) {
     if (db.settings.points[t] === undefined) db.settings.points[t] = DEFAULT_POINTS[t] || 1;
+  }
+  // migrar eventos antigos: criar checkins retroativos sem avaliação
+  for (const ev of db.events) {
+    if (!ev.migrado && Array.isArray(ev.participantes)) {
+      for (const empId of ev.participantes) {
+        const exists = db.checkins.find(c => c.eventId === ev.id && c.employeeId === empId);
+        if (!exists) {
+          db.checkins.push({
+            id: nextIdRaw(),
+            eventId: ev.id,
+            employeeId: empId,
+            timestamp: ev.data + 'T08:00:00.000Z',
+            gps: null,
+            avaliado: false,
+            avaliacao: null,
+            pontosAtribuidos: ev.pontos !== undefined && ev.pontos !== null ? ev.pontos : (db.settings.points[ev.tipo] || 0)
+          });
+        }
+      }
+      ev.migrado = true;
+    }
   }
 }
 
@@ -83,14 +128,12 @@ let saveTimer = null;
 function saveDb() {
   if (db) db.seq = seqCounter || db.seq;
   clearTimeout(saveTimer);
-  saveTimer = setTimeout(() => {
-    fs.writeFileSync(DB_FILE, JSON.stringify(db, null, 2));
-  }, 50);
+  saveTimer = setTimeout(() => fs.writeFileSync(DB_FILE, JSON.stringify(db, null, 2)), 50);
 }
 
-/* ---------------- Sessões ---------------- */
+/* ── Sessões ─────────────────────────────────────────────────── */
 
-const sessions = new Map(); // token -> { role: 'gestor'|'colaborador', userId, employeeId }
+const sessions = new Map();
 
 function createSession(data) {
   const token = crypto.randomBytes(24).toString('hex');
@@ -101,58 +144,65 @@ function createSession(data) {
 function getSession(req) {
   const cookie = req.headers.cookie || '';
   const m = cookie.match(/(?:^|;\s*)sesmt_token=([a-f0-9]+)/);
-  if (!m) return null;
-  return sessions.get(m[1]) || null;
+  return m ? (sessions.get(m[1]) || null) : null;
 }
 
-/* ---------------- Utilidades HTTP ---------------- */
+/* ── Utilidades HTTP ─────────────────────────────────────────── */
 
 function sendJson(res, status, obj) {
-  const body = JSON.stringify(obj);
-  res.writeHead(status, {
-    'Content-Type': 'application/json; charset=utf-8',
-    'Cache-Control': 'no-store'
-  });
-  res.end(body);
+  res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
+  res.end(JSON.stringify(obj));
 }
 
 function readBody(req) {
   return new Promise((resolve, reject) => {
     let data = '';
-    req.on('data', c => {
-      data += c;
-      if (data.length > 5 * 1024 * 1024) { reject(new Error('payload muito grande')); req.destroy(); }
-    });
-    req.on('end', () => {
-      if (!data) return resolve({});
-      try { resolve(JSON.parse(data)); } catch (e) { reject(new Error('JSON inválido')); }
-    });
+    req.on('data', c => { data += c; if (data.length > 10 * 1024 * 1024) { reject(new Error('payload grande')); req.destroy(); } });
+    req.on('end', () => { if (!data) return resolve({}); try { resolve(JSON.parse(data)); } catch (e) { reject(new Error('JSON inválido')); } });
     req.on('error', reject);
   });
 }
 
-/* ---------------- Regras de negócio ---------------- */
+/* ── Regras de negócio ───────────────────────────────────────── */
 
-function normalizeMatricula(m) {
-  return String(m || '').trim().toUpperCase();
+function normalizeMatricula(m) { return String(m || '').trim().toUpperCase(); }
+
+function eventBasePoints(ev) {
+  return ev.pontos !== undefined && ev.pontos !== null ? ev.pontos : (db.settings.points[ev.tipo] || 0);
 }
 
 function employeePoints(employeeId) {
   let total = 0;
   const byType = {};
-  for (const t of ACTIVITY_TYPES) byType[t] = { eventos: 0, pontos: 0 };
-  for (const ev of db.events) {
-    if (ev.participantes.includes(employeeId)) {
-      const pts = ev.pontos !== undefined && ev.pontos !== null
-        ? ev.pontos
-        : (db.settings.points[ev.tipo] || 0);
-      total += pts;
-      if (!byType[ev.tipo]) byType[ev.tipo] = { eventos: 0, pontos: 0 };
-      byType[ev.tipo].eventos++;
-      byType[ev.tipo].pontos += pts;
+  for (const t of ACTIVITY_TYPES) byType[t] = { checkins: 0, pontos: 0 };
+  // pontos de eventos (check-ins com pontos atribuídos)
+  for (const c of db.checkins) {
+    if (c.employeeId !== employeeId) continue;
+    total += c.pontosAtribuidos || 0;
+    const ev = db.events.find(e => e.id === c.eventId);
+    if (ev) {
+      if (!byType[ev.tipo]) byType[ev.tipo] = { checkins: 0, pontos: 0 };
+      byType[ev.tipo].checkins++;
+      byType[ev.tipo].pontos += c.pontosAtribuidos || 0;
     }
   }
+  // pontos de observações aprovadas
+  for (const obs of db.observations) {
+    if (obs.employeeId === employeeId && obs.pontos) total += obs.pontos;
+  }
+  // pontos de sugestões aprovadas
+  for (const sug of db.suggestions) {
+    if (sug.employeeId === employeeId && sug.status === 'aprovada') total += db.settings.points['Sugestão Aprovada'] || 50;
+  }
   return { total, byType };
+}
+
+function getAchievement(pontos) {
+  let current = null;
+  for (const a of ACHIEVEMENTS) {
+    if (pontos >= a.minPontos) current = a;
+  }
+  return current;
 }
 
 function buildRanking() {
@@ -160,7 +210,8 @@ function buildRanking() {
     .filter(e => e.ativo !== false)
     .map(e => {
       const p = employeePoints(e.id);
-      return { id: e.id, matricula: e.matricula, nome: e.nome, setor: e.setor || '', funcao: e.funcao || '', pontos: p.total };
+      const conquista = getAchievement(p.total);
+      return { id: e.id, matricula: e.matricula, nome: e.nome, setor: e.setor || '', equipe: e.equipe || '', unidade: e.unidade || '', funcao: e.funcao || '', empresa: e.empresa || '', pontos: p.total, conquista };
     })
     .sort((a, b) => b.pontos - a.pontos || a.nome.localeCompare(b.nome, 'pt-BR'));
   let pos = 0, lastPts = null;
@@ -171,46 +222,50 @@ function buildRanking() {
   return ranking;
 }
 
-function eventPoints(ev) {
-  return ev.pontos !== undefined && ev.pontos !== null ? ev.pontos : (db.settings.points[ev.tipo] || 0);
+function calcIES(employeeId) {
+  // IES 0-100: participação, avaliações, observações, sugestões
+  const totalEvents = db.events.length;
+  const myCheckins = db.checkins.filter(c => c.employeeId === employeeId);
+  const myAvaliacoes = myCheckins.filter(c => c.avaliado).length;
+  const myObs = db.observations.filter(o => o.employeeId === employeeId).length;
+  const mySugs = db.suggestions.filter(s => s.employeeId === employeeId).length;
+
+  const taxaParticipacao = totalEvents > 0 ? Math.min(100, (myCheckins.length / totalEvents) * 100) : 0;
+  const taxaAvaliacao = myCheckins.length > 0 ? (myAvaliacoes / myCheckins.length) * 100 : 0;
+  const bonusObs = Math.min(20, myObs * 5);
+  const bonusSug = Math.min(10, mySugs * 5);
+
+  return Math.round((taxaParticipacao * 0.5 + taxaAvaliacao * 0.3 + bonusObs + bonusSug));
 }
 
-/* Importação em massa: aceita texto CSV/colado.
- * Formatos aceitos por linha (separador ; , ou TAB):
- *   matricula;nome;setor;funcao   |   matricula;nome;setor   |   matricula;nome
- */
+function generateCode() {
+  return Math.floor(100000 + Math.random() * 900000).toString();
+}
+
 function parseBulk(text) {
   const lines = String(text || '').split(/\r?\n/);
-  const rows = [];
-  const errors = [];
+  const rows = [], errors = [];
   lines.forEach((line, idx) => {
     const raw = line.trim();
     if (!raw) return;
     const parts = raw.split(/\t|;|,(?=(?:[^"]*"[^"]*")*[^"]*$)/).map(p => p.replace(/^"|"$/g, '').trim());
-    // pula linha de cabeçalho
     if (idx === 0 && /matr[ií]cula/i.test(parts[0])) return;
     if (parts.length < 2 || !parts[0] || !parts[1]) {
-      errors.push({ linha: idx + 1, conteudo: raw, motivo: 'esperado: matrícula;nome;setor;função' });
+      errors.push({ linha: idx + 1, conteudo: raw, motivo: 'esperado: matrícula;nome' });
       return;
     }
-    rows.push({
-      matricula: normalizeMatricula(parts[0]),
-      nome: parts[1],
-      setor: parts[2] || '',
-      funcao: parts[3] || ''
-    });
+    rows.push({ matricula: normalizeMatricula(parts[0]), nome: parts[1], setor: parts[2] || '', funcao: parts[3] || '', equipe: parts[4] || '', unidade: parts[5] || '', empresa: parts[6] || '' });
   });
   return { rows, errors };
 }
 
-/* ---------------- API ---------------- */
+/* ── Roteamento ──────────────────────────────────────────────── */
 
 const routes = [];
-function route(method, pattern, opts, handler) {
-  routes.push({ method, pattern, opts, handler });
-}
+function route(method, pattern, opts, handler) { routes.push({ method, pattern, opts, handler }); }
 
-// --- autenticação ---
+/* ── Auth ───────────────────────────────────────────────────── */
+
 route('POST', /^\/api\/login$/, { public: true }, async (req, res, m, body) => {
   if (body.perfil === 'gestor') {
     const mgr = db.managers.find(u => u.username.toLowerCase() === String(body.usuario || '').toLowerCase().trim());
@@ -224,7 +279,7 @@ route('POST', /^\/api\/login$/, { public: true }, async (req, res, m, body) => {
   if (body.perfil === 'colaborador') {
     const mat = normalizeMatricula(body.matricula);
     const emp = db.employees.find(e => e.matricula === mat && e.ativo !== false);
-    if (!emp) return sendJson(res, 401, { error: 'Matrícula não encontrada. Procure o SESMT/gestor.' });
+    if (!emp) return sendJson(res, 401, { error: 'Matrícula não encontrada. Procure o gestor SST.' });
     const token = createSession({ role: 'colaborador', employeeId: emp.id });
     res.setHeader('Set-Cookie', `sesmt_token=${token}; Path=/; HttpOnly; SameSite=Lax`);
     return sendJson(res, 200, { ok: true, perfil: 'colaborador', nome: emp.nome });
@@ -234,8 +289,8 @@ route('POST', /^\/api\/login$/, { public: true }, async (req, res, m, body) => {
 
 route('POST', /^\/api\/logout$/, { public: true }, async (req, res) => {
   const cookie = req.headers.cookie || '';
-  const m = cookie.match(/(?:^|;\s*)sesmt_token=([a-f0-9]+)/);
-  if (m) sessions.delete(m[1]);
+  const m2 = cookie.match(/(?:^|;\s*)sesmt_token=([a-f0-9]+)/);
+  if (m2) sessions.delete(m2[1]);
   res.setHeader('Set-Cookie', 'sesmt_token=; Path=/; Max-Age=0');
   sendJson(res, 200, { ok: true });
 });
@@ -248,7 +303,7 @@ route('GET', /^\/api\/me$/, { public: true }, async (req, res) => {
     return sendJson(res, 200, { autenticado: true, perfil: 'gestor', nome: mgr ? mgr.name : 'Gestor' });
   }
   const emp = db.employees.find(e => e.id === s.employeeId);
-  return sendJson(res, 200, { autenticado: true, perfil: 'colaborador', nome: emp ? emp.nome : '' });
+  return sendJson(res, 200, { autenticado: true, perfil: 'colaborador', nome: emp ? emp.nome : '', employeeId: s.employeeId });
 });
 
 route('POST', /^\/api\/senha$/, { role: 'gestor' }, async (req, res, m, body, s) => {
@@ -256,53 +311,60 @@ route('POST', /^\/api\/senha$/, { role: 'gestor' }, async (req, res, m, body, s)
   if (!mgr) return sendJson(res, 404, { error: 'Gestor não encontrado.' });
   const atual = hashPassword(String(body.senhaAtual || ''), mgr.salt);
   if (atual.hash !== mgr.hash) return sendJson(res, 400, { error: 'Senha atual incorreta.' });
-  if (!body.novaSenha || String(body.novaSenha).length < 6) {
-    return sendJson(res, 400, { error: 'A nova senha deve ter pelo menos 6 caracteres.' });
-  }
+  if (!body.novaSenha || String(body.novaSenha).length < 6) return sendJson(res, 400, { error: 'Nova senha: mínimo 6 caracteres.' });
   const nova = hashPassword(String(body.novaSenha));
   mgr.salt = nova.salt; mgr.hash = nova.hash;
   saveDb();
   sendJson(res, 200, { ok: true });
 });
 
-// --- configuração de pontos ---
+/* ── Config ─────────────────────────────────────────────────── */
+
 route('GET', /^\/api\/config$/, { role: 'any' }, async (req, res) => {
-  sendJson(res, 200, { tipos: ACTIVITY_TYPES, pontos: db.settings.points });
+  sendJson(res, 200, { tipos: ACTIVITY_TYPES, pontos: db.settings.points, conquistas: ACHIEVEMENTS, codigoValidade: db.settings.codigoValidade, recompensas: db.settings.recompensas });
 });
 
 route('PUT', /^\/api\/config\/pontos$/, { role: 'gestor' }, async (req, res, m, body) => {
-  for (const t of ACTIVITY_TYPES) {
-    if (body[t] !== undefined) {
-      const v = Number(body[t]);
-      if (!Number.isFinite(v) || v < 0) return sendJson(res, 400, { error: `Pontuação inválida para ${t}.` });
-      db.settings.points[t] = v;
-    }
+  for (const [k, v] of Object.entries(body)) {
+    const n = Number(v);
+    if (!Number.isFinite(n) || n < 0) return sendJson(res, 400, { error: `Pontuação inválida para ${k}.` });
+    db.settings.points[k] = n;
   }
   saveDb();
   sendJson(res, 200, { ok: true, pontos: db.settings.points });
 });
 
-// --- colaboradores ---
+route('PUT', /^\/api\/config\/geral$/, { role: 'gestor' }, async (req, res, m, body) => {
+  if (body.codigoValidade !== undefined) {
+    const v = Number(body.codigoValidade);
+    if (!Number.isFinite(v) || v < 5) return sendJson(res, 400, { error: 'Validade mínima: 5 minutos.' });
+    db.settings.codigoValidade = v;
+  }
+  if (Array.isArray(body.recompensas)) db.settings.recompensas = body.recompensas;
+  saveDb();
+  sendJson(res, 200, { ok: true });
+});
+
+/* ── Colaboradores ───────────────────────────────────────────── */
+
 route('GET', /^\/api\/colaboradores$/, { role: 'gestor' }, async (req, res) => {
-  const list = db.employees.map(e => ({ ...e, pontos: employeePoints(e.id).total }));
+  const list = db.employees.map(e => {
+    const p = employeePoints(e.id);
+    return { ...e, pontos: p.total, conquista: getAchievement(p.total), ies: calcIES(e.id) };
+  });
   sendJson(res, 200, list);
 });
 
 route('POST', /^\/api\/colaboradores$/, { role: 'gestor' }, async (req, res, m, body) => {
   const mat = normalizeMatricula(body.matricula);
-  if (!mat || !body.nome || !String(body.nome).trim()) {
-    return sendJson(res, 400, { error: 'Matrícula e nome são obrigatórios.' });
-  }
-  if (db.employees.some(e => e.matricula === mat)) {
-    return sendJson(res, 409, { error: `Matrícula ${mat} já cadastrada.` });
-  }
+  if (!mat || !String(body.nome || '').trim()) return sendJson(res, 400, { error: 'Matrícula e nome são obrigatórios.' });
+  if (db.employees.some(e => e.matricula === mat)) return sendJson(res, 409, { error: `Matrícula ${mat} já cadastrada.` });
   const emp = {
-    id: nextId(),
-    matricula: mat,
-    nome: String(body.nome).trim(),
-    setor: String(body.setor || '').trim(),
-    funcao: String(body.funcao || '').trim(),
-    ativo: true
+    id: nextId(), matricula: mat, nome: String(body.nome).trim(),
+    cpf: String(body.cpf || '').trim(),
+    setor: String(body.setor || '').trim(), funcao: String(body.funcao || '').trim(),
+    equipe: String(body.equipe || '').trim(), unidade: String(body.unidade || '').trim(),
+    empresa: String(body.empresa || '').trim(), ativo: true
   };
   db.employees.push(emp);
   saveDb();
@@ -311,14 +373,12 @@ route('POST', /^\/api\/colaboradores$/, { role: 'gestor' }, async (req, res, m, 
 
 route('POST', /^\/api\/colaboradores\/importar$/, { role: 'gestor' }, async (req, res, m, body) => {
   const { rows, errors } = parseBulk(body.texto);
-  const inseridos = [];
-  const duplicados = [];
+  const inseridos = [], duplicados = [];
   for (const r of rows) {
     if (db.employees.some(e => e.matricula === r.matricula) || inseridos.some(e => e.matricula === r.matricula)) {
-      duplicados.push(r.matricula);
-      continue;
+      duplicados.push(r.matricula); continue;
     }
-    const emp = { id: nextId(), ...r, ativo: true };
+    const emp = { id: nextId(), ...r, cpf: '', ativo: true };
     db.employees.push(emp);
     inseridos.push(emp);
   }
@@ -332,14 +392,10 @@ route('PUT', /^\/api\/colaboradores\/(\d+)$/, { role: 'gestor' }, async (req, re
   if (body.matricula !== undefined) {
     const mat = normalizeMatricula(body.matricula);
     if (!mat) return sendJson(res, 400, { error: 'Matrícula inválida.' });
-    if (db.employees.some(e => e.matricula === mat && e.id !== emp.id)) {
-      return sendJson(res, 409, { error: `Matrícula ${mat} já cadastrada.` });
-    }
+    if (db.employees.some(e => e.matricula === mat && e.id !== emp.id)) return sendJson(res, 409, { error: `Matrícula ${mat} já existe.` });
     emp.matricula = mat;
   }
-  if (body.nome !== undefined) emp.nome = String(body.nome).trim();
-  if (body.setor !== undefined) emp.setor = String(body.setor).trim();
-  if (body.funcao !== undefined) emp.funcao = String(body.funcao).trim();
+  ['nome', 'cpf', 'setor', 'funcao', 'equipe', 'unidade', 'empresa'].forEach(f => { if (body[f] !== undefined) emp[f] = String(body[f]).trim(); });
   if (body.ativo !== undefined) emp.ativo = !!body.ativo;
   saveDb();
   sendJson(res, 200, emp);
@@ -349,47 +405,46 @@ route('DELETE', /^\/api\/colaboradores\/(\d+)$/, { role: 'gestor' }, async (req,
   const id = Number(m[1]);
   const idx = db.employees.findIndex(e => e.id === id);
   if (idx === -1) return sendJson(res, 404, { error: 'Colaborador não encontrado.' });
-  const participa = db.events.some(ev => ev.participantes.includes(id));
-  if (participa) {
-    // preserva histórico: apenas inativa
-    db.employees[idx].ativo = false;
-    saveDb();
-    return sendJson(res, 200, { ok: true, inativado: true });
-  }
+  const temHistorico = db.checkins.some(c => c.employeeId === id);
+  if (temHistorico) { db.employees[idx].ativo = false; saveDb(); return sendJson(res, 200, { ok: true, inativado: true }); }
   db.employees.splice(idx, 1);
   saveDb();
   sendJson(res, 200, { ok: true, removido: true });
 });
 
-// --- eventos / atividades ---
+/* ── Eventos ─────────────────────────────────────────────────── */
+
 route('GET', /^\/api\/eventos$/, { role: 'gestor' }, async (req, res) => {
-  const list = db.events
-    .slice()
-    .sort((a, b) => b.data.localeCompare(a.data) || b.id - a.id)
-    .map(ev => ({ ...ev, pontosAplicados: eventPoints(ev), totalParticipantes: ev.participantes.length }));
+  const list = db.events.slice().sort((a, b) => b.data.localeCompare(a.data) || b.id - a.id).map(ev => {
+    const evCheckins = db.checkins.filter(c => c.eventId === ev.id);
+    const avaliados = evCheckins.filter(c => c.avaliado);
+    const mediaEstrelas = avaliados.length > 0 ? (avaliados.reduce((s, c) => s + (c.avaliacao.estrelas || 0), 0) / avaliados.length).toFixed(1) : null;
+    const code = db.activeCodes.find(ac => ac.eventId === ev.id && ac.ativo && ac.expiraEm > Date.now());
+    return { ...ev, pontosAplicados: eventBasePoints(ev), totalCheckins: evCheckins.length, avaliados: avaliados.length, mediaEstrelas, codigoAtivo: code ? code.code : null };
+  });
   sendJson(res, 200, list);
+});
+
+route('GET', /^\/api\/eventos\/(\d+)$/, { role: 'any' }, async (req, res, m) => {
+  const ev = db.events.find(e => e.id === Number(m[1]));
+  if (!ev) return sendJson(res, 404, { error: 'Evento não encontrado.' });
+  sendJson(res, 200, ev);
 });
 
 route('POST', /^\/api\/eventos$/, { role: 'gestor' }, async (req, res, m, body) => {
   if (!ACTIVITY_TYPES.includes(body.tipo)) return sendJson(res, 400, { error: 'Tipo de atividade inválido.' });
-  if (!body.data || !/^\d{4}-\d{2}-\d{2}$/.test(body.data)) return sendJson(res, 400, { error: 'Data inválida (use AAAA-MM-DD).' });
-  const participantes = Array.isArray(body.participantes) ? body.participantes.map(Number) : [];
-  const validIds = new Set(db.employees.map(e => e.id));
-  const invalid = participantes.filter(id => !validIds.has(id));
-  if (invalid.length) return sendJson(res, 400, { error: 'Participantes inválidos: ' + invalid.join(', ') });
+  if (!body.data || !/^\d{4}-\d{2}-\d{2}$/.test(body.data)) return sendJson(res, 400, { error: 'Data inválida.' });
   const ev = {
-    id: nextId(),
-    tipo: body.tipo,
-    data: body.data,
+    id: nextId(), tipo: body.tipo, data: body.data,
+    hora: String(body.hora || '').trim(),
     tema: String(body.tema || '').trim(),
+    local: String(body.local || '').trim(),
     responsavel: String(body.responsavel || '').trim(),
     observacoes: String(body.observacoes || '').trim(),
-    pontos: body.pontos !== undefined && body.pontos !== null && body.pontos !== '' ? Number(body.pontos) : null,
-    participantes: [...new Set(participantes)]
+    pontos: body.pontos !== undefined && body.pontos !== '' && body.pontos !== null ? Number(body.pontos) : null,
+    participantes: []
   };
-  if (ev.pontos !== null && (!Number.isFinite(ev.pontos) || ev.pontos < 0)) {
-    return sendJson(res, 400, { error: 'Pontuação inválida.' });
-  }
+  if (ev.pontos !== null && (!Number.isFinite(ev.pontos) || ev.pontos < 0)) return sendJson(res, 400, { error: 'Pontuação inválida.' });
   db.events.push(ev);
   saveDb();
   sendJson(res, 201, ev);
@@ -398,131 +453,356 @@ route('POST', /^\/api\/eventos$/, { role: 'gestor' }, async (req, res, m, body) 
 route('PUT', /^\/api\/eventos\/(\d+)$/, { role: 'gestor' }, async (req, res, m, body) => {
   const ev = db.events.find(e => e.id === Number(m[1]));
   if (!ev) return sendJson(res, 404, { error: 'Evento não encontrado.' });
-  if (body.tipo !== undefined) {
-    if (!ACTIVITY_TYPES.includes(body.tipo)) return sendJson(res, 400, { error: 'Tipo de atividade inválido.' });
-    ev.tipo = body.tipo;
-  }
-  if (body.data !== undefined) {
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(body.data)) return sendJson(res, 400, { error: 'Data inválida.' });
-    ev.data = body.data;
-  }
-  if (body.tema !== undefined) ev.tema = String(body.tema).trim();
-  if (body.responsavel !== undefined) ev.responsavel = String(body.responsavel).trim();
-  if (body.observacoes !== undefined) ev.observacoes = String(body.observacoes).trim();
+  if (body.tipo !== undefined && !ACTIVITY_TYPES.includes(body.tipo)) return sendJson(res, 400, { error: 'Tipo inválido.' });
+  ['tipo', 'data', 'hora', 'tema', 'local', 'responsavel', 'observacoes'].forEach(f => { if (body[f] !== undefined) ev[f] = String(body[f]).trim(); });
   if (body.pontos !== undefined) {
-    ev.pontos = body.pontos === null || body.pontos === '' ? null : Number(body.pontos);
-    if (ev.pontos !== null && (!Number.isFinite(ev.pontos) || ev.pontos < 0)) {
-      return sendJson(res, 400, { error: 'Pontuação inválida.' });
-    }
-  }
-  if (body.participantes !== undefined) {
-    const participantes = Array.isArray(body.participantes) ? body.participantes.map(Number) : [];
-    const validIds = new Set(db.employees.map(e => e.id));
-    const invalid = participantes.filter(id => !validIds.has(id));
-    if (invalid.length) return sendJson(res, 400, { error: 'Participantes inválidos.' });
-    ev.participantes = [...new Set(participantes)];
+    ev.pontos = (body.pontos === null || body.pontos === '') ? null : Number(body.pontos);
+    if (ev.pontos !== null && (!Number.isFinite(ev.pontos) || ev.pontos < 0)) return sendJson(res, 400, { error: 'Pontuação inválida.' });
   }
   saveDb();
   sendJson(res, 200, ev);
 });
 
 route('DELETE', /^\/api\/eventos\/(\d+)$/, { role: 'gestor' }, async (req, res, m) => {
-  const idx = db.events.findIndex(e => e.id === Number(m[1]));
+  const id = Number(m[1]);
+  const idx = db.events.findIndex(e => e.id === id);
   if (idx === -1) return sendJson(res, 404, { error: 'Evento não encontrado.' });
+  db.checkins = db.checkins.filter(c => c.eventId !== id);
+  db.activeCodes = db.activeCodes.filter(ac => ac.eventId !== id);
   db.events.splice(idx, 1);
   saveDb();
   sendJson(res, 200, { ok: true });
 });
 
-// --- ranking e dashboard ---
+/* ── Check-in codes ──────────────────────────────────────────── */
+
+route('POST', /^\/api\/eventos\/(\d+)\/codigo$/, { role: 'gestor' }, async (req, res, m) => {
+  const eventId = Number(m[1]);
+  const ev = db.events.find(e => e.id === eventId);
+  if (!ev) return sendJson(res, 404, { error: 'Evento não encontrado.' });
+  // invalida código anterior do mesmo evento
+  db.activeCodes.filter(ac => ac.eventId === eventId).forEach(ac => { ac.ativo = false; });
+  const code = generateCode();
+  const validade = (db.settings.codigoValidade || 60) * 60 * 1000;
+  db.activeCodes.push({ code, eventId, criadoEm: Date.now(), expiraEm: Date.now() + validade, ativo: true });
+  saveDb();
+  sendJson(res, 200, { code, expiraEm: Date.now() + validade, validade: db.settings.codigoValidade });
+});
+
+route('GET', /^\/api\/eventos\/(\d+)\/codigo$/, { role: 'gestor' }, async (req, res, m) => {
+  const eventId = Number(m[1]);
+  const code = db.activeCodes.find(ac => ac.eventId === eventId && ac.ativo && ac.expiraEm > Date.now());
+  if (!code) return sendJson(res, 200, { ativo: false });
+  sendJson(res, 200, { ativo: true, code: code.code, expiraEm: code.expiraEm });
+});
+
+/* ── Check-in do colaborador ─────────────────────────────────── */
+
+route('POST', /^\/api\/checkin$/, { role: 'colaborador' }, async (req, res, m, body, s) => {
+  const code = String(body.codigo || '').trim();
+  const ac = db.activeCodes.find(ac => ac.code === code && ac.ativo && ac.expiraEm > Date.now());
+  if (!ac) return sendJson(res, 400, { error: 'Código inválido ou expirado. Solicite um novo código ao responsável.' });
+  const ev = db.events.find(e => e.id === ac.eventId);
+  if (!ev) return sendJson(res, 400, { error: 'Evento não encontrado.' });
+  const existing = db.checkins.find(c => c.eventId === ev.id && c.employeeId === s.employeeId);
+  if (existing) return sendJson(res, 409, { error: 'Você já fez check-in neste evento.' });
+  const checkin = {
+    id: nextId(), eventId: ev.id, employeeId: s.employeeId,
+    timestamp: new Date().toISOString(),
+    gps: body.gps || null,
+    avaliado: false, avaliacao: null,
+    pontosAtribuidos: 0
+  };
+  db.checkins.push(checkin);
+  // adiciona à lista de participantes do evento (compatibilidade)
+  if (!ev.participantes) ev.participantes = [];
+  if (!ev.participantes.includes(s.employeeId)) ev.participantes.push(s.employeeId);
+  saveDb();
+  sendJson(res, 200, { ok: true, checkinId: checkin.id, evento: { tipo: ev.tipo, tema: ev.tema, data: ev.data }, mensagem: 'Check-in realizado! Agora avalie o evento para receber seus pontos.' });
+});
+
+route('GET', /^\/api\/checkin\/pendente$/, { role: 'colaborador' }, async (req, res, m, body, s) => {
+  const pendente = db.checkins.find(c => c.employeeId === s.employeeId && !c.avaliado);
+  if (!pendente) return sendJson(res, 200, { pendente: false });
+  const ev = db.events.find(e => e.id === pendente.eventId);
+  sendJson(res, 200, { pendente: true, checkinId: pendente.id, evento: ev ? { tipo: ev.tipo, tema: ev.tema, data: ev.data, hora: ev.hora } : null });
+});
+
+route('POST', /^\/api\/checkin\/(\d+)\/avaliar$/, { role: 'colaborador' }, async (req, res, m, body, s) => {
+  const checkin = db.checkins.find(c => c.id === Number(m[1]) && c.employeeId === s.employeeId);
+  if (!checkin) return sendJson(res, 404, { error: 'Check-in não encontrado.' });
+  if (checkin.avaliado) return sendJson(res, 409, { error: 'Avaliação já registrada.' });
+  const estrelas = Number(body.estrelas);
+  if (!Number.isInteger(estrelas) || estrelas < 1 || estrelas > 5) return sendJson(res, 400, { error: 'Avaliação de 1 a 5 estrelas é obrigatória.' });
+  checkin.avaliado = true;
+  checkin.avaliacao = {
+    estrelas,
+    gostou: String(body.gostou || '').trim(),
+    melhorar: String(body.melhorar || '').trim(),
+    temas: String(body.temas || '').trim(),
+    seguranca: String(body.seguranca || '').trim(),
+    livre: String(body.livre || '').trim()
+  };
+  const ev = db.events.find(e => e.id === checkin.eventId);
+  checkin.pontosAtribuidos = eventBasePoints(ev);
+  saveDb();
+  const totalPontos = employeePoints(s.employeeId).total;
+  const conquista = getAchievement(totalPontos);
+  sendJson(res, 200, { ok: true, pontosRecebidos: checkin.pontosAtribuidos, totalPontos, conquista });
+});
+
+route('GET', /^\/api\/eventos\/(\d+)\/avaliacoes$/, { role: 'gestor' }, async (req, res, m) => {
+  const eventId = Number(m[1]);
+  const evCheckins = db.checkins.filter(c => c.eventId === eventId && c.avaliado);
+  const result = evCheckins.map(c => {
+    const emp = db.employees.find(e => e.id === c.employeeId);
+    return { ...c, nomeColaborador: emp ? emp.nome : 'Desconhecido', matricula: emp ? emp.matricula : '' };
+  });
+  sendJson(res, 200, result);
+});
+
+/* ── Lista de presença (gestor adiciona manualmente) ────────── */
+
+route('POST', /^\/api\/eventos\/(\d+)\/presenca$/, { role: 'gestor' }, async (req, res, m, body) => {
+  const eventId = Number(m[1]);
+  const ev = db.events.find(e => e.id === eventId);
+  if (!ev) return sendJson(res, 404, { error: 'Evento não encontrado.' });
+  const ids = Array.isArray(body.participantes) ? body.participantes.map(Number) : [];
+  const validIds = new Set(db.employees.map(e => e.id));
+  const adicionados = [];
+  for (const empId of ids) {
+    if (!validIds.has(empId)) continue;
+    const exists = db.checkins.find(c => c.eventId === eventId && c.employeeId === empId);
+    if (!exists) {
+      const pts = eventBasePoints(ev);
+      const ci = { id: nextId(), eventId, employeeId: empId, timestamp: new Date().toISOString(), gps: null, avaliado: true, avaliacao: { estrelas: 0, gostou: '', melhorar: '', temas: '', seguranca: '', livre: '' }, pontosAtribuidos: pts, manual: true };
+      db.checkins.push(ci);
+      if (!ev.participantes) ev.participantes = [];
+      if (!ev.participantes.includes(empId)) ev.participantes.push(empId);
+      adicionados.push(empId);
+    }
+  }
+  saveDb();
+  sendJson(res, 200, { ok: true, adicionados: adicionados.length });
+});
+
+/* ── Observações de Segurança ────────────────────────────────── */
+
+route('GET', /^\/api\/observacoes$/, { role: 'gestor' }, async (req, res) => {
+  const list = db.observations.map(o => {
+    const emp = db.employees.find(e => e.id === o.employeeId);
+    return { ...o, nomeColaborador: emp ? emp.nome : 'Desconhecido', matricula: emp ? emp.matricula : '' };
+  }).sort((a, b) => (b.criadoEm || 0) - (a.criadoEm || 0));
+  sendJson(res, 200, list);
+});
+
+route('GET', /^\/api\/observacoes\/minhas$/, { role: 'colaborador' }, async (req, res, m, body, s) => {
+  const list = db.observations.filter(o => o.employeeId === s.employeeId).sort((a, b) => (b.criadoEm || 0) - (a.criadoEm || 0));
+  sendJson(res, 200, list);
+});
+
+route('POST', /^\/api\/observacoes$/, { role: 'any' }, async (req, res, m, body, s) => {
+  if (!s) return sendJson(res, 401, { error: 'Não autenticado.' });
+  const employeeId = s.role === 'colaborador' ? s.employeeId : (body.employeeId ? Number(body.employeeId) : null);
+  if (!employeeId) return sendJson(res, 400, { error: 'Colaborador obrigatório.' });
+  const tipos = ['ato_inseguro', 'condicao_insegura'];
+  if (!tipos.includes(body.tipo)) return sendJson(res, 400, { error: 'Tipo inválido: ato_inseguro ou condicao_insegura.' });
+  const criticas = ['baixa', 'media', 'alta', 'critica'];
+  if (!criticas.includes(body.criticidade)) return sendJson(res, 400, { error: 'Criticidade inválida.' });
+  if (!String(body.descricao || '').trim()) return sendJson(res, 400, { error: 'Descrição obrigatória.' });
+  const obs = {
+    id: nextId(), employeeId, tipo: body.tipo, criticidade: body.criticidade,
+    descricao: String(body.descricao).trim(), local: String(body.local || '').trim(),
+    status: 'aberta', acaoCorretiva: '', responsavelAcao: '', prazo: '',
+    pontos: db.settings.points['Registro de Desvio'] || 25,
+    criadoEm: Date.now(), atualizadoEm: Date.now()
+  };
+  db.observations.push(obs);
+  saveDb();
+  sendJson(res, 201, obs);
+});
+
+route('PUT', /^\/api\/observacoes\/(\d+)$/, { role: 'gestor' }, async (req, res, m, body) => {
+  const obs = db.observations.find(o => o.id === Number(m[1]));
+  if (!obs) return sendJson(res, 404, { error: 'Observação não encontrada.' });
+  const statusValidos = ['aberta', 'em_analise', 'resolvida'];
+  if (body.status && !statusValidos.includes(body.status)) return sendJson(res, 400, { error: 'Status inválido.' });
+  ['status', 'acaoCorretiva', 'responsavelAcao', 'prazo'].forEach(f => { if (body[f] !== undefined) obs[f] = String(body[f]).trim(); });
+  obs.atualizadoEm = Date.now();
+  saveDb();
+  sendJson(res, 200, obs);
+});
+
+/* ── Sugestões de Melhoria ───────────────────────────────────── */
+
+route('GET', /^\/api\/sugestoes$/, { role: 'gestor' }, async (req, res) => {
+  const list = db.suggestions.map(sg => {
+    const emp = db.employees.find(e => e.id === sg.employeeId);
+    return { ...sg, nomeColaborador: emp ? emp.nome : 'Desconhecido', matricula: emp ? emp.matricula : '' };
+  }).sort((a, b) => (b.criadoEm || 0) - (a.criadoEm || 0));
+  sendJson(res, 200, list);
+});
+
+route('GET', /^\/api\/sugestoes\/minhas$/, { role: 'colaborador' }, async (req, res, m, body, s) => {
+  const list = db.suggestions.filter(sg => sg.employeeId === s.employeeId).sort((a, b) => (b.criadoEm || 0) - (a.criadoEm || 0));
+  sendJson(res, 200, list);
+});
+
+route('POST', /^\/api\/sugestoes$/, { role: 'any' }, async (req, res, m, body, s) => {
+  if (!s) return sendJson(res, 401, { error: 'Não autenticado.' });
+  const employeeId = s.role === 'colaborador' ? s.employeeId : (body.employeeId ? Number(body.employeeId) : null);
+  if (!employeeId) return sendJson(res, 400, { error: 'Colaborador obrigatório.' });
+  if (!String(body.descricao || '').trim()) return sendJson(res, 400, { error: 'Descrição obrigatória.' });
+  const sg = {
+    id: nextId(), employeeId, descricao: String(body.descricao).trim(),
+    beneficio: String(body.beneficio || '').trim(),
+    status: 'pendente', comentarioGestor: '',
+    criadoEm: Date.now(), atualizadoEm: Date.now()
+  };
+  db.suggestions.push(sg);
+  saveDb();
+  sendJson(res, 201, sg);
+});
+
+route('PUT', /^\/api\/sugestoes\/(\d+)$/, { role: 'gestor' }, async (req, res, m, body) => {
+  const sg = db.suggestions.find(s => s.id === Number(m[1]));
+  if (!sg) return sendJson(res, 404, { error: 'Sugestão não encontrada.' });
+  const statusValidos = ['pendente', 'aprovada', 'rejeitada'];
+  if (body.status && !statusValidos.includes(body.status)) return sendJson(res, 400, { error: 'Status inválido.' });
+  if (body.status) sg.status = body.status;
+  if (body.comentarioGestor !== undefined) sg.comentarioGestor = String(body.comentarioGestor).trim();
+  sg.atualizadoEm = Date.now();
+  saveDb();
+  sendJson(res, 200, sg);
+});
+
+/* ── Ranking e Dashboard ─────────────────────────────────────── */
+
 route('GET', /^\/api\/ranking$/, { role: 'any' }, async (req, res) => {
   sendJson(res, 200, buildRanking());
 });
 
 route('GET', /^\/api\/dashboard$/, { role: 'gestor' }, async (req, res) => {
   const porTipo = {};
-  for (const t of ACTIVITY_TYPES) porTipo[t] = { eventos: 0, participacoes: 0 };
+  for (const t of ACTIVITY_TYPES) porTipo[t] = { eventos: 0, checkins: 0, mediaEstrelas: null, totalEstrelas: 0, avaliacoes: 0 };
   for (const ev of db.events) {
-    if (!porTipo[ev.tipo]) porTipo[ev.tipo] = { eventos: 0, participacoes: 0 };
-    porTipo[ev.tipo].eventos++;
-    porTipo[ev.tipo].participacoes += ev.participantes.length;
+    const t = ev.tipo;
+    if (!porTipo[t]) porTipo[t] = { eventos: 0, checkins: 0, mediaEstrelas: null, totalEstrelas: 0, avaliacoes: 0 };
+    porTipo[t].eventos++;
+    const evCheckins = db.checkins.filter(c => c.eventId === ev.id);
+    porTipo[t].checkins += evCheckins.length;
+    evCheckins.filter(c => c.avaliado && c.avaliacao && c.avaliacao.estrelas > 0).forEach(c => {
+      porTipo[t].totalEstrelas += c.avaliacao.estrelas;
+      porTipo[t].avaliacoes++;
+    });
+  }
+  for (const t of ACTIVITY_TYPES) {
+    if (porTipo[t].avaliacoes > 0) porTipo[t].mediaEstrelas = (porTipo[t].totalEstrelas / porTipo[t].avaliacoes).toFixed(1);
   }
   const ranking = buildRanking();
+  const totalObs = db.observations.length;
+  const obsAbertas = db.observations.filter(o => o.status === 'aberta').length;
+  const totalSugs = db.suggestions.length;
+  const sugsAprovadas = db.suggestions.filter(s => s.status === 'aprovada').length;
+  const totalAvaliacoes = db.checkins.filter(c => c.avaliado && c.avaliacao && c.avaliacao.estrelas > 0).length;
+  const mediaGeralEstrelas = totalAvaliacoes > 0
+    ? (db.checkins.filter(c => c.avaliado && c.avaliacao && c.avaliacao.estrelas > 0).reduce((s, c) => s + c.avaliacao.estrelas, 0) / totalAvaliacoes).toFixed(1)
+    : null;
+  const totalCheckins = db.checkins.length;
   sendJson(res, 200, {
     colaboradoresAtivos: db.employees.filter(e => e.ativo !== false).length,
     totalEventos: db.events.length,
-    totalParticipacoes: db.events.reduce((s, ev) => s + ev.participantes.length, 0),
+    totalCheckins,
+    totalObs, obsAbertas,
+    totalSugs, sugsAprovadas,
+    mediaGeralEstrelas,
     porTipo,
-    top10: ranking.slice(0, 10)
+    top10: ranking.slice(0, 10),
+    rankingCompleto: ranking
   });
 });
 
-// --- visão do colaborador ---
+/* ── Painel do colaborador ───────────────────────────────────── */
+
 route('GET', /^\/api\/meu-painel$/, { role: 'colaborador' }, async (req, res, m, body, s) => {
   const emp = db.employees.find(e => e.id === s.employeeId);
   if (!emp) return sendJson(res, 404, { error: 'Colaborador não encontrado.' });
   const pts = employeePoints(emp.id);
   const ranking = buildRanking();
   const minha = ranking.find(r => r.id === emp.id);
-  const historico = db.events
-    .filter(ev => ev.participantes.includes(emp.id))
-    .sort((a, b) => b.data.localeCompare(a.data) || b.id - a.id)
-    .map(ev => ({ id: ev.id, data: ev.data, tipo: ev.tipo, tema: ev.tema, pontos: eventPoints(ev) }));
+  const myCheckins = db.checkins.filter(c => c.employeeId === emp.id).sort((a, b) => b.timestamp.localeCompare(a.timestamp));
+  const historico = myCheckins.map(c => {
+    const ev = db.events.find(e => e.id === c.eventId);
+    return { id: c.id, timestamp: c.timestamp, tipo: ev ? ev.tipo : '?', tema: ev ? ev.tema : '', pontos: c.pontosAtribuidos, avaliado: c.avaliado };
+  });
+  const ies = calcIES(emp.id);
+  const conquista = getAchievement(pts.total);
+  const proxConquista = ACHIEVEMENTS.find(a => a.minPontos > pts.total);
+  const minhaObs = db.observations.filter(o => o.employeeId === emp.id).length;
+  const minhasSugs = db.suggestions.filter(s => s.employeeId === emp.id);
+  const checkinPendente = db.checkins.find(c => c.employeeId === emp.id && !c.avaliado);
   sendJson(res, 200, {
-    colaborador: { matricula: emp.matricula, nome: emp.nome, setor: emp.setor, funcao: emp.funcao },
-    pontos: pts.total,
-    porTipo: pts.byType,
+    colaborador: { matricula: emp.matricula, nome: emp.nome, setor: emp.setor, funcao: emp.funcao, equipe: emp.equipe, unidade: emp.unidade, empresa: emp.empresa },
+    pontos: pts.total, porTipo: pts.byType,
     posicao: minha ? minha.posicao : null,
     totalColaboradores: ranking.length,
+    conquista, proxConquista, ies,
     historico,
-    top10: ranking.slice(0, 10)
+    top10: ranking.slice(0, 10),
+    totalObs: minhaObs,
+    totalSugs: minhasSugs.length,
+    sugsAprovadas: minhasSugs.filter(s => s.status === 'aprovada').length,
+    checkinPendente: checkinPendente ? { checkinId: checkinPendente.id } : null
   });
 });
 
-// --- exportação CSV (gestor) ---
+/* ── Exportação ──────────────────────────────────────────────── */
+
 route('GET', /^\/api\/exportar\/ranking$/, { role: 'gestor' }, async (req, res) => {
   const ranking = buildRanking();
-  const lines = ['posicao;matricula;nome;setor;funcao;pontos'];
+  const lines = ['posicao;matricula;nome;setor;equipe;unidade;funcao;empresa;pontos;conquista'];
   for (const r of ranking) {
-    lines.push([r.posicao, r.matricula, r.nome, r.setor, r.funcao, r.pontos].join(';'));
+    lines.push([r.posicao, r.matricula, r.nome, r.setor, r.equipe || '', r.unidade || '', r.funcao, r.empresa || '', r.pontos, r.conquista ? r.conquista.nome : ''].join(';'));
   }
-  res.writeHead(200, {
-    'Content-Type': 'text/csv; charset=utf-8',
-    'Content-Disposition': 'attachment; filename="ranking_sesmt.csv"'
-  });
+  res.writeHead(200, { 'Content-Type': 'text/csv; charset=utf-8', 'Content-Disposition': 'attachment; filename="ranking_sesmt.csv"' });
   res.end('﻿' + lines.join('\n'));
 });
 
-/* ---------------- Arquivos estáticos ---------------- */
+route('GET', /^\/api\/exportar\/colaboradores$/, { role: 'gestor' }, async (req, res) => {
+  const list = db.employees.map(e => {
+    const p = employeePoints(e.id);
+    const ies = calcIES(e.id);
+    return { ...e, pontos: p.total, ies, conquista: getAchievement(p.total) ? getAchievement(p.total).nome : '' };
+  });
+  const lines = ['matricula;nome;cpf;setor;equipe;unidade;funcao;empresa;ativo;pontos;ies;conquista'];
+  for (const c of list) {
+    lines.push([c.matricula, c.nome, c.cpf || '', c.setor, c.equipe || '', c.unidade || '', c.funcao, c.empresa || '', c.ativo ? 'S' : 'N', c.pontos, c.ies, c.conquista].join(';'));
+  }
+  res.writeHead(200, { 'Content-Type': 'text/csv; charset=utf-8', 'Content-Disposition': 'attachment; filename="colaboradores_sesmt.csv"' });
+  res.end('﻿' + lines.join('\n'));
+});
 
-const MIME = {
-  '.html': 'text/html; charset=utf-8',
-  '.css': 'text/css; charset=utf-8',
-  '.js': 'application/javascript; charset=utf-8',
-  '.png': 'image/png',
-  '.svg': 'image/svg+xml',
-  '.ico': 'image/x-icon'
-};
+/* ── Arquivos estáticos ──────────────────────────────────────── */
+
+const MIME = { '.html': 'text/html; charset=utf-8', '.css': 'text/css; charset=utf-8', '.js': 'application/javascript; charset=utf-8', '.png': 'image/png', '.svg': 'image/svg+xml', '.ico': 'image/x-icon' };
 
 function serveStatic(req, res, urlPath) {
-  let file = urlPath === '/' ? '/index.html' : urlPath;
+  const file = urlPath === '/' ? '/index.html' : urlPath;
   const full = path.normalize(path.join(PUBLIC_DIR, file));
   if (!full.startsWith(PUBLIC_DIR)) { res.writeHead(403); return res.end('Forbidden'); }
   fs.readFile(full, (err, data) => {
-    if (err) { res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' }); return res.end('Não encontrado'); }
+    if (err) { res.writeHead(404, { 'Content-Type': 'text/plain' }); return res.end('Não encontrado'); }
     res.writeHead(200, { 'Content-Type': MIME[path.extname(full)] || 'application/octet-stream' });
     res.end(data);
   });
 }
 
-/* ---------------- Servidor ---------------- */
+/* ── Servidor ────────────────────────────────────────────────── */
 
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
   const urlPath = decodeURIComponent(url.pathname);
-
   if (!urlPath.startsWith('/api/')) return serveStatic(req, res, urlPath);
-
   try {
     for (const r of routes) {
       if (r.method !== req.method) continue;
@@ -531,12 +811,9 @@ const server = http.createServer(async (req, res) => {
       const session = getSession(req);
       if (!r.opts.public) {
         if (!session) return sendJson(res, 401, { error: 'Não autenticado.' });
-        if (r.opts.role === 'gestor' && session.role !== 'gestor') {
-          return sendJson(res, 403, { error: 'Acesso restrito ao gestor.' });
-        }
-        if (r.opts.role === 'colaborador' && session.role !== 'colaborador') {
-          return sendJson(res, 403, { error: 'Acesso restrito ao colaborador.' });
-        }
+        if (r.opts.role === 'gestor' && session.role !== 'gestor') return sendJson(res, 403, { error: 'Acesso restrito.' });
+        if (r.opts.role === 'colaborador' && session.role !== 'colaborador') return sendJson(res, 403, { error: 'Acesso restrito.' });
+        if (r.opts.role === 'any' && !['gestor', 'colaborador'].includes(session.role)) return sendJson(res, 403, { error: 'Acesso restrito.' });
       }
       const body = (req.method === 'POST' || req.method === 'PUT') ? await readBody(req) : {};
       return await r.handler(req, res, m, body, session);
@@ -550,5 +827,5 @@ const server = http.createServer(async (req, res) => {
 loadDb();
 server.listen(PORT, () => {
   console.log(`SESMT 2026 rodando em http://localhost:${PORT}`);
-  console.log('Login inicial do gestor: usuário "gestor" / senha "admin123"');
+  console.log('Login gestor: "gestor" / "admin123"');
 });
