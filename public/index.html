@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SESMT 2026 — Gestão de Segurança do Trabalho</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<!-- ===================== LOGIN ===================== -->
+<div id="tela-login" class="login-wrap hidden">
+  <div class="login-card">
+    <div class="login-logo">🦺</div>
+    <h1>SESMT 2026</h1>
+    <p class="login-sub">Gestão de Segurança do Trabalho<br>Pontuação por participação</p>
+
+    <div class="login-tabs">
+      <button id="tab-gestor" class="login-tab active" onclick="trocarAbaLogin('gestor')">Gestor</button>
+      <button id="tab-colab" class="login-tab" onclick="trocarAbaLogin('colaborador')">Colaborador</button>
+    </div>
+
+    <form id="form-login-gestor" onsubmit="return loginGestor(event)">
+      <label>Usuário</label>
+      <input type="text" id="login-usuario" autocomplete="username" required>
+      <label>Senha</label>
+      <input type="password" id="login-senha" autocomplete="current-password" required>
+      <button type="submit" class="btn btn-primary btn-block">Entrar como Gestor</button>
+    </form>
+
+    <form id="form-login-colab" class="hidden" onsubmit="return loginColaborador(event)">
+      <label>Matrícula</label>
+      <input type="text" id="login-matricula" placeholder="Digite sua matrícula" required>
+      <button type="submit" class="btn btn-primary btn-block">Acompanhar meus pontos</button>
+      <p class="hint">Acesso de visualização: consulte seus pontos, histórico e posição no ranking.</p>
+    </form>
+
+    <p id="login-erro" class="erro hidden"></p>
+  </div>
+</div>
+
+<!-- ===================== APP GESTOR ===================== -->
+<div id="app-gestor" class="hidden">
+  <header class="topbar">
+    <div class="topbar-title">🦺 SESMT 2026 <span class="badge">Gestor</span></div>
+    <nav class="topbar-nav">
+      <button data-view="dashboard" class="nav-btn active" onclick="navegar('dashboard')">Painel</button>
+      <button data-view="eventos" class="nav-btn" onclick="navegar('eventos')">Atividades</button>
+      <button data-view="colaboradores" class="nav-btn" onclick="navegar('colaboradores')">Colaboradores</button>
+      <button data-view="ranking" class="nav-btn" onclick="navegar('ranking')">Ranking</button>
+      <button data-view="config" class="nav-btn" onclick="navegar('config')">Configurações</button>
+    </nav>
+    <div class="topbar-user">
+      <span id="gestor-nome"></span>
+      <button class="btn btn-sm" onclick="sair()">Sair</button>
+    </div>
+  </header>
+
+  <main class="container">
+
+    <!-- Painel -->
+    <section id="view-dashboard" class="view">
+      <h2>Painel geral</h2>
+      <div id="dash-cards" class="cards"></div>
+      <div class="grid-2">
+        <div class="panel">
+          <h3>Atividades por tipo</h3>
+          <table class="tabela" id="dash-tipos"></table>
+        </div>
+        <div class="panel">
+          <h3>Top 10 — Ranking de participação</h3>
+          <table class="tabela" id="dash-top10"></table>
+        </div>
+      </div>
+    </section>
+
+    <!-- Atividades / Eventos -->
+    <section id="view-eventos" class="view hidden">
+      <div class="view-head">
+        <h2>Atividades de SST</h2>
+        <button class="btn btn-primary" onclick="abrirNovoEvento()">+ Registrar atividade</button>
+      </div>
+      <div class="filtros">
+        <select id="filtro-tipo" onchange="renderEventos()">
+          <option value="">Todos os tipos</option>
+        </select>
+        <input type="text" id="filtro-busca" placeholder="Buscar por tema ou responsável..." oninput="renderEventos()">
+      </div>
+      <table class="tabela" id="tabela-eventos"></table>
+    </section>
+
+    <!-- Colaboradores -->
+    <section id="view-colaboradores" class="view hidden">
+      <div class="view-head">
+        <h2>Colaboradores</h2>
+        <div>
+          <button class="btn" onclick="abrirImportacao()">⬆ Cadastro em massa</button>
+          <button class="btn btn-primary" onclick="abrirNovoColaborador()">+ Novo colaborador</button>
+        </div>
+      </div>
+      <div class="filtros">
+        <input type="text" id="filtro-colab" placeholder="Buscar por nome, matrícula ou setor..." oninput="renderColaboradores()">
+        <label class="check-inline"><input type="checkbox" id="filtro-inativos" onchange="renderColaboradores()"> mostrar inativos</label>
+      </div>
+      <table class="tabela" id="tabela-colaboradores"></table>
+    </section>
+
+    <!-- Ranking -->
+    <section id="view-ranking" class="view hidden">
+      <div class="view-head">
+        <h2>Ranking de participação</h2>
+        <a class="btn" href="/api/exportar/ranking">⬇ Exportar CSV</a>
+      </div>
+      <table class="tabela" id="tabela-ranking"></table>
+    </section>
+
+    <!-- Configurações -->
+    <section id="view-config" class="view hidden">
+      <h2>Configurações</h2>
+      <div class="grid-2">
+        <div class="panel">
+          <h3>Pontuação por tipo de atividade</h3>
+          <p class="hint">Estes valores são usados quando a atividade não define uma pontuação específica.</p>
+          <form id="form-pontos" onsubmit="return salvarPontos(event)"></form>
+        </div>
+        <div class="panel">
+          <h3>Alterar senha do gestor</h3>
+          <form onsubmit="return alterarSenha(event)">
+            <label>Senha atual</label>
+            <input type="password" id="senha-atual" required>
+            <label>Nova senha (mín. 6 caracteres)</label>
+            <input type="password" id="senha-nova" required minlength="6">
+            <button class="btn btn-primary" type="submit">Alterar senha</button>
+          </form>
+        </div>
+      </div>
+    </section>
+  </main>
+</div>
+
+<!-- ===================== APP COLABORADOR ===================== -->
+<div id="app-colab" class="hidden">
+  <header class="topbar">
+    <div class="topbar-title">🦺 SESMT 2026 <span class="badge badge-green">Colaborador</span></div>
+    <div class="topbar-user">
+      <span id="colab-nome"></span>
+      <button class="btn btn-sm" onclick="sair()">Sair</button>
+    </div>
+  </header>
+  <main class="container">
+    <div id="colab-cards" class="cards"></div>
+    <div class="grid-2">
+      <div class="panel">
+        <h3>Minha participação por tipo</h3>
+        <table class="tabela" id="colab-tipos"></table>
+      </div>
+      <div class="panel">
+        <h3>Top 10 do ranking</h3>
+        <table class="tabela" id="colab-top10"></table>
+      </div>
+    </div>
+    <div class="panel">
+      <h3>Meu histórico de participação</h3>
+      <table class="tabela" id="colab-historico"></table>
+    </div>
+  </main>
+</div>
+
+<!-- ===================== MODAIS ===================== -->
+<div id="modal-fundo" class="modal-fundo hidden" onclick="fecharModalFundo(event)">
+  <div class="modal" onclick="event.stopPropagation()">
+    <div class="modal-head">
+      <h3 id="modal-titulo"></h3>
+      <button class="modal-x" onclick="fecharModal()">✕</button>
+    </div>
+    <div id="modal-corpo" class="modal-corpo"></div>
+  </div>
+</div>
+
+<div id="toast" class="toast hidden"></div>
+
+<script src="app.js"></script>
+</body>
+</html>
