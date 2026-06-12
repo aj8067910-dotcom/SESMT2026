@@ -81,6 +81,20 @@ const DEFAULT_MODULOS = {
 const STATUS_EMPRESA = ['ativa', 'em_implantacao', 'suspensa', 'bloqueada', 'cancelada'];
 const PLANOS = ['basico', 'profissional', 'enterprise'];
 
+/* ── SafePoint 2.3 — Aprendizagem ───────────────────────────── */
+
+const QUIZ_CATEGORIAS = [
+  'NR-01','NR-05','NR-06','NR-10','NR-12','NR-18','NR-20','NR-33','NR-35',
+  'APR','EPI','Primeiros Socorros','Combate a Incêndio','Ergonomia',
+  'Direção Defensiva','Trabalho em Altura','Espaço Confinado','Procedimentos Gerais'
+];
+const EXPERT_BADGES = [
+  { key:'aprendiz',    nome:'Aprendiz',              emoji:'📚', questoes:50   },
+  { key:'estudioso',   nome:'Estudioso',             emoji:'📖', questoes:200  },
+  { key:'especialista',nome:'Especialista',          emoji:'🎓', questoes:500  },
+  { key:'mestre',      nome:'Mestre do Conhecimento',emoji:'🏆', questoes:1000 }
+];
+
 /* ── Persistência ────────────────────────────────────────────── */
 
 let db = null;
@@ -178,6 +192,15 @@ function loadDb() {
   if (!db.pesquisas)          db.pesquisas = [];
   if (!db.respostasPesquisa)  db.respostasPesquisa = [];
   if (!db.reconhecimentos)    db.reconhecimentos = [];
+  // SafePoint 2.3 — aprendizagem
+  if (!db.questoes)          db.questoes = [];
+  if (!db.battleSessions)    db.battleSessions = [];
+  if (!db.flashcards)        db.flashcards = [];
+  if (!db.flashcardProgress) db.flashcardProgress = [];
+  for (const e of db.employees) {
+    if (e.totalQuestoesRespondidas === undefined) e.totalQuestoesRespondidas = 0;
+    if (!e.expertBadges)   e.expertBadges = [];
+  }
   // migrar colaboradores sem streak/nivel
   for (const e of db.employees) {
     if (e.streakAtual     === undefined) e.streakAtual = 0;
@@ -590,6 +613,77 @@ function logAudit(userId, role, acao, detalhes, companyId) {
   if (!db.auditLog) db.auditLog = [];
   db.auditLog.push({ id: nextId(), timestamp: Date.now(), userId, role, acao, detalhes: detalhes || '', companyId: companyId || null });
   saveDb();
+}
+
+/* ── SafePoint 2.3 helpers ──────────────────────────────────── */
+
+function checkExpertBadges(emp) {
+  const total = emp.totalQuestoesRespondidas || 0;
+  for (const badge of EXPERT_BADGES) {
+    if (total >= badge.questoes && !(emp.expertBadges || []).includes(badge.key)) {
+      if (!emp.expertBadges) emp.expertBadges = [];
+      emp.expertBadges.push(badge.key);
+      db.pontosExtras.push({ id: nextId(), empId: emp.id, companyId: emp.companyId,
+        tipo: 'badge_expert', descricao: `${badge.emoji} Título: ${badge.nome}`, pontos: 100, timestamp: Date.now() });
+      db.feed.push({ id: nextId(), companyId: emp.companyId, autorId: emp.id, autorRole: 'colaborador',
+        autorNome: emp.nome, tipo: 'conquista',
+        conteudo: `${badge.emoji} ${emp.nome} conquistou o título de "${badge.nome}"! +100 pts 🎉`,
+        timestamp: Date.now(), reacoes: { like: [], aplausos: [], estrela: [] }, comentarios: [] });
+    }
+  }
+}
+
+function battlePontos(tempoSeg, maxTempo) {
+  if (tempoSeg >= maxTempo) return 40;
+  return Math.max(40, Math.round(100 - (tempoSeg / maxTempo) * 60));
+}
+
+function battleRanking(session) {
+  return session.participantes
+    .map(p => ({ empId: p.empId, nome: p.nome, pontos: p.pontos || 0, acertos: p.acertos || 0 }))
+    .sort((a, b) => b.pontos - a.pontos)
+    .map((p, i) => ({ ...p, posicao: i + 1 }));
+}
+
+function battleEstado(session, empId) {
+  if (session.status === 'aguardando') {
+    return { status: 'aguardando', titulo: session.titulo, participantes: session.participantes.length };
+  }
+  if (session.status === 'finalizada') {
+    const part = session.participantes.find(p => p.empId === empId);
+    return { status: 'finalizada', titulo: session.titulo,
+      ranking: battleRanking(session), mesPontos: part ? part.pontos : 0 };
+  }
+  const qi = session.questaoAtual;
+  const q = (db.questoes || []).find(x => x.id === session.questoes[qi]);
+  const part = session.participantes.find(p => p.empId === empId);
+  const jaRespondeu = !!(part?.respostas || []).find(r => r.questaoIdx === qi);
+  return {
+    status: 'ativa', questaoAtual: qi + 1, totalQuestoes: session.questoes.length,
+    questao: q ? { id: q.id, texto: q.texto, tipo: q.tipo,
+      opcoes: q.opcoes.map(o => ({ texto: o.texto })),
+      tempoPorQuestao: session.tempoPorQuestao, iniciadaEm: session.questaoIniciadaEm } : null,
+    jaRespondeu,
+    mostrandoResultado: !!session.mostrandoResultado,
+    resultadoQuestao: session.mostrandoResultado ? session.ultimoResultado : null,
+    ranking: session.mostrandoResultado ? battleRanking(session).slice(0, 10) : null,
+    mesPontos: (part || {}).pontos || 0
+  };
+}
+
+function calcKnowledgeScore(companyId) {
+  const questoes = (db.questoes || []).filter(q => q.companyId === companyId && q.stats && q.stats.total > 0);
+  if (!questoes.length) return { score: 0, nivel: 'Sem dados', txAcerto: 0 };
+  const totalR = questoes.reduce((a, q) => a + q.stats.total, 0);
+  const totalA = questoes.reduce((a, q) => a + q.stats.acertos, 0);
+  const txAcerto = Math.round((totalA / totalR) * 100);
+  const emps = db.employees.filter(e => e.companyId === companyId && e.ativo !== false);
+  const participantesIds = new Set((db.battleSessions || []).filter(x => x.companyId === companyId)
+    .flatMap(x => x.participantes.map(p => p.empId)));
+  const txPartic = emps.length ? Math.min(100, Math.round((participantesIds.size / emps.length) * 100)) : 0;
+  const score = Math.round(txAcerto * 0.7 + txPartic * 0.3);
+  const nivel = score >= 80 ? 'Excelência em Segurança' : score >= 60 ? 'Satisfatório' : score >= 40 ? 'Requer Atenção' : 'Lacunas Críticas';
+  return { score, nivel, txAcerto, txPartic };
 }
 
 /* ── Roteamento ──────────────────────────────────────────────── */
@@ -1973,6 +2067,301 @@ route('POST', /^\/api\/quiz$/, { role: 'gestor' }, async (req, res, m, body, s) 
 route('GET', /^\/api\/quiz$/, { role: 'gestor' }, async (req, res, m, body, s) => {
   const list = (db.quizzes || []).filter(q => q.companyId === s.companyId).sort((a, b) => b.data.localeCompare(a.data)).slice(0, 30).map(q => ({ ...q, totalRespostas: (q.respostas || []).length, acertos: (q.respostas || []).filter(r => r.correta).length }));
   sendJson(res, 200, list);
+});
+
+/* ── SafePoint 2.3 — Banco de Questões ─────────────────────── */
+
+route('GET', /^\/api\/questoes$/, { role: 'gestor' }, async (req, res, m, body, s) => {
+  const url2 = new URL('http://x' + req.url);
+  const cat = url2.searchParams.get('categoria') || '';
+  const dif = url2.searchParams.get('dificuldade') || '';
+  let list = (db.questoes || []).filter(q => q.companyId === s.companyId);
+  if (cat) list = list.filter(q => q.categoria === cat);
+  if (dif) list = list.filter(q => q.dificuldade === dif);
+  sendJson(res, 200, list.sort((a, b) => b.criadoEm - a.criadoEm));
+});
+
+route('POST', /^\/api\/questoes$/, { role: 'gestor' }, async (req, res, m, body, s) => {
+  if (!String(body.texto || '').trim()) return sendJson(res, 400, { error: 'Texto da questão é obrigatório.' });
+  if (!Array.isArray(body.opcoes) || body.opcoes.length < 2) return sendJson(res, 400, { error: 'Mínimo 2 opções.' });
+  if (!body.opcoes.some(o => o.correta)) return sendJson(res, 400, { error: 'Marque a resposta correta.' });
+  const q = {
+    id: nextId(), companyId: s.companyId,
+    texto: String(body.texto).trim(),
+    tipo: body.tipo === 'verdadeiro_falso' ? 'verdadeiro_falso' : 'multipla_escolha',
+    opcoes: body.opcoes.map((o, i) => ({ id: i, texto: String(o.texto || '').trim(), correta: !!o.correta })),
+    categoria: QUIZ_CATEGORIAS.includes(body.categoria) ? body.categoria : 'Procedimentos Gerais',
+    tema: String(body.tema || '').trim(),
+    dificuldade: ['facil','medio','dificil'].includes(body.dificuldade) ? body.dificuldade : 'medio',
+    stats: { total: 0, acertos: 0 }, criadoEm: Date.now()
+  };
+  if (!db.questoes) db.questoes = [];
+  db.questoes.push(q);
+  saveDb();
+  sendJson(res, 201, q);
+});
+
+route('PUT', /^\/api\/questoes\/(\d+)$/, { role: 'gestor' }, async (req, res, m, body, s) => {
+  const q = (db.questoes || []).find(x => x.id === Number(m[1]) && x.companyId === s.companyId);
+  if (!q) return sendJson(res, 404, { error: 'Questão não encontrada.' });
+  if (body.texto) q.texto = String(body.texto).trim();
+  if (body.opcoes) q.opcoes = body.opcoes.map((o, i) => ({ id: i, texto: String(o.texto||'').trim(), correta: !!o.correta }));
+  if (body.categoria && QUIZ_CATEGORIAS.includes(body.categoria)) q.categoria = body.categoria;
+  if (body.dificuldade && ['facil','medio','dificil'].includes(body.dificuldade)) q.dificuldade = body.dificuldade;
+  if (body.tema !== undefined) q.tema = String(body.tema).trim();
+  saveDb();
+  sendJson(res, 200, q);
+});
+
+route('DELETE', /^\/api\/questoes\/(\d+)$/, { role: 'gestor' }, async (req, res, m, body, s) => {
+  const idx = (db.questoes || []).findIndex(x => x.id === Number(m[1]) && x.companyId === s.companyId);
+  if (idx === -1) return sendJson(res, 404, { error: 'Questão não encontrada.' });
+  db.questoes.splice(idx, 1);
+  saveDb();
+  sendJson(res, 200, { ok: true });
+});
+
+/* ── SafePoint 2.3 — DDS Battle (Quiz Ao Vivo) ──────────────── */
+
+route('POST', /^\/api\/battle\/sessoes$/, { role: 'gestor' }, async (req, res, m, body, s) => {
+  if (!String(body.titulo || '').trim()) return sendJson(res, 400, { error: 'Título obrigatório.' });
+  if (!Array.isArray(body.questoesIds) || !body.questoesIds.length) return sendJson(res, 400, { error: 'Selecione ao menos 1 questão.' });
+  const questoesIds = body.questoesIds.map(Number).filter(id => (db.questoes || []).some(q => q.id === id && q.companyId === s.companyId));
+  if (!questoesIds.length) return sendJson(res, 400, { error: 'Questões inválidas.' });
+  const session = {
+    id: nextId(), companyId: s.companyId,
+    titulo: String(body.titulo).trim(), codigo: generateCode(),
+    questoes: questoesIds, tempoPorQuestao: Number(body.tempoPorQuestao) || 30,
+    status: 'aguardando', participantes: [], questaoAtual: 0,
+    questaoIniciadaEm: null, mostrandoResultado: false, ultimoResultado: null,
+    criadoEm: Date.now(), criadoPor: s.userId
+  };
+  if (!db.battleSessions) db.battleSessions = [];
+  db.battleSessions.push(session);
+  saveDb();
+  sendJson(res, 201, { id: session.id, codigo: session.codigo, titulo: session.titulo });
+});
+
+route('GET', /^\/api\/battle\/sessoes$/, { role: 'gestor' }, async (req, res, m, body, s) => {
+  const list = (db.battleSessions || []).filter(x => x.companyId === s.companyId)
+    .sort((a, b) => b.criadoEm - a.criadoEm).slice(0, 30)
+    .map(x => ({ id: x.id, titulo: x.titulo, codigo: x.codigo, status: x.status,
+      participantes: x.participantes.length, questoes: x.questoes.length, criadoEm: x.criadoEm }));
+  sendJson(res, 200, list);
+});
+
+route('GET', /^\/api\/battle\/sessoes\/(\d+)$/, { role: 'any' }, async (req, res, m, body, s) => {
+  const session = (db.battleSessions || []).find(x => x.id === Number(m[1]) && x.companyId === s.companyId);
+  if (!session) return sendJson(res, 404, { error: 'Sessão não encontrada.' });
+  if (s.role === 'gestor') {
+    const qi = session.questaoAtual;
+    const q = (db.questoes || []).find(x => x.id === session.questoes[qi]);
+    const respostasQ = session.participantes.map(p => {
+      const r = (p.respostas || []).find(r => r.questaoIdx === qi);
+      return r ? { empId: p.empId, nome: p.nome, correta: r.correta, tempo: r.tempo } : null;
+    }).filter(Boolean);
+    return sendJson(res, 200, { ...session, questaoAtualObj: q || null, respostasQuestaoAtual: respostasQ,
+      ranking: battleRanking(session),
+      taxaAcerto: respostasQ.length ? Math.round((respostasQ.filter(r => r.correta).length / respostasQ.length) * 100) : null });
+  }
+  sendJson(res, 200, battleEstado(session, s.employeeId));
+});
+
+route('POST', /^\/api\/battle\/entrar$/, { role: 'colaborador' }, async (req, res, m, body, s) => {
+  const codigo = String(body.codigo || '').trim().toUpperCase();
+  const session = (db.battleSessions || []).find(x => x.codigo === codigo && x.companyId === s.companyId && ['aguardando','ativa'].includes(x.status));
+  if (!session) return sendJson(res, 404, { error: 'Código inválido ou sessão encerrada.' });
+  const emp = db.employees.find(e => e.id === s.employeeId);
+  if (!emp) return sendJson(res, 404, { error: 'Colaborador não encontrado.' });
+  if (!session.participantes.find(p => p.empId === emp.id)) {
+    session.participantes.push({ empId: emp.id, nome: emp.nome, pontos: 0, acertos: 0, respostas: [] });
+    saveDb();
+  }
+  sendJson(res, 200, { ok: true, sessaoId: session.id, titulo: session.titulo, status: session.status });
+});
+
+route('POST', /^\/api\/battle\/sessoes\/(\d+)\/iniciar$/, { role: 'gestor' }, async (req, res, m, body, s) => {
+  const session = (db.battleSessions || []).find(x => x.id === Number(m[1]) && x.companyId === s.companyId);
+  if (!session) return sendJson(res, 404, { error: 'Sessão não encontrada.' });
+  if (session.status !== 'aguardando') return sendJson(res, 400, { error: 'Sessão já iniciada.' });
+  session.status = 'ativa'; session.questaoAtual = 0;
+  session.questaoIniciadaEm = Date.now(); session.mostrandoResultado = false;
+  saveDb();
+  sendJson(res, 200, { ok: true });
+});
+
+route('POST', /^\/api\/battle\/sessoes\/(\d+)\/avancar$/, { role: 'gestor' }, async (req, res, m, body, s) => {
+  const session = (db.battleSessions || []).find(x => x.id === Number(m[1]) && x.companyId === s.companyId);
+  if (!session || session.status !== 'ativa') return sendJson(res, 400, { error: 'Sessão não está ativa.' });
+  if (!session.mostrandoResultado) {
+    // Calcular resultado da questão atual
+    const qi = session.questaoAtual;
+    const q = (db.questoes || []).find(x => x.id === session.questoes[qi]);
+    const respostas = session.participantes.flatMap(p => (p.respostas || []).filter(r => r.questaoIdx === qi));
+    const acertos = respostas.filter(r => r.correta).length;
+    session.mostrandoResultado = true;
+    session.ultimoResultado = {
+      questaoTexto: q ? q.texto : '', opcoes: q ? q.opcoes.map(o => o.texto) : [],
+      respostaCorreta: q ? q.opcoes.findIndex(o => o.correta) : 0,
+      total: session.participantes.length, acertos, erros: respostas.length - acertos,
+      semResposta: session.participantes.length - respostas.length,
+      txAcerto: respostas.length ? Math.round((acertos / respostas.length) * 100) : 0
+    };
+    saveDb();
+    return sendJson(res, 200, { ok: true, mostrandoResultado: true, resultado: session.ultimoResultado });
+  }
+  // Avançar para próxima questão
+  session.mostrandoResultado = false; session.questaoAtual++;
+  if (session.questaoAtual >= session.questoes.length) {
+    session.status = 'finalizada'; session.finalizadaEm = Date.now();
+    for (const p of session.participantes) {
+      if (p.pontos > 0) {
+        const ptsPlat = Math.max(10, Math.round(p.pontos / 10));
+        db.pontosExtras.push({ id: nextId(), empId: p.empId, companyId: s.companyId,
+          tipo: 'battle', descricao: `⚡ DDS Battle: ${session.titulo}`, pontos: ptsPlat, timestamp: Date.now() });
+      }
+      const emp = db.employees.find(e => e.id === p.empId);
+      if (emp) {
+        emp.totalQuestoesRespondidas = (emp.totalQuestoesRespondidas || 0) + (p.acertos || 0);
+        checkExpertBadges(emp);
+      }
+    }
+    saveDb();
+    return sendJson(res, 200, { ok: true, finalizado: true, ranking: battleRanking(session) });
+  }
+  session.questaoIniciadaEm = Date.now();
+  saveDb();
+  sendJson(res, 200, { ok: true, questaoAtual: session.questaoAtual });
+});
+
+route('POST', /^\/api\/battle\/sessoes\/(\d+)\/responder$/, { role: 'colaborador' }, async (req, res, m, body, s) => {
+  const session = (db.battleSessions || []).find(x => x.id === Number(m[1]) && x.companyId === s.companyId);
+  if (!session || session.status !== 'ativa') return sendJson(res, 400, { error: 'Sessão não está ativa.' });
+  if (session.mostrandoResultado) return sendJson(res, 400, { error: 'Aguarde a próxima questão.' });
+  const part = session.participantes.find(p => p.empId === s.employeeId);
+  if (!part) return sendJson(res, 403, { error: 'Você não está nesta sessão.' });
+  const qi = session.questaoAtual;
+  if ((part.respostas || []).find(r => r.questaoIdx === qi)) return sendJson(res, 409, { error: 'Já respondeu.' });
+  const q = (db.questoes || []).find(x => x.id === session.questoes[qi]);
+  if (!q) return sendJson(res, 404, { error: 'Questão não encontrada.' });
+  const opcaoIdx = Number(body.opcao);
+  const correta = !!(q.opcoes[opcaoIdx] && q.opcoes[opcaoIdx].correta);
+  const tempo = session.questaoIniciadaEm ? Math.round((Date.now() - session.questaoIniciadaEm) / 1000) : session.tempoPorQuestao;
+  const pts = correta ? battlePontos(tempo, session.tempoPorQuestao) : 0;
+  if (!part.respostas) part.respostas = [];
+  part.respostas.push({ questaoIdx: qi, opcao: opcaoIdx, correta, tempo, pontos: pts });
+  part.pontos = (part.pontos || 0) + pts;
+  if (correta) part.acertos = (part.acertos || 0) + 1;
+  q.stats = q.stats || { total: 0, acertos: 0 };
+  q.stats.total++; if (correta) q.stats.acertos++;
+  saveDb();
+  sendJson(res, 200, { ok: true, correta, pontos: pts, pontosTotal: part.pontos });
+});
+
+/* ── SafePoint 2.3 — Flashcards ─────────────────────────────── */
+
+route('GET', /^\/api\/flashcards$/, { role: 'gestor' }, async (req, res, m, body, s) => {
+  const url2 = new URL('http://x' + req.url);
+  const cat = url2.searchParams.get('categoria') || '';
+  let list = (db.flashcards || []).filter(f => f.companyId === s.companyId);
+  if (cat) list = list.filter(f => f.categoria === cat);
+  sendJson(res, 200, list.sort((a, b) => b.criadoEm - a.criadoEm));
+});
+
+route('POST', /^\/api\/flashcards$/, { role: 'gestor' }, async (req, res, m, body, s) => {
+  if (!String(body.frente || '').trim() || !String(body.verso || '').trim())
+    return sendJson(res, 400, { error: 'Frente e verso são obrigatórios.' });
+  const card = {
+    id: nextId(), companyId: s.companyId,
+    frente: String(body.frente).trim(), verso: String(body.verso).trim(),
+    categoria: QUIZ_CATEGORIAS.includes(body.categoria) ? body.categoria : 'Procedimentos Gerais',
+    ativo: true, criadoEm: Date.now()
+  };
+  if (!db.flashcards) db.flashcards = [];
+  db.flashcards.push(card);
+  saveDb();
+  sendJson(res, 201, card);
+});
+
+route('DELETE', /^\/api\/flashcards\/(\d+)$/, { role: 'gestor' }, async (req, res, m, body, s) => {
+  const idx = (db.flashcards || []).findIndex(f => f.id === Number(m[1]) && f.companyId === s.companyId);
+  if (idx === -1) return sendJson(res, 404, { error: 'Flashcard não encontrado.' });
+  db.flashcards.splice(idx, 1);
+  saveDb();
+  sendJson(res, 200, { ok: true });
+});
+
+route('GET', /^\/api\/flashcards\/hoje$/, { role: 'colaborador' }, async (req, res, m, body, s) => {
+  const agora = Date.now();
+  const todos = (db.flashcards || []).filter(f => f.companyId === s.companyId && f.ativo !== false);
+  const progressos = (db.flashcardProgress || []).filter(p => p.empId === s.employeeId);
+  const cartoes = todos.map(f => {
+    const prog = progressos.find(p => p.cardId === f.id);
+    return { ...f, proximaRevisao: prog ? prog.proxima : 0, nivel: prog ? prog.nivel : 0 };
+  }).filter(f => f.proximaRevisao <= agora)
+    .sort((a, b) => a.proximaRevisao - b.proximaRevisao).slice(0, 10);
+  sendJson(res, 200, cartoes);
+});
+
+route('POST', /^\/api\/flashcards\/(\d+)\/responder$/, { role: 'colaborador' }, async (req, res, m, body, s) => {
+  const card = (db.flashcards || []).find(f => f.id === Number(m[1]) && f.companyId === s.companyId);
+  if (!card) return sendJson(res, 404, { error: 'Flashcard não encontrado.' });
+  if (!db.flashcardProgress) db.flashcardProgress = [];
+  let prog = db.flashcardProgress.find(p => p.empId === s.employeeId && p.cardId === card.id);
+  if (!prog) {
+    prog = { id: nextId(), empId: s.employeeId, cardId: card.id, nivel: 0, proxima: 0, acertos: 0, erros: 0 };
+    db.flashcardProgress.push(prog);
+  }
+  const INTERVALOS = [1, 2, 4, 7, 14, 30]; // dias por nível
+  const dif = body.dificuldade;
+  if (dif === 'facil')  prog.nivel = Math.min(5, (prog.nivel || 0) + 2);
+  else if (dif === 'medio') prog.nivel = Math.min(5, (prog.nivel || 0) + 1);
+  else prog.nivel = Math.max(0, (prog.nivel || 0) - 1);
+  prog.proxima = Date.now() + INTERVALOS[prog.nivel] * 86400000;
+  dif === 'facil' ? prog.acertos++ : prog.erros++;
+  const emp = db.employees.find(e => e.id === s.employeeId);
+  if (emp) db.pontosExtras.push({ id: nextId(), empId: emp.id, companyId: s.companyId,
+    tipo: 'flashcard', descricao: `🃏 Flashcard: ${card.frente.slice(0, 40)}`, pontos: 5, timestamp: Date.now() });
+  saveDb();
+  sendJson(res, 200, { ok: true, nivel: prog.nivel, proxima: prog.proxima });
+});
+
+/* ── SafePoint 2.3 — Analytics de Aprendizagem ──────────────── */
+
+route('GET', /^\/api\/analytics\/fragilidades$/, { role: 'gestor' }, async (req, res, m, body, s) => {
+  const questoes = (db.questoes || []).filter(q => q.companyId === s.companyId && q.stats && q.stats.total > 0);
+  const list = questoes.map(q => {
+    const txErro = Math.round(((q.stats.total - q.stats.acertos) / q.stats.total) * 100);
+    return { id: q.id, texto: q.texto, categoria: q.categoria, dificuldade: q.dificuldade,
+      total: q.stats.total, acertos: q.stats.acertos, txErro,
+      status: txErro >= 70 ? 'critico' : txErro >= 40 ? 'atencao' : 'ok' };
+  }).filter(q => q.txErro >= 30).sort((a, b) => b.txErro - a.txErro);
+  sendJson(res, 200, list);
+});
+
+route('GET', /^\/api\/analytics\/score$/, { role: 'gestor' }, async (req, res, m, body, s) => {
+  sendJson(res, 200, calcKnowledgeScore(s.companyId));
+});
+
+route('GET', /^\/api\/analytics\/comparativo$/, { role: 'gestor' }, async (req, res, m, body, s) => {
+  const sessions = (db.battleSessions || []).filter(x => x.companyId === s.companyId && x.status === 'finalizada');
+  const mapa = {};
+  for (const sess of sessions) {
+    for (const p of sess.participantes) {
+      const emp = db.employees.find(e => e.id === p.empId);
+      const equipe = emp?.equipe || 'Sem equipe';
+      if (!mapa[equipe]) mapa[equipe] = { equipe, acertos: 0, total: 0, participantes: new Set() };
+      mapa[equipe].acertos += p.acertos || 0;
+      mapa[equipe].total   += sess.questoes.length;
+      mapa[equipe].participantes.add(p.empId);
+    }
+  }
+  const lista = Object.values(mapa).map(e => ({
+    equipe: e.equipe, participantes: e.participantes.size,
+    mediaAcerto: e.total ? Math.round((e.acertos / e.total) * 100) : 0,
+    status: !e.total ? 'sem_dados' : (e.acertos / e.total >= 0.8 ? 'verde' : e.acertos / e.total >= 0.6 ? 'amarelo' : 'vermelho')
+  })).sort((a, b) => b.mediaAcerto - a.mediaAcerto);
+  sendJson(res, 200, lista);
 });
 
 /* ── Exportação ──────────────────────────────────────────────── */

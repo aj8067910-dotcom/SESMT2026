@@ -99,7 +99,7 @@
       <button data-view="eventos"        class="nav-btn"        onclick="navegar('eventos')">Atividades</button>
       <button data-view="colaboradores"  class="nav-btn"        onclick="navegar('colaboradores')">Colaboradores</button>
       <button data-view="comunicados"     class="nav-btn"        onclick="navegar('comunicados')">📢 Comunicados</button>
-      <button data-view="quiz-gestor"    class="nav-btn"        onclick="navegar('quiz-gestor')">🧠 Quiz</button>
+      <button data-view="quiz-gestor"    class="nav-btn"        onclick="navegar('quiz-gestor')">🧠 Aprendizado</button>
       <button data-view="observacoes"    class="nav-btn"        onclick="navegar('observacoes')">Observações</button>
       <button data-view="sugestoes"      class="nav-btn"        onclick="navegar('sugestoes')">Sugestões</button>
       <button data-view="ranking"        class="nav-btn"        onclick="navegar('ranking')">Ranking</button>
@@ -318,14 +318,85 @@
       <div id="comunicados-gestor-lista"></div>
     </section>
 
-    <!-- Quiz (gestor) -->
+    <!-- Central de Aprendizado (gestor) -->
     <section id="view-quiz-gestor" class="view hidden">
-      <div class="view-head">
-        <h2>🧠 Banco de Quizzes</h2>
-        <button class="btn btn-primary" onclick="abrirNovoQuiz()">+ Novo quiz</button>
+      <div class="view-head" style="margin-bottom:4px">
+        <h2>🧠 Central de Conhecimento</h2>
       </div>
-      <p class="hint">Quizzes são sorteados automaticamente para os colaboradores como Quiz Diário. Cada resposta correta vale <strong>30 pontos</strong>.</p>
-      <table class="tabela" id="tabela-quizzes"></table>
+      <div class="quiz-tabs" id="quiz-tabs-gestor">
+        <button class="quiz-tab active" data-tab="banco"      onclick="quizTab('banco')">📚 Banco de Questões</button>
+        <button class="quiz-tab"        data-tab="battle"     onclick="quizTab('battle')">⚡ DDS Battle</button>
+        <button class="quiz-tab"        data-tab="flashcards" onclick="quizTab('flashcards')">🃏 Flashcards</button>
+        <button class="quiz-tab"        data-tab="analytics"  onclick="quizTab('analytics')">📊 Inteligência</button>
+      </div>
+
+      <!-- Banco de Questões -->
+      <div id="qtab-banco" class="qtab-pane">
+        <div class="view-head" style="margin-top:14px;margin-bottom:10px">
+          <span class="hint" id="banco-count"></span>
+          <button class="btn btn-primary" onclick="abrirNovaQuestao()">+ Nova questão</button>
+        </div>
+        <div class="filtros" style="margin-bottom:14px">
+          <select id="banco-categoria" onchange="filtrarBanco()">
+            <option value="">Todas as categorias</option>
+            <option>NR-01</option><option>NR-05</option><option>NR-06</option>
+            <option>NR-10</option><option>NR-12</option><option>NR-18</option>
+            <option>NR-20</option><option>NR-33</option><option>NR-35</option>
+            <option>APR</option><option>EPI</option>
+            <option>Primeiros Socorros</option><option>Combate a Incêndio</option>
+            <option>Ergonomia</option><option>Direção Defensiva</option>
+            <option>Trabalho em Altura</option><option>Espaço Confinado</option>
+            <option>Procedimentos Gerais</option>
+          </select>
+          <select id="banco-dificuldade" onchange="filtrarBanco()">
+            <option value="">Todas as dificuldades</option>
+            <option value="facil">🟢 Fácil</option>
+            <option value="medio">🟡 Médio</option>
+            <option value="dificil">🔴 Difícil</option>
+          </select>
+          <input type="text" id="banco-busca" placeholder="Buscar questão..." oninput="filtrarBanco()" style="flex:1;min-width:160px">
+        </div>
+        <div id="banco-lista"></div>
+      </div>
+
+      <!-- DDS Battle -->
+      <div id="qtab-battle" class="qtab-pane hidden">
+        <div id="battle-gestor-main">
+          <div class="view-head" style="margin-top:14px;margin-bottom:10px">
+            <div>
+              <h3 style="margin:0">Sessões DDS Battle</h3>
+              <p class="hint" style="margin:4px 0 0">Quiz ao vivo, estilo Kahoot. Colaboradores entram com código.</p>
+            </div>
+            <button class="btn btn-primary" onclick="criarBattle()">⚡ Criar Sessão</button>
+          </div>
+          <div id="battle-sessoes-lista"></div>
+        </div>
+        <div id="battle-sala" class="hidden"></div>
+      </div>
+
+      <!-- Flashcards -->
+      <div id="qtab-flashcards" class="qtab-pane hidden">
+        <div class="view-head" style="margin-top:14px;margin-bottom:10px">
+          <div>
+            <h3 style="margin:0">Flashcards Inteligentes</h3>
+            <p class="hint" style="margin:4px 0 0">Repetição espaçada (SRS). +5 pts por revisão.</p>
+          </div>
+          <button class="btn btn-primary" onclick="abrirNovoFlashcard()">+ Novo Flashcard</button>
+        </div>
+        <div id="flashcards-gestor-lista"></div>
+      </div>
+
+      <!-- Analytics -->
+      <div id="qtab-analytics" class="qtab-pane hidden">
+        <div style="margin-top:14px">
+          <div class="analytics-score-box" id="analytics-score-box"></div>
+          <h3 style="margin:18px 0 10px">🗺️ Mapa de Fragilidades</h3>
+          <p class="hint" style="margin-bottom:10px">Questões com taxa de erro acima de 30%.</p>
+          <div id="analytics-fragilidades"></div>
+          <h3 style="margin:18px 0 10px">👥 Comparativo por Equipe</h3>
+          <div id="analytics-comparativo"></div>
+        </div>
+      </div>
     </section>
 
     <!-- Quem é Quem (gestor) -->
@@ -453,7 +524,7 @@
       <button data-cview="painel"       class="nav-btn active" onclick="navegarColab('painel')">🏠 Início</button>
       <button data-cview="mural"        class="nav-btn"        onclick="navegarColab('mural')">📣 Mural</button>
       <button data-cview="comunicados"  class="nav-btn"        onclick="navegarColab('comunicados')">📢 Comunicados</button>
-      <button data-cview="quiz"         class="nav-btn"        onclick="navegarColab('quiz')">🧠 Quiz</button>
+      <button data-cview="quiz"         class="nav-btn"        onclick="navegarColab('quiz')">🧠 Aprendizado</button>
       <button data-cview="checkin"      class="nav-btn"        onclick="navegarColab('checkin')">Check-in</button>
       <button data-cview="observar"     class="nav-btn"        onclick="navegarColab('observar')">Observações</button>
       <button data-cview="sugerir"      class="nav-btn"        onclick="navegarColab('sugerir')">Sugestões</button>
@@ -512,9 +583,22 @@
       <div id="comunicados-lista"></div>
     </section>
 
-    <!-- Quiz Diário -->
+    <!-- Central de Aprendizado (colaborador) -->
     <section id="cview-quiz" class="cview hidden">
-      <div id="quiz-conteudo" style="max-width:600px;margin:0 auto"></div>
+      <div class="quiz-tabs" id="quiz-tabs-colab">
+        <button class="quiz-tab active" data-ctab="diario"     onclick="quizTabColab('diario')">🧠 Quiz Diário</button>
+        <button class="quiz-tab"        data-ctab="battle"     onclick="quizTabColab('battle')">⚡ DDS Battle</button>
+        <button class="quiz-tab"        data-ctab="flashcards" onclick="quizTabColab('flashcards')">🃏 Flashcards</button>
+      </div>
+      <div id="ctab-diario" class="qtab-pane">
+        <div id="quiz-conteudo" style="max-width:600px;margin:20px auto 0"></div>
+      </div>
+      <div id="ctab-battle" class="qtab-pane hidden">
+        <div id="battle-colab-area" style="max-width:680px;margin:20px auto 0"></div>
+      </div>
+      <div id="ctab-flashcards" class="qtab-pane hidden">
+        <div id="flashcards-colab-area" style="max-width:600px;margin:20px auto 0"></div>
+      </div>
     </section>
 
     <!-- Pesquisas colaborador -->

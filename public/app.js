@@ -2087,11 +2087,34 @@ async function confirmarLeitura(id) {
   } catch (err) { toast(err.message, 'erro'); }
 }
 
+/* ── Central de Aprendizado (colaborador) — tabs ── */
+
+function quizTabColab(tab) {
+  _quizTabColabAtiva = tab;
+  document.querySelectorAll('#quiz-tabs-colab .quiz-tab').forEach(b =>
+    b.classList.toggle('active', b.dataset.ctab === tab));
+  document.querySelectorAll('[id^="ctab-"]').forEach(p =>
+    p.classList.toggle('hidden', p.id !== 'ctab-' + tab));
+  if (tab === 'diario')     _carregarQuizDiario();
+  if (tab === 'battle')     carregarBattleColab();
+  if (tab === 'flashcards') carregarFlashcardsColab();
+}
+
 /* ── Quiz Diário (colaborador) ── */
 
 let QUIZ_HOJE = null;
 
 async function carregarQuiz() {
+  pararPollBattle();
+  _quizTabColabAtiva = 'diario';
+  document.querySelectorAll('#quiz-tabs-colab .quiz-tab').forEach(b =>
+    b.classList.toggle('active', b.dataset.ctab === 'diario'));
+  document.querySelectorAll('[id^="ctab-"]').forEach(p =>
+    p.classList.toggle('hidden', p.id !== 'ctab-diario'));
+  await _carregarQuizDiario();
+}
+
+async function _carregarQuizDiario() {
   const el = document.getElementById('quiz-conteudo');
   if (!el) return;
   try {
@@ -2276,62 +2299,506 @@ async function salvarComunicado() {
   } catch (err) { toast(err.message, 'erro'); }
 }
 
-/* ── Quiz (gestor) ── */
+/* ── Central de Conhecimento — estado global ── */
+
+let _quizTabAtiva = 'banco';
+let _quizTabColabAtiva = 'diario';
+let _bancoQuestoes = [];
+let _battleSessaoAtiva = null;
+let _battlePollTimer = null;
+
+/* ── Quiz / Aprendizado — tabs (gestor) ── */
 
 async function carregarQuizGestor() {
+  _quizTabAtiva = 'banco';
+  document.querySelectorAll('#quiz-tabs-gestor .quiz-tab').forEach(b =>
+    b.classList.toggle('active', b.dataset.tab === 'banco'));
+  document.querySelectorAll('[id^="qtab-"]').forEach(p =>
+    p.classList.toggle('hidden', p.id !== 'qtab-banco'));
+  await carregarBancoQuestoes();
+}
+
+function quizTab(tab) {
+  _quizTabAtiva = tab;
+  document.querySelectorAll('#quiz-tabs-gestor .quiz-tab').forEach(b =>
+    b.classList.toggle('active', b.dataset.tab === tab));
+  document.querySelectorAll('[id^="qtab-"]').forEach(p =>
+    p.classList.toggle('hidden', p.id !== 'qtab-' + tab));
+  if (tab === 'banco')      carregarBancoQuestoes();
+  if (tab === 'battle')     carregarBattleGestor();
+  if (tab === 'flashcards') carregarFlashcardsGestor();
+  if (tab === 'analytics')  carregarAnalytics();
+}
+
+/* ── Banco de Questões ── */
+
+async function carregarBancoQuestoes() {
   try {
-    const lista = await api('/api/quiz');
-    const el = document.getElementById('tabela-quizzes');
-    if (!el) return;
-    let h = '<tr><th>Data</th><th>Pergunta</th><th>Resposta correta</th><th>Respostas</th><th>% Acerto</th></tr>';
-    if (!lista.length) h += '<tr><td colspan="5" class="vazio">Nenhum quiz cadastrado ainda.</td></tr>';
-    for (const q of lista) {
-      const corrIdx = (q.opcoes || []).findIndex(o => o.correta);
-      const corrTxt = corrIdx >= 0 ? (q.opcoes[corrIdx].texto || '') : '';
-      const pct = q.totalRespostas ? Math.round((q.acertos / q.totalRespostas) * 100) : 0;
-      h += `<tr>
-        <td>${q.data || ''}</td>
-        <td>${esc(q.pergunta)}</td>
-        <td><span class="tag tag-verde">${String.fromCharCode(65 + corrIdx)}) ${esc(corrTxt)}</span></td>
-        <td>${q.totalRespostas || 0}</td>
-        <td>${pct}%</td>
-      </tr>`;
-    }
-    el.innerHTML = h;
+    _bancoQuestoes = await api('/api/questoes');
+    filtrarBanco();
   } catch (err) { toast(err.message, 'erro'); }
 }
 
-function abrirNovoQuiz() {
-  abrirModal('🧠 Novo Quiz Diário', `
-    <p class="hint">O quiz ficará disponível para todos os colaboradores hoje como Quiz Diário.</p>
+function filtrarBanco() {
+  const cat   = document.getElementById('banco-categoria')?.value || '';
+  const dif   = document.getElementById('banco-dificuldade')?.value || '';
+  const busca = (document.getElementById('banco-busca')?.value || '').toLowerCase();
+  let lista = _bancoQuestoes;
+  if (cat)   lista = lista.filter(q => q.categoria === cat);
+  if (dif)   lista = lista.filter(q => q.dificuldade === dif);
+  if (busca) lista = lista.filter(q => q.pergunta.toLowerCase().includes(busca));
+  const countEl = document.getElementById('banco-count');
+  if (countEl) countEl.textContent = `${lista.length} questão${lista.length !== 1 ? 'ões' : ''} (${_bancoQuestoes.length} total)`;
+  const el = document.getElementById('banco-lista');
+  if (!el) return;
+  if (!lista.length) {
+    el.innerHTML = '<p class="hint" style="text-align:center;padding:24px">Nenhuma questão encontrada. Clique em "+ Nova questão" para começar.</p>';
+    return;
+  }
+  const difLabel = { facil:'🟢 Fácil', medio:'🟡 Médio', dificil:'🔴 Difícil' };
+  el.innerHTML = lista.map(q => {
+    const corrIdx = (q.opcoes || []).findIndex(o => o.correta);
+    const corrTxt  = corrIdx >= 0 ? q.opcoes[corrIdx].texto : '';
+    const pct = q.stats?.total ? Math.round((q.stats.acertos / q.stats.total) * 100) : null;
+    return `<div class="questao-card">
+      <div class="questao-card-top">
+        <div class="questao-pergunta">${esc(q.pergunta)}</div>
+        <div class="questao-acoes">
+          <button class="btn btn-sm" onclick="editarQuestao(${q.id})">✏️</button>
+          <button class="btn btn-sm" style="color:#dc2626" onclick="excluirQuestao(${q.id})">🗑️</button>
+        </div>
+      </div>
+      <div class="questao-badges">
+        <span class="questao-badge cat">${esc(q.categoria || '')}</span>
+        <span class="questao-badge ${q.dificuldade || 'facil'}">${difLabel[q.dificuldade] || '🟢 Fácil'}</span>
+      </div>
+      <div class="questao-stats">
+        ✅ Correta: <strong>${esc(corrTxt)}</strong>
+        ${pct !== null ? ` &nbsp;|&nbsp; 📊 ${pct}% acerto (${q.stats.total} resp.)` : ''}
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function abrirNovaQuestao() {
+  abrirModal('📚 Nova Questão', _formQuestaoHtml(null));
+}
+function editarQuestao(id) {
+  const q = _bancoQuestoes.find(x => x.id === id);
+  if (q) abrirModal('✏️ Editar Questão', _formQuestaoHtml(q));
+}
+function _formQuestaoHtml(q) {
+  const cats = ['NR-01','NR-05','NR-06','NR-10','NR-12','NR-18','NR-20','NR-33','NR-35',
+    'APR','EPI','Primeiros Socorros','Combate a Incêndio','Ergonomia',
+    'Direção Defensiva','Trabalho em Altura','Espaço Confinado','Procedimentos Gerais'];
+  const corrIdx = q ? (q.opcoes || []).findIndex(o => o.correta) : 0;
+  return `
     <label>Pergunta *</label>
-    <input type="text" id="quiz-pergunta" placeholder="Ex.: Qual EPI é obrigatório em área com ruído acima de 85 dB?">
-    <label>Opção A *</label><input type="text" id="quiz-op-0" placeholder="Protetor auricular">
-    <label>Opção B *</label><input type="text" id="quiz-op-1" placeholder="Capacete">
-    <label>Opção C</label><input type="text" id="quiz-op-2">
-    <label>Opção D</label><input type="text" id="quiz-op-3">
-    <label>Resposta correta</label>
-    <select id="quiz-correta">
-      <option value="0">Opção A</option>
-      <option value="1">Opção B</option>
-      <option value="2">Opção C</option>
-      <option value="3">Opção D</option>
+    <textarea id="q-pergunta" rows="3" placeholder="Ex.: Qual EPI protege contra ruído acima de 85 dB?">${esc(q?.pergunta || '')}</textarea>
+    ${[0,1,2,3].map(i => `
+    <label>Opção ${String.fromCharCode(65+i)}${i<2?' *':''}</label>
+    <input type="text" id="q-op-${i}" placeholder="${i<2?'Obrigatória':'Opcional'}" value="${esc(q?.opcoes?.[i]?.texto||'')}">
+    `).join('')}
+    <label>Resposta correta *</label>
+    <select id="q-correta">
+      ${[0,1,2,3].map(i=>`<option value="${i}" ${corrIdx===i?'selected':''}>Opção ${String.fromCharCode(65+i)}</option>`).join('')}
     </select>
-    <button class="btn btn-primary btn-block" style="margin-top:14px" onclick="salvarQuiz()">Publicar quiz</button>`);
+    <label>Categoria</label>
+    <select id="q-categoria">
+      ${cats.map(c=>`<option value="${c}" ${(q?.categoria||'Procedimentos Gerais')===c?'selected':''}>${c}</option>`).join('')}
+    </select>
+    <label>Dificuldade</label>
+    <select id="q-dificuldade">
+      <option value="facil"  ${(q?.dificuldade||'facil')==='facil'?'selected':''}>🟢 Fácil</option>
+      <option value="medio"  ${(q?.dificuldade||'')==='medio'?'selected':''}>🟡 Médio</option>
+      <option value="dificil"${(q?.dificuldade||'')==='dificil'?'selected':''}>🔴 Difícil</option>
+    </select>
+    <button class="btn btn-primary btn-block" style="margin-top:14px" onclick="salvarQuestao(${q?.id||'null'})">
+      ${q?'Salvar alterações':'Criar questão'}
+    </button>`;
 }
 
-async function salvarQuiz() {
-  const pergunta = document.getElementById('quiz-pergunta').value.trim();
-  const textos = [0, 1, 2, 3].map(i => { const el = document.getElementById('quiz-op-' + i); return el ? el.value.trim() : ''; }).filter(Boolean);
-  if (!pergunta || textos.length < 2) return toast('Preencha a pergunta e pelo menos 2 opções.', 'erro');
-  const corrIdx = Number(document.getElementById('quiz-correta').value);
-  const opcoes = textos.map((txt, i) => ({ texto: txt, correta: i === corrIdx }));
+async function salvarQuestao(id) {
+  const pergunta = document.getElementById('q-pergunta')?.value.trim();
+  const corrIdx  = Number(document.getElementById('q-correta')?.value);
+  const textos   = [0,1,2,3].map(i => document.getElementById('q-op-'+i)?.value.trim()||'');
+  if (!pergunta || !textos[0] || !textos[1]) return toast('Preencha pergunta e ao menos 2 opções.', 'erro');
+  const opcoes = textos.filter(Boolean).map((texto, i) => ({ texto, correta: i === corrIdx }));
+  const body = { pergunta, opcoes,
+    categoria:   document.getElementById('q-categoria')?.value,
+    dificuldade: document.getElementById('q-dificuldade')?.value };
   try {
-    await api('/api/quiz', { method: 'POST', body: { pergunta, opcoes } });
+    if (id) {
+      await api(`/api/questoes/${id}`, { method: 'PUT', body });
+      toast('Questão atualizada!', 'ok');
+    } else {
+      await api('/api/questoes', { method: 'POST', body });
+      toast('Questão criada!', 'ok');
+    }
     fecharModal();
-    toast('Quiz publicado para hoje!', 'ok');
-    await carregarQuizGestor();
+    await carregarBancoQuestoes();
   } catch (err) { toast(err.message, 'erro'); }
+}
+
+async function excluirQuestao(id) {
+  if (!confirm('Excluir esta questão?')) return;
+  try {
+    await api(`/api/questoes/${id}`, { method: 'DELETE' });
+    toast('Questão excluída.', 'ok');
+    await carregarBancoQuestoes();
+  } catch (err) { toast(err.message, 'erro'); }
+}
+
+/* ── DDS Battle (gestor) ── */
+
+async function carregarBattleGestor() {
+  const el = document.getElementById('battle-sessoes-lista');
+  if (!el) return;
+  try {
+    const list = await api('/api/battle/sessoes');
+    if (!list.length) {
+      el.innerHTML = '<p class="hint" style="text-align:center;padding:24px">Nenhuma sessão criada ainda. Clique em "⚡ Criar Sessão" para começar!</p>';
+      return;
+    }
+    const stLabel = {
+      aguardando: '<span class="battle-status-badge battle-status-aguardando">⏳ Aguardando</span>',
+      ativa:      '<span class="battle-status-badge battle-status-ativa">🔴 AO VIVO</span>',
+      finalizada: '<span class="battle-status-badge battle-status-finalizada">✅ Encerrada</span>'
+    };
+    el.innerHTML = list.map(s => `
+      <div class="battle-sessao-card">
+        <div class="battle-sessao-info">
+          <div class="battle-sessao-titulo">${esc(s.titulo)}</div>
+          <div class="battle-sessao-meta">
+            ${stLabel[s.status]||''} &nbsp;
+            👥 ${s.participantes} &nbsp; ❓ ${s.questoes} questões
+          </div>
+        </div>
+        <div class="battle-codigo">${s.codigo}</div>
+        ${s.status!=='finalizada'
+          ? `<button class="btn btn-primary" onclick="abrirBattleSala(${s.id})">Abrir Sala</button>`
+          : `<button class="btn" onclick="verRankingFinal(${s.id})">🏆 Resultado</button>`}
+      </div>`).join('');
+  } catch (err) { toast(err.message, 'erro'); }
+}
+
+function criarBattle() {
+  if (!_bancoQuestoes.length) return toast('Crie questões no Banco de Questões primeiro.', 'erro');
+  abrirModal('⚡ Criar Sessão DDS Battle', `
+    <label>Título da sessão</label>
+    <input type="text" id="battle-titulo" placeholder="Ex.: DDS Semanal — Trabalho em Altura">
+    <label>Tempo por questão (segundos)</label>
+    <input type="number" id="battle-tempo" value="30" min="10" max="120">
+    <label>Selecione as questões (máx. 20)</label>
+    <div style="max-height:260px;overflow-y:auto;border:1px solid #e5e7eb;border-radius:8px;padding:8px">
+      ${_bancoQuestoes.map(q => `
+        <label style="display:flex;align-items:flex-start;gap:8px;padding:6px 4px;cursor:pointer">
+          <input type="checkbox" class="battle-q-check" value="${q.id}" style="margin-top:2px;flex-shrink:0">
+          <span style="font-size:13px">${esc(q.pergunta)}</span>
+        </label>`).join('')}
+    </div>
+    <button class="btn btn-primary btn-block" style="margin-top:14px" onclick="confirmarCriarBattle()">Criar Sessão</button>`);
+}
+
+async function confirmarCriarBattle() {
+  const titulo = document.getElementById('battle-titulo')?.value.trim() || 'DDS Battle';
+  const tempoPorQuestao = Number(document.getElementById('battle-tempo')?.value) || 30;
+  const questoesIds = [...document.querySelectorAll('.battle-q-check:checked')].map(c => Number(c.value));
+  if (!questoesIds.length) return toast('Selecione ao menos 1 questão.', 'erro');
+  if (questoesIds.length > 20) return toast('Máximo 20 questões por sessão.', 'erro');
+  try {
+    const sess = await api('/api/battle/sessoes', { method: 'POST', body: { titulo, questoesIds, tempoPorQuestao } });
+    fecharModal();
+    toast(`Sessão criada! Código: ${sess.codigo}`, 'ok');
+    await abrirBattleSala(sess.id);
+  } catch (err) { toast(err.message, 'erro'); }
+}
+
+async function abrirBattleSala(id) {
+  _battleSessaoAtiva = id;
+  const main = document.getElementById('battle-gestor-main');
+  const sala = document.getElementById('battle-sala');
+  if (main) main.classList.add('hidden');
+  if (sala) sala.classList.remove('hidden');
+  iniciarPollBattle(id, 'gestor');
+}
+
+function fecharBattleSala() {
+  pararPollBattle();
+  _battleSessaoAtiva = null;
+  const main = document.getElementById('battle-gestor-main');
+  const sala = document.getElementById('battle-sala');
+  if (main) main.classList.remove('hidden');
+  if (sala) sala.classList.add('hidden');
+  carregarBattleGestor();
+}
+
+async function iniciarBattle(id) {
+  try { await api(`/api/battle/sessoes/${id}/iniciar`, { method: 'POST' }); }
+  catch (err) { toast(err.message, 'erro'); }
+}
+async function avancarBattle(id) {
+  try { await api(`/api/battle/sessoes/${id}/avancar`, { method: 'POST' }); }
+  catch (err) { toast(err.message, 'erro'); }
+}
+async function verRankingFinal(id) {
+  try {
+    const s = await api(`/api/battle/sessoes/${id}`);
+    abrirModal('🏆 Resultado Final', _renderRankingHtml(s.ranking || []));
+  } catch (err) { toast(err.message, 'erro'); }
+}
+
+function _renderRankingHtml(ranking) {
+  if (!ranking.length) return '<p class="hint" style="text-align:center;padding:20px">Sem participantes.</p>';
+  const med = ['🥇','🥈','🥉'];
+  return `<div style="display:flex;flex-direction:column;gap:8px">
+    ${ranking.map((r,i) => `
+      <div style="display:flex;align-items:center;gap:12px;padding:10px 14px;background:${i===0?'#fef9c3':i===1?'#f1f5f9':i===2?'#fdf4ff':'#f9fafb'};border-radius:10px">
+        <span style="font-size:22px;width:36px;text-align:center">${med[i]||(i+1)+'º'}</span>
+        <span style="flex:1;font-weight:600">${esc(r.nome)}</span>
+        <span style="font-weight:700;color:#1d4ed8">${r.pontos} pts</span>
+        <span style="font-size:13px;color:#6b7280">${r.acertos} acertos</span>
+      </div>`).join('')}
+  </div>`;
+}
+
+function renderBattleSalaGestor(s) {
+  const el = document.getElementById('battle-sala');
+  if (!el) return;
+  const cores   = ['battle-opcao-A','battle-opcao-B','battle-opcao-C','battle-opcao-D'];
+  const letras  = ['A','B','C','D'];
+  if (s.status === 'aguardando') {
+    el.innerHTML = `<div class="battle-sala-wrap">
+      <div class="battle-sala-header">
+        <div class="battle-sala-titulo">⚡ ${esc(s.titulo)}</div>
+        <button class="btn" style="background:rgba(255,255,255,.15);color:#fff" onclick="fecharBattleSala()">✕</button>
+      </div>
+      <div class="battle-espera-msg">
+        <div style="font-size:14px;color:#93c5fd;margin-bottom:10px">Compartilhe o código</div>
+        <div class="battle-sala-code">${s.codigo}</div>
+        <div class="big-num">${s.participantes?.length||0}</div>
+        <div style="color:#93c5fd;margin-bottom:18px">participante${(s.participantes?.length||0)!==1?'s':''} conectado${(s.participantes?.length||0)!==1?'s':''}</div>
+        <div class="battle-participants-list">
+          ${(s.participantes||[]).map(p=>`<div class="battle-participant-chip">${esc(p.nome)}</div>`).join('')}
+        </div>
+      </div>
+      <button class="btn btn-primary btn-block" style="margin-top:20px;font-size:16px" onclick="iniciarBattle(${s.id})">🚀 Iniciar Battle</button>
+    </div>`;
+  } else if (s.status === 'ativa') {
+    const q = s.questaoAtualObj;
+    if (!q) return;
+    const pct = Math.max(0, Math.round(((s.tempoPorQuestao-(s.tempoDecorrido||0))/s.tempoPorQuestao)*100));
+    if (s.mostrandoResultado) {
+      const ci = (q.opcoes||[]).findIndex(o=>o.correta);
+      el.innerHTML = `<div class="battle-sala-wrap">
+        <div class="battle-sala-header">
+          <div class="battle-sala-titulo">Questão ${s.questaoAtual}/${s.totalQuestoes}</div>
+          <button class="btn" style="background:rgba(255,255,255,.15);color:#fff" onclick="fecharBattleSala()">✕</button>
+        </div>
+        <div class="battle-resultado-wrap">
+          <div class="battle-correta-label">✅ ${letras[ci]}) ${esc(q.opcoes[ci]?.texto||'')}</div>
+          <h3 style="margin-bottom:12px">Top 5</h3>
+          <div class="battle-ranking-preview">
+            ${(s.ranking||[]).slice(0,5).map((r,i)=>`
+              <div class="battle-ranking-row">
+                <span class="battle-ranking-pos">${['🥇','🥈','🥉','4º','5º'][i]}</span>
+                <span class="battle-ranking-nome">${esc(r.nome)}</span>
+                <span class="battle-ranking-pts">${r.pontos} pts</span>
+              </div>`).join('')}
+          </div>
+        </div>
+        <button class="btn btn-primary btn-block" style="margin-top:18px;font-size:16px" onclick="avancarBattle(${s.id})">
+          ${s.questaoAtual>=s.totalQuestoes?'🏆 Finalizar Battle':'▶ Próxima Questão'}
+        </button>
+      </div>`;
+    } else {
+      const rc = {};
+      (s.participantes||[]).forEach(p => { const r=p.respostas?.[s.questaoAtual-1]; if(r!==undefined) rc[r]=(rc[r]||0)+1; });
+      const total = Object.values(rc).reduce((a,b)=>a+b,0);
+      el.innerHTML = `<div class="battle-sala-wrap">
+        <div class="battle-sala-header">
+          <div class="battle-sala-titulo">Questão ${s.questaoAtual}/${s.totalQuestoes}</div>
+          <button class="btn" style="background:rgba(255,255,255,.15);color:#fff" onclick="fecharBattleSala()">✕</button>
+        </div>
+        <div class="battle-pergunta-wrap">
+          <div class="battle-pergunta-num">Questão ${s.questaoAtual} de ${s.totalQuestoes}</div>
+          <div class="battle-pergunta-texto">${esc(q.pergunta)}</div>
+        </div>
+        <div class="battle-timer-bar-wrap"><div class="battle-timer-bar" style="width:${pct}%"></div></div>
+        <div style="text-align:center;font-size:13px;color:#93c5fd;margin-bottom:10px">${total}/${(s.participantes||[]).length} responderam</div>
+        <div class="battle-opcoes-grid">
+          ${(q.opcoes||[]).map((op,i)=>`
+            <div class="battle-opcao ${cores[i]}">
+              <span style="font-weight:800">${letras[i]}</span> ${esc(op.texto)}
+              <span class="battle-resposta-count">${rc[i]||0}</span>
+            </div>`).join('')}
+        </div>
+        <button class="btn" style="margin-top:14px;background:rgba(255,255,255,.15);color:#fff;width:100%" onclick="avancarBattle(${s.id})">
+          Mostrar resultado agora ▶
+        </button>
+      </div>`;
+    }
+  } else {
+    el.innerHTML = `<div class="battle-sala-wrap">
+      <div class="battle-sala-header">
+        <div class="battle-sala-titulo">🏆 ${esc(s.titulo)} — Resultado Final</div>
+        <button class="btn" style="background:rgba(255,255,255,.15);color:#fff" onclick="fecharBattleSala()">✕ Fechar</button>
+      </div>
+      <div style="margin-top:16px">${_renderRankingHtml(s.ranking||[])}</div>
+    </div>`;
+  }
+}
+
+/* ── Flashcards (gestor) ── */
+
+async function carregarFlashcardsGestor() {
+  const el = document.getElementById('flashcards-gestor-lista');
+  if (!el) return;
+  try {
+    const list = await api('/api/flashcards');
+    if (!list.length) {
+      el.innerHTML = '<p class="hint" style="text-align:center;padding:24px">Nenhum flashcard criado. Clique em "+ Novo Flashcard" para começar.</p>';
+      return;
+    }
+    el.innerHTML = list.map(f => `
+      <div class="flashcard-gestor-item">
+        <div class="flashcard-frente-back">
+          <div class="flashcard-frente">📋 ${esc(f.frente)}</div>
+          <div class="flashcard-verso">💡 ${esc(f.verso)}</div>
+          ${f.categoria?`<div style="margin-top:4px"><span class="questao-badge cat">${esc(f.categoria)}</span></div>`:''}
+        </div>
+        <button class="btn btn-sm" style="color:#dc2626;flex-shrink:0" onclick="excluirFlashcard(${f.id})">🗑️</button>
+      </div>`).join('');
+  } catch (err) { toast(err.message, 'erro'); }
+}
+
+function abrirNovoFlashcard() {
+  const cats = ['NR-01','NR-05','NR-06','NR-10','NR-12','NR-18','NR-20','NR-33','NR-35',
+    'APR','EPI','Primeiros Socorros','Combate a Incêndio','Ergonomia',
+    'Direção Defensiva','Trabalho em Altura','Espaço Confinado','Procedimentos Gerais'];
+  abrirModal('🃏 Novo Flashcard', `
+    <label>Frente (pergunta/conceito) *</label>
+    <textarea id="fc-frente" rows="3" placeholder="Ex.: O que é NR-35?"></textarea>
+    <label>Verso (resposta/explicação) *</label>
+    <textarea id="fc-verso" rows="3" placeholder="Ex.: Norma que regulamenta trabalho em altura..."></textarea>
+    <label>Categoria</label>
+    <select id="fc-categoria">
+      ${cats.map(c=>`<option value="${c}">${c}</option>`).join('')}
+    </select>
+    <button class="btn btn-primary btn-block" style="margin-top:14px" onclick="salvarFlashcard()">Criar Flashcard</button>`);
+}
+
+async function salvarFlashcard() {
+  const frente    = document.getElementById('fc-frente')?.value.trim();
+  const verso     = document.getElementById('fc-verso')?.value.trim();
+  const categoria = document.getElementById('fc-categoria')?.value;
+  if (!frente || !verso) return toast('Preencha frente e verso do flashcard.', 'erro');
+  try {
+    await api('/api/flashcards', { method: 'POST', body: { frente, verso, categoria } });
+    fecharModal();
+    toast('Flashcard criado!', 'ok');
+    await carregarFlashcardsGestor();
+  } catch (err) { toast(err.message, 'erro'); }
+}
+
+async function excluirFlashcard(id) {
+  if (!confirm('Excluir este flashcard?')) return;
+  try {
+    await api(`/api/flashcards/${id}`, { method: 'DELETE' });
+    toast('Flashcard excluído.', 'ok');
+    await carregarFlashcardsGestor();
+  } catch (err) { toast(err.message, 'erro'); }
+}
+
+/* ── Analytics ── */
+
+async function carregarAnalytics() {
+  try {
+    const [score, frags, comp] = await Promise.all([
+      api('/api/analytics/score'),
+      api('/api/analytics/fragilidades'),
+      api('/api/analytics/comparativo'),
+    ]);
+    renderAnalyticsScore(score);
+    renderFragilidades(frags);
+    renderComparativo(comp);
+  } catch (err) { toast(err.message, 'erro'); }
+}
+
+function renderAnalyticsScore(s) {
+  const el = document.getElementById('analytics-score-box');
+  if (!el) return;
+  const c = s.score>=80?'#4ade80':s.score>=60?'#fbbf24':s.score>=40?'#fb923c':'#f87171';
+  el.innerHTML = `
+    <div class="analytics-score-num" style="color:${c}">${s.score}</div>
+    <div class="analytics-score-info">
+      <div class="analytics-score-nivel">${esc(s.nivel)}</div>
+      <div class="analytics-score-detail">
+        Taxa de acerto: ${Math.round((s.txAcerto||0)*100)}% &nbsp;|&nbsp;
+        Participação: ${Math.round((s.txPartic||0)*100)}%
+      </div>
+    </div>`;
+}
+
+function renderFragilidades(list) {
+  const el = document.getElementById('analytics-fragilidades');
+  if (!el) return;
+  if (!list.length) {
+    el.innerHTML = '<p class="hint" style="text-align:center;padding:20px">Nenhuma fragilidade identificada. Parabéns!</p>';
+    return;
+  }
+  el.innerHTML = list.map(f => `
+    <div class="fragilidade-item">
+      <div class="fragilidade-pergunta">${esc(f.pergunta)}</div>
+      <div class="fragilidade-bar-wrap">
+        <div class="fragilidade-bar" style="width:${Math.round(f.txErro*100)}%"></div>
+      </div>
+      <div class="fragilidade-meta">
+        ${Math.round(f.txErro*100)}% de erro &nbsp;|&nbsp;
+        <span class="questao-badge cat" style="display:inline">${esc(f.categoria||'')}</span> &nbsp;
+        ${f.total} respostas
+      </div>
+    </div>`).join('');
+}
+
+function renderComparativo(list) {
+  const el = document.getElementById('analytics-comparativo');
+  if (!el) return;
+  if (!list.length) {
+    el.innerHTML = '<p class="hint" style="text-align:center;padding:20px">Dados insuficientes para comparativo.</p>';
+    return;
+  }
+  const max = Math.max(...list.map(r=>r.txAcerto||0), 0.01);
+  const bc  = v => v>=0.8?'#22c55e':v>=0.6?'#f59e0b':'#ef4444';
+  el.innerHTML = list.map(r => `
+    <div class="comparativo-row">
+      <div class="comparativo-equipe">
+        <span>${esc(r.equipe||'Sem equipe')}</span>
+        <span>${Math.round((r.txAcerto||0)*100)}% acerto — ${r.participantes} participantes</span>
+      </div>
+      <div class="comparativo-bar-wrap">
+        <div class="comparativo-bar" style="width:${Math.round((r.txAcerto/max)*100)}%;background:${bc(r.txAcerto)}"></div>
+      </div>
+    </div>`).join('');
+}
+
+/* ── Polling battle ── */
+
+function iniciarPollBattle(id, role) {
+  pararPollBattle();
+  _pollBattleOnce(id, role);
+  _battlePollTimer = setInterval(() => _pollBattleOnce(id, role), 2000);
+}
+function pararPollBattle() {
+  if (_battlePollTimer) { clearInterval(_battlePollTimer); _battlePollTimer = null; }
+}
+async function _pollBattleOnce(id, role) {
+  try {
+    const s = await api(`/api/battle/sessoes/${id}`);
+    if (role === 'gestor') renderBattleSalaGestor(s);
+    else renderBattleSalaColab(s);
+    if (s.status === 'finalizada') pararPollBattle();
+  } catch { /* silent */ }
 }
 
 /* ── Histórico completo ── */
@@ -3115,6 +3582,206 @@ async function removerRolePrompt(empId) {
     ROLES_COLABORADORES = await api('/api/colaboradores').catch(() => ROLES_COLABORADORES);
     renderOrganograma();
     filtrarColabRoles();
+  } catch (err) { toast(err.message, 'erro'); }
+}
+
+/* ── DDS Battle (colaborador) ── */
+
+let _battleColabSessaoId = null;
+
+async function carregarBattleColab() {
+  const el = document.getElementById('battle-colab-area');
+  if (!el) return;
+  pararPollBattle();
+  _battleColabSessaoId = null;
+  el.innerHTML = `
+    <div class="battle-join-card">
+      <div style="font-size:48px;margin-bottom:12px">⚡</div>
+      <h3>DDS Battle</h3>
+      <p class="hint" style="margin-bottom:18px">Aguarde o gestor iniciar uma sessão e insira o código abaixo.</p>
+      <label>Código da sessão</label>
+      <input type="text" id="battle-codigo-input" placeholder="Ex.: ABC123" maxlength="8"
+        style="text-align:center;font-size:22px;font-weight:800;letter-spacing:4px;text-transform:uppercase"
+        oninput="this.value=this.value.toUpperCase()">
+      <button class="btn btn-primary btn-block" style="margin-top:14px" onclick="entrarBattle()">Entrar na sessão</button>
+    </div>`;
+}
+
+async function entrarBattle() {
+  const codigo = document.getElementById('battle-codigo-input')?.value.trim().toUpperCase();
+  if (!codigo) return toast('Digite o código da sessão.', 'erro');
+  try {
+    const r = await api('/api/battle/entrar', { method: 'POST', body: { codigo } });
+    _battleColabSessaoId = r.sessaoId;
+    iniciarPollBattle(r.sessaoId, 'colab');
+  } catch (err) { toast(err.message, 'erro'); }
+}
+
+function renderBattleSalaColab(s) {
+  const el = document.getElementById('battle-colab-area');
+  if (!el) return;
+  const cores  = ['#ef4444','#3b82f6','#f59e0b','#10b981'];
+  const letras = ['A','B','C','D'];
+  if (s.status === 'aguardando') {
+    el.innerHTML = `
+      <div class="battle-play-wrap" style="text-align:center">
+        <div style="font-size:13px;color:#93c5fd;margin-bottom:8px">Você está na sessão</div>
+        <div style="font-size:28px;font-weight:900;color:#fbbf24;margin-bottom:6px">${esc(s.titulo||'DDS Battle')}</div>
+        <div class="battle-aguardando-txt">
+          <div style="font-size:48px">⏳</div>
+          <p>Aguardando o gestor iniciar...</p>
+        </div>
+      </div>`;
+  } else if (s.status === 'ativa') {
+    if (!s.questaoAtualObj) return;
+    const q = s.questaoAtualObj;
+    if (s.mostrandoResultado) {
+      const ci = q.respostaCorreta ?? 0;
+      const minha = s.minhaResposta;
+      const acertei = minha === ci;
+      el.innerHTML = `
+        <div class="battle-play-wrap">
+          <div style="text-align:center;margin-bottom:16px">
+            <div style="font-size:13px;color:#93c5fd">Questão ${s.questaoAtual}/${s.totalQuestoes}</div>
+            <div style="font-size:18px;font-weight:700;margin:8px 0">${esc(q.pergunta)}</div>
+          </div>
+          <div style="text-align:center;font-size:32px;margin-bottom:10px">${acertei?'✅':'❌'}</div>
+          <div style="text-align:center;font-size:15px;font-weight:600;color:${acertei?'#4ade80':'#f87171'};margin-bottom:10px">
+            ${acertei?`Correto! +${s.mesPontos||0} pts nesta rodada`:'Incorreto!'}
+          </div>
+          <div style="text-align:center;font-size:13px;color:#93c5fd">
+            Resposta correta: <strong style="color:#fff">${letras[ci]}) ${esc(q.opcoes[ci]?.texto||'')}</strong>
+          </div>
+          <div style="text-align:center;margin-top:14px;color:#93c5fd;font-size:13px">
+            Aguardando próxima questão...
+          </div>
+          <div style="text-align:center;margin-top:10px;font-size:22px;font-weight:700;color:#fbbf24">
+            ${s.mesPontos||0} pts
+          </div>
+        </div>`;
+    } else {
+      const jaRespondeu = s.minhaResposta !== undefined && s.minhaResposta !== null;
+      const pct = Math.max(0, Math.round(((s.tempoPorQuestao-(s.tempoDecorrido||0))/s.tempoPorQuestao)*100));
+      el.innerHTML = `
+        <div class="battle-play-wrap">
+          <div style="text-align:center;margin-bottom:12px">
+            <div style="font-size:13px;color:#93c5fd">Questão ${s.questaoAtual}/${s.totalQuestoes}</div>
+            <div style="font-size:19px;font-weight:700;margin-top:8px">${esc(q.pergunta)}</div>
+          </div>
+          <div class="battle-timer-bar-wrap"><div class="battle-timer-bar" style="width:${pct}%"></div></div>
+          <div style="margin-top:14px">
+            ${(q.opcoes||[]).map((op, i) => `
+              <button class="battle-opcao-btn-colab${s.minhaResposta===i?' selecionada':''}"
+                style="background:${cores[i]}"
+                onclick="responderBattle(${s.id},${i})"
+                ${jaRespondeu?'disabled':''}>
+                <span style="font-weight:800;font-size:17px">${letras[i]}</span>
+                ${esc(op.texto)}
+              </button>`).join('')}
+          </div>
+          ${jaRespondeu?'<div style="text-align:center;color:#93c5fd;font-size:13px;margin-top:10px">Resposta enviada. Aguardando...</div>':''}
+        </div>`;
+    }
+  } else {
+    pararPollBattle();
+    el.innerHTML = `
+      <div class="battle-play-wrap" style="text-align:center">
+        <div style="font-size:48px;margin-bottom:12px">🏆</div>
+        <h3>Battle encerrada!</h3>
+        <div style="margin-bottom:16px">
+          ${_renderRankingHtml(s.ranking||[])}
+        </div>
+        <button class="btn btn-primary" onclick="carregarBattleColab()">Nova sessão</button>
+      </div>`;
+  }
+}
+
+async function responderBattle(sessaoId, opcao) {
+  try {
+    await api(`/api/battle/sessoes/${sessaoId}/responder`, { method: 'POST', body: { opcao } });
+  } catch (err) { toast(err.message, 'erro'); }
+}
+
+/* ── Flashcards (colaborador) ── */
+
+let _flashcardsHoje = [];
+let _fcAtual = 0;
+let _fcVirada = false;
+
+async function carregarFlashcardsColab() {
+  const el = document.getElementById('flashcards-colab-area');
+  if (!el) return;
+  el.innerHTML = '<p class="hint" style="text-align:center;padding:24px">Carregando...</p>';
+  try {
+    const list = await api('/api/flashcards/hoje');
+    _flashcardsHoje = list;
+    _fcAtual = 0;
+    if (!list.length) {
+      el.innerHTML = `
+        <div class="fc-done-msg">
+          <span class="big-emoji">🎉</span>
+          <h3>Parabéns!</h3>
+          <p class="hint">Você revisou todos os flashcards de hoje. Volte amanhã!</p>
+        </div>`;
+      return;
+    }
+    renderFlashcardAtual();
+  } catch (err) {
+    el.innerHTML = '<p class="hint" style="text-align:center;padding:24px">Erro ao carregar flashcards.</p>';
+  }
+}
+
+function renderFlashcardAtual() {
+  const el = document.getElementById('flashcards-colab-area');
+  if (!el) return;
+  if (_fcAtual >= _flashcardsHoje.length) {
+    el.innerHTML = `
+      <div class="fc-done-msg">
+        <span class="big-emoji">🎉</span>
+        <h3>Sessão concluída!</h3>
+        <p class="hint">Você revisou ${_flashcardsHoje.length} flashcard${_flashcardsHoje.length!==1?'s':''} hoje. +${_flashcardsHoje.length*5} pontos ganhos!</p>
+        <button class="btn btn-primary" style="margin-top:14px" onclick="carregarFlashcardsColab()">Revisar novamente</button>
+      </div>`;
+    return;
+  }
+  _fcVirada = false;
+  const f = _flashcardsHoje[_fcAtual];
+  el.innerHTML = `
+    <div class="fc-progress">Flashcard <strong>${_fcAtual+1}</strong> de <strong>${_flashcardsHoje.length}</strong></div>
+    <div class="fc-flip-wrap" id="fc-flip" onclick="virarFlashcard()" title="Clique para ver a resposta">
+      <div class="fc-flip-inner">
+        <div class="fc-face fc-frente">
+          <div class="fc-label">PERGUNTA</div>
+          <div class="fc-text">${esc(f.frente)}</div>
+          <div class="fc-hint">Clique para ver a resposta</div>
+        </div>
+        <div class="fc-face fc-verso">
+          <div class="fc-label">RESPOSTA</div>
+          <div class="fc-text">${esc(f.verso)}</div>
+          ${f.categoria?`<div class="fc-hint">${esc(f.categoria)}</div>`:''}
+        </div>
+      </div>
+    </div>
+    <div id="fc-btns" class="fc-btns" style="display:none">
+      <button class="fc-btn fc-btn-dificil" onclick="avaliarFlashcard(${f.id},'dificil')">😓 Difícil</button>
+      <button class="fc-btn fc-btn-medio"   onclick="avaliarFlashcard(${f.id},'medio')">🤔 Médio</button>
+      <button class="fc-btn fc-btn-facil"   onclick="avaliarFlashcard(${f.id},'facil')">😊 Fácil</button>
+    </div>`;
+}
+
+function virarFlashcard() {
+  _fcVirada = !_fcVirada;
+  const flip = document.getElementById('fc-flip');
+  const btns = document.getElementById('fc-btns');
+  if (flip) flip.classList.toggle('flipped', _fcVirada);
+  if (btns) btns.style.display = _fcVirada ? 'flex' : 'none';
+}
+
+async function avaliarFlashcard(id, avaliacao) {
+  try {
+    await api(`/api/flashcards/${id}/responder`, { method: 'POST', body: { avaliacao } });
+    _fcAtual++;
+    renderFlashcardAtual();
   } catch (err) { toast(err.message, 'erro'); }
 }
 
