@@ -217,12 +217,14 @@ async function navegar(view) {
   document.querySelectorAll('#app-gestor .nav-btn').forEach(b => b.classList.toggle('active', b.dataset.view === view));
   document.querySelectorAll('#app-gestor .view').forEach(v => v.classList.add('hidden'));
   document.getElementById('view-' + view).classList.remove('hidden');
-  if (view === 'dashboard') await carregarDashboard();
-  if (view === 'eventos') await carregarEventos();
+  if (view === 'dashboard')    await carregarDashboard();
+  if (view === 'eventos')      await carregarEventos();
   if (view === 'colaboradores') await carregarColaboradores();
-  if (view === 'observacoes') await carregarObservacoes();
-  if (view === 'sugestoes') await carregarSugestoes();
-  if (view === 'ranking') await carregarRanking();
+  if (view === 'observacoes')  await carregarObservacoes();
+  if (view === 'sugestoes')    await carregarSugestoes();
+  if (view === 'ranking')      await carregarRanking();
+  if (view === 'comunicados')  await carregarComunicadosGestor();
+  if (view === 'quiz-gestor')  await carregarQuizGestor();
   if (view === 'config') { renderConfig(); carregarBrandingConfig(); }
 }
 
@@ -230,10 +232,14 @@ async function navegarColab(view) {
   document.querySelectorAll('#app-colab .nav-btn').forEach(b => b.classList.toggle('active', b.dataset.cview === view));
   document.querySelectorAll('#app-colab .cview').forEach(v => v.classList.add('hidden'));
   document.getElementById('cview-' + view).classList.remove('hidden');
-  if (view === 'painel') await carregarPainelColaborador();
-  if (view === 'observar') await carregarMinhasObservacoes();
-  if (view === 'sugerir') await carregarMinhasSugestoes();
-  if (view === 'historico') await carregarHistoricoCompleto();
+  if (view === 'painel')       await carregarPainelColaborador();
+  if (view === 'mural')        await carregarMural();
+  if (view === 'comunicados')  await carregarComunicados();
+  if (view === 'quiz')         await carregarQuiz();
+  if (view === 'perfil')       await carregarPerfil();
+  if (view === 'observar')     await carregarMinhasObservacoes();
+  if (view === 'sugerir')      await carregarMinhasSugestoes();
+  if (view === 'historico')    await carregarHistoricoCompleto();
 }
 
 async function navegarAdmin(view) {
@@ -1499,23 +1505,13 @@ async function salvarRecompensas() {
 
 async function carregarPainelColaborador() {
   const p = await api('/api/meu-painel');
-  const c = p.colaborador;
   CHECKIN_PENDENTE = p.checkinPendente;
 
-  const conquista = p.conquista;
-  const prox = p.proxConquista;
-  const banner = document.getElementById('colab-conquista-banner');
-  if (conquista) {
-    banner.classList.remove('hidden');
-    banner.innerHTML = `
-      <div class="icon">${conquista.emoji}</div>
-      <div class="info">
-        <h3>${conquista.nome}</h3>
-        <p>${p.pontos} pontos ${prox ? `— próxima conquista: ${prox.emoji} ${prox.nome} (faltam ${prox.minPontos - p.pontos} pts)` : '— Você atingiu o nível máximo!'}</p>
-      </div>`;
-  } else {
-    banner.classList.add('hidden');
-  }
+  /* ── Nivel & Streak card ── */
+  renderNivelCard(p);
+
+  /* ── Missões diárias ── */
+  renderMissoesCard(p.missoes || []);
 
   document.getElementById('colab-cards').innerHTML = `
     <div class="card destaque"><div class="num">${p.pontos}</div><div class="rotulo">Meus pontos</div></div>
@@ -1549,6 +1545,57 @@ async function carregarPainelColaborador() {
   if (p.checkinPendente) {
     mostrarAvisoPendente(p.checkinPendente.checkinId);
   }
+}
+
+function renderNivelCard(p) {
+  const el = document.getElementById('colab-nivel-card');
+  if (!el) return;
+  const nivel = p.nivel || {};
+  const prox = nivel.proximo || null;
+  const streak = p.streakAtual || 0;
+  const pct = prox ? Math.min(100, Math.round(((p.pontos - nivel.minPontos) / (prox.minPontos - nivel.minPontos)) * 100)) : 100;
+
+  const banner = document.getElementById('colab-nivel-banner');
+  if (p.subiu && banner) {
+    banner.classList.remove('hidden');
+    banner.innerHTML = `🎉 Parabéns! Você subiu para <strong>${nivel.emoji} ${nivel.nome}</strong>! +${nivel.bonus || 0} pts de bônus!`;
+    setTimeout(() => banner.classList.add('hidden'), 6000);
+  }
+
+  el.innerHTML = `
+    <div class="nivel-header">
+      <div class="nivel-emoji">${nivel.emoji || '🔰'}</div>
+      <div class="nivel-info">
+        <div class="nivel-nome">${esc(nivel.nome || 'Iniciante')}</div>
+        <div class="nivel-sub">Nível ${nivel.nivel || 1} de 10</div>
+      </div>
+      <div class="streak-badge ${streak >= 7 ? 'streak-fire' : ''}">
+        🔥 <strong>${streak}</strong> dias
+      </div>
+    </div>
+    <div class="nivel-barra-wrap">
+      <div class="nivel-barra" style="width:${pct}%"></div>
+    </div>
+    <div class="nivel-progresso-label">
+      ${prox ? `${p.pontos} / ${prox.minPontos} pts para ${prox.emoji} ${prox.nome}` : '🏆 Nível máximo atingido!'}
+    </div>`;
+}
+
+function renderMissoesCard(missoes) {
+  const el = document.getElementById('colab-missoes-card');
+  if (!el) return;
+  if (!missoes.length) { el.innerHTML = ''; return; }
+  const feitas = missoes.filter(m => m.feita).length;
+  el.innerHTML = `
+    <h3>⚡ Missões do Dia <span class="hint">(${feitas}/${missoes.length} concluídas)</span></h3>
+    <ul class="missoes-lista">
+      ${missoes.map(m => `
+        <li class="missao-item ${m.feita ? 'concluida' : ''}">
+          <span class="missao-check">${m.feita ? '✅' : '⬜'}</span>
+          <span class="missao-desc">${esc(m.desc)}</span>
+          <span class="missao-pts">+${m.pontos} pts</span>
+        </li>`).join('')}
+    </ul>`;
 }
 
 function mostrarAvisoPendente(checkinId) {
@@ -1705,6 +1752,369 @@ async function enviarSugestao() {
     document.getElementById('sug-beneficio').value = '';
     toast('Sugestão enviada! O gestor irá avaliá-la.', 'ok');
     await carregarMinhasSugestoes();
+  } catch (err) { toast(err.message, 'erro'); }
+}
+
+/* ── Mural Social ── */
+
+let FEED_POSTS = [];
+
+async function carregarMural() {
+  try {
+    FEED_POSTS = await api('/api/feed');
+    const el = document.getElementById('feed-lista');
+    if (!el) return;
+    el.innerHTML = FEED_POSTS.length
+      ? FEED_POSTS.map(renderFeedPost).join('')
+      : '<p class="hint" style="text-align:center;padding:24px">Nenhuma publicação ainda. Seja o primeiro a compartilhar!</p>';
+  } catch (err) { toast(err.message, 'erro'); }
+}
+
+function renderFeedPost(p) {
+  const tipoTag = p.tipo === 'reconhecimento' ? '<span class="tag tag-verde">🤝 Reconhecimento</span>'
+    : p.tipo === 'conquista' ? '<span class="tag tag-ouro">⭐ Conquista</span>'
+    : p.tipo === 'comunicado' ? '<span class="tag tag-azul">📢 Comunicado</span>'
+    : '';
+  const total = (p.totalLikes || 0) + (p.totalAplausos || 0) + (p.totalEstrelas || 0);
+  return `
+    <div class="feed-card">
+      <div class="feed-header">
+        <div class="feed-avatar">${esc((p.autorNome || '?')[0]).toUpperCase()}</div>
+        <div class="feed-meta">
+          <strong>${esc(p.autorNome || 'Usuário')}</strong>
+          ${tipoTag}
+          <span class="feed-ts">${tsDataHora(p.timestamp)}</span>
+        </div>
+      </div>
+      <div class="feed-body">${esc(p.conteudo || '')}</div>
+      <div class="feed-footer">
+        <button class="btn-reacao ${p.minhasReacoes?.like ? 'ativo' : ''}" onclick="reagirFeed(${p.id},'like')" title="Curtir">👍 ${p.totalLikes || 0}</button>
+        <button class="btn-reacao ${p.minhasReacoes?.aplausos ? 'ativo' : ''}" onclick="reagirFeed(${p.id},'aplausos')" title="Palmas">👏 ${p.totalAplausos || 0}</button>
+        <button class="btn-reacao ${p.minhasReacoes?.estrela ? 'ativo' : ''}" onclick="reagirFeed(${p.id},'estrela')" title="Destaque">⭐ ${p.totalEstrelas || 0}</button>
+        ${total ? `<span class="feed-total-reac">${total} reações</span>` : ''}
+      </div>
+    </div>`;
+}
+
+async function publicarFeed() {
+  const txt = document.getElementById('feed-novo-post').value.trim();
+  if (!txt) return toast('Escreva algo antes de publicar.', 'erro');
+  try {
+    await api('/api/feed', { method: 'POST', body: { conteudo: txt } });
+    document.getElementById('feed-novo-post').value = '';
+    toast('Publicado no mural! 📣', 'ok');
+    await carregarMural();
+  } catch (err) { toast(err.message, 'erro'); }
+}
+
+async function publicarReconhecimento() {
+  abrirModal('🤝 Reconhecer Colega', `
+    <p class="hint">Reconheça uma boa prática de um colega. Aparece no mural para todos!</p>
+    <label>Mensagem de reconhecimento</label>
+    <textarea id="rec-msg" style="min-height:80px" placeholder="Ex.: Parabéns ao João pela observação de segurança que evitou um acidente!"></textarea>
+    <button class="btn btn-primary btn-block" style="margin-top:12px" onclick="enviarReconhecimento()">Publicar reconhecimento</button>`);
+}
+
+async function enviarReconhecimento() {
+  const msg = document.getElementById('rec-msg').value.trim();
+  if (!msg) return toast('Descreva o reconhecimento.', 'erro');
+  try {
+    await api('/api/feed', { method: 'POST', body: { conteudo: msg, tipo: 'reconhecimento' } });
+    fecharModal();
+    toast('Reconhecimento publicado! 🤝', 'ok');
+    await navegarColab('mural');
+  } catch (err) { toast(err.message, 'erro'); }
+}
+
+async function reagirFeed(id, tipo) {
+  try {
+    await api(`/api/feed/${id}/reagir`, { method: 'POST', body: { tipo } });
+    await carregarMural();
+  } catch (err) { toast(err.message, 'erro'); }
+}
+
+/* ── Comunicados (colaborador) ── */
+
+async function carregarComunicados() {
+  try {
+    const lista = await api('/api/comunicados');
+    const el = document.getElementById('comunicados-lista');
+    if (!el) return;
+    if (!lista.length) {
+      el.innerHTML = '<p class="hint" style="text-align:center;padding:24px">Nenhum comunicado disponível.</p>';
+      return;
+    }
+    el.innerHTML = lista.map(c => `
+      <div class="comunicado-card ${c.lido ? 'comunicado-lido' : 'comunicado-novo'}">
+        <div class="comunicado-header">
+          <span class="tag tag-azul">📢 Comunicado</span>
+          <span class="comunicado-data">${tsDataHora(c.criadoEm)}</span>
+          ${c.lido
+            ? '<span class="tag tag-verde">✓ Confirmado</span>'
+            : '<span class="tag tag-laranja">Pendente</span>'}
+        </div>
+        <h3 class="comunicado-titulo">${esc(c.titulo)}</h3>
+        <p class="comunicado-corpo">${esc(c.conteudo)}</p>
+        ${!c.lido ? `
+          <button class="btn btn-primary" style="margin-top:10px" onclick="confirmarLeitura(${c.id})">
+            ✅ Confirmar leitura (+${c.pontosPorLeitura || 10} pts)
+          </button>` : ''}
+      </div>`).join('');
+  } catch (err) { toast(err.message, 'erro'); }
+}
+
+async function confirmarLeitura(id) {
+  try {
+    const r = await api(`/api/comunicados/${id}/confirmar`, { method: 'POST', body: {} });
+    toast(`Leitura confirmada! +${r.pontos || 10} pontos 📢`, 'ok');
+    await carregarComunicados();
+  } catch (err) { toast(err.message, 'erro'); }
+}
+
+/* ── Quiz Diário (colaborador) ── */
+
+let QUIZ_HOJE = null;
+
+async function carregarQuiz() {
+  const el = document.getElementById('quiz-conteudo');
+  if (!el) return;
+  try {
+    const resp = await api('/api/quiz/hoje');
+    const q = resp.quiz;
+    QUIZ_HOJE = q;
+    if (!q) {
+      el.innerHTML = '<div class="panel" style="text-align:center;padding:32px"><div style="font-size:48px">🧠</div><h3>Quiz Diário</h3><p class="hint">Nenhum quiz disponível hoje. O gestor publicará um em breve!</p></div>';
+      return;
+    }
+    if (q.jaRespondeu) {
+      const corrIdx = (q.opcoes || []).findIndex(o => o.correta);
+      const corrTxt = corrIdx >= 0 ? (q.opcoes[corrIdx].texto || '') : '';
+      el.innerHTML = `
+        <div class="quiz-card panel">
+          <div class="quiz-badge">🧠 Quiz Diário</div>
+          <h3>${esc(q.pergunta)}</h3>
+          <p class="hint" style="margin-top:8px">Você já respondeu o quiz de hoje.</p>
+          <div class="quiz-resultado quiz-neutro">
+            Resposta correta: <strong>${String.fromCharCode(65 + corrIdx)}) ${esc(corrTxt)}</strong>
+          </div>
+          <p class="hint" style="margin-top:10px">Próximo quiz amanhã!</p>
+        </div>`;
+      return;
+    }
+    el.innerHTML = `
+      <div class="quiz-card panel">
+        <div class="quiz-badge">🧠 Quiz Diário — acerte e ganhe +${q.pontosPorAcerto || 20} pontos!</div>
+        <h3>${esc(q.pergunta)}</h3>
+        <div class="quiz-opcoes">
+          ${(q.opcoes || []).map((op, i) => `
+            <button class="quiz-opcao-btn" onclick="responderQuiz(${q.id}, ${i})">
+              <span class="quiz-letra">${String.fromCharCode(65 + i)}</span>
+              ${esc(op.texto || String(op))}
+            </button>`).join('')}
+        </div>
+      </div>`;
+  } catch {
+    el.innerHTML = '<p class="hint" style="text-align:center;padding:24px">Não foi possível carregar o quiz.</p>';
+  }
+}
+
+async function responderQuiz(id, opcao) {
+  try {
+    const r = await api(`/api/quiz/${id}/responder`, { method: 'POST', body: { opcao } });
+    const corrTxt = QUIZ_HOJE && QUIZ_HOJE.opcoes
+      ? (QUIZ_HOJE.opcoes[r.respostaCorreta]?.texto || String.fromCharCode(65 + r.respostaCorreta))
+      : String.fromCharCode(65 + r.respostaCorreta);
+    const el = document.getElementById('quiz-conteudo');
+    if (el) {
+      const card = el.querySelector('.quiz-card');
+      if (card) {
+        const btns = card.querySelector('.quiz-opcoes');
+        if (btns) btns.remove();
+        const res = document.createElement('div');
+        res.className = `quiz-resultado ${r.correta ? 'quiz-acerto' : 'quiz-erro'}`;
+        res.innerHTML = r.correta
+          ? `✅ Correto! +${r.pontos} pontos`
+          : `❌ Incorreto! A resposta certa era: <strong>${esc(corrTxt)}</strong>`;
+        card.appendChild(res);
+        const note = document.createElement('p');
+        note.className = 'hint';
+        note.style.marginTop = '10px';
+        note.textContent = 'Próximo quiz amanhã!';
+        card.appendChild(note);
+      }
+    }
+    if (r.correta) toast(`Resposta correta! +${r.pontos} pontos 🎯`, 'ok');
+    else toast('Resposta incorreta. Não desanime, tente amanhã!', '');
+  } catch (err) { toast(err.message, 'erro'); }
+}
+
+/* ── Perfil completo (colaborador) ── */
+
+async function carregarPerfil() {
+  const el = document.getElementById('perfil-conteudo');
+  if (!el) return;
+  try {
+    const p = await api('/api/meu-painel');
+    const c = p.colaborador || {};
+    const nivel = p.nivel || {};
+    const prox = nivel.proximo || null;
+    const streak = p.streakAtual || 0;
+    const pct = prox ? Math.min(100, Math.round(((p.pontos - nivel.minPontos) / (prox.minPontos - nivel.minPontos)) * 100)) : 100;
+
+    el.innerHTML = `
+      <div class="perfil-hero panel">
+        <div class="perfil-avatar">${esc((c.nome || '?')[0]).toUpperCase()}</div>
+        <div class="perfil-dados">
+          <h2>${esc(c.nome || '')}</h2>
+          <p class="hint">${esc(c.funcao || '')} · ${esc(c.setor || '')} · ${esc(c.unidade || '')}</p>
+          <p class="hint">Matrícula: ${esc(c.matricula || '')}</p>
+          <div class="nivel-badge-grande">
+            ${nivel.emoji || '🔰'} <span>${esc(nivel.nome || '')}</span> · Nível ${nivel.nivel || 1}
+          </div>
+        </div>
+      </div>
+
+      <div class="cards" style="margin-top:14px">
+        <div class="card destaque"><div class="num">${p.pontos}</div><div class="rotulo">Pontos totais</div></div>
+        <div class="card"><div class="num">${p.posicao ? p.posicao + 'º' : '—'}</div><div class="rotulo">Posição no ranking</div></div>
+        <div class="card"><div class="num">${streak} 🔥</div><div class="rotulo">Dias seguidos</div></div>
+        <div class="card"><div class="num">${p.maiorStreak || 0}</div><div class="rotulo">Recorde de streak</div></div>
+        <div class="card"><div class="num">${p.ies || 0}</div><div class="rotulo">IES (0-100)</div></div>
+        <div class="card card-laranja"><div class="num">${p.totalObs || 0}</div><div class="rotulo">Observações</div></div>
+      </div>
+
+      <div class="panel" style="margin-top:14px">
+        <h3>Progresso de nível</h3>
+        <div class="nivel-barra-wrap" style="margin-top:12px">
+          <div class="nivel-barra" style="width:${pct}%"></div>
+        </div>
+        <p class="hint" style="margin-top:6px">
+          ${prox ? `${p.pontos} / ${prox.minPontos} pts → ${prox.emoji} ${prox.nome}` : '🏆 Nível máximo atingido!'}
+        </p>
+      </div>
+
+      <div class="panel" style="margin-top:14px">
+        <h3>Histórico recente</h3>
+        <table class="tabela">
+          <tr><th>Data</th><th>Tipo</th><th>Tema</th><th>Pts</th></tr>
+          ${(p.historico || []).slice(0, 10).map(ev => `
+            <tr>
+              <td>${dataBr(ev.timestamp)}</td>
+              <td><span class="tag">${esc(ev.tipo)}</span></td>
+              <td>${esc(ev.tema)}</td>
+              <td class="pontos-cel">${ev.pontos}</td>
+            </tr>`).join('') || '<tr><td colspan="4" class="vazio">Nenhuma participação ainda.</td></tr>'}
+        </table>
+      </div>`;
+  } catch {
+    el.innerHTML = '<p class="hint" style="text-align:center;padding:24px">Não foi possível carregar o perfil.</p>';
+  }
+}
+
+/* ── Comunicados (gestor) ── */
+
+async function carregarComunicadosGestor() {
+  try {
+    const lista = await api('/api/comunicados');
+    const el = document.getElementById('comunicados-gestor-lista');
+    if (!el) return;
+    if (!lista.length) {
+      el.innerHTML = '<p class="hint" style="text-align:center;padding:24px">Nenhum comunicado criado ainda. Clique em "+ Novo comunicado" para começar.</p>';
+      return;
+    }
+    el.innerHTML = lista.map(c => `
+      <div class="panel" style="margin-bottom:12px">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:8px">
+          <div>
+            <strong>${esc(c.titulo)}</strong>
+            <span class="hint" style="margin-left:10px">${tsDataHora(c.criadoEm)} · ${esc(c.gestorNome || '')}</span>
+          </div>
+          <span class="tag tag-verde">✓ ${c.totalLeituras || 0} confirmações</span>
+        </div>
+        <p style="margin-top:8px;color:var(--texto-sec);font-size:0.9em">${esc(c.conteudo)}</p>
+      </div>`).join('');
+  } catch (err) { toast(err.message, 'erro'); }
+}
+
+function abrirNovoComunicado() {
+  abrirModal('📢 Novo Comunicado', `
+    <label>Título *</label>
+    <input type="text" id="com-titulo" placeholder="Ex.: Nova NR-12 em vigor a partir de julho">
+    <label>Conteúdo do comunicado *</label>
+    <textarea id="com-conteudo" style="min-height:120px" placeholder="Digite o conteúdo completo do comunicado..."></textarea>
+    <label>Pontos por confirmação de leitura</label>
+    <input type="number" id="com-pontos" value="10" min="0" max="100">
+    <button class="btn btn-primary btn-block" style="margin-top:14px" onclick="salvarComunicado()">Publicar comunicado</button>`);
+}
+
+async function salvarComunicado() {
+  const titulo = document.getElementById('com-titulo').value.trim();
+  const conteudo = document.getElementById('com-conteudo').value.trim();
+  if (!titulo || !conteudo) return toast('Título e conteúdo são obrigatórios.', 'erro');
+  const pontosPorLeitura = Number(document.getElementById('com-pontos').value) || 10;
+  try {
+    await api('/api/comunicados', { method: 'POST', body: { titulo, conteudo, pontosPorLeitura } });
+    fecharModal();
+    toast('Comunicado publicado!', 'ok');
+    await carregarComunicadosGestor();
+  } catch (err) { toast(err.message, 'erro'); }
+}
+
+/* ── Quiz (gestor) ── */
+
+async function carregarQuizGestor() {
+  try {
+    const lista = await api('/api/quiz');
+    const el = document.getElementById('tabela-quizzes');
+    if (!el) return;
+    let h = '<tr><th>Data</th><th>Pergunta</th><th>Resposta correta</th><th>Respostas</th><th>% Acerto</th></tr>';
+    if (!lista.length) h += '<tr><td colspan="5" class="vazio">Nenhum quiz cadastrado ainda.</td></tr>';
+    for (const q of lista) {
+      const corrIdx = (q.opcoes || []).findIndex(o => o.correta);
+      const corrTxt = corrIdx >= 0 ? (q.opcoes[corrIdx].texto || '') : '';
+      const pct = q.totalRespostas ? Math.round((q.acertos / q.totalRespostas) * 100) : 0;
+      h += `<tr>
+        <td>${q.data || ''}</td>
+        <td>${esc(q.pergunta)}</td>
+        <td><span class="tag tag-verde">${String.fromCharCode(65 + corrIdx)}) ${esc(corrTxt)}</span></td>
+        <td>${q.totalRespostas || 0}</td>
+        <td>${pct}%</td>
+      </tr>`;
+    }
+    el.innerHTML = h;
+  } catch (err) { toast(err.message, 'erro'); }
+}
+
+function abrirNovoQuiz() {
+  abrirModal('🧠 Novo Quiz Diário', `
+    <p class="hint">O quiz ficará disponível para todos os colaboradores hoje como Quiz Diário.</p>
+    <label>Pergunta *</label>
+    <input type="text" id="quiz-pergunta" placeholder="Ex.: Qual EPI é obrigatório em área com ruído acima de 85 dB?">
+    <label>Opção A *</label><input type="text" id="quiz-op-0" placeholder="Protetor auricular">
+    <label>Opção B *</label><input type="text" id="quiz-op-1" placeholder="Capacete">
+    <label>Opção C</label><input type="text" id="quiz-op-2">
+    <label>Opção D</label><input type="text" id="quiz-op-3">
+    <label>Resposta correta</label>
+    <select id="quiz-correta">
+      <option value="0">Opção A</option>
+      <option value="1">Opção B</option>
+      <option value="2">Opção C</option>
+      <option value="3">Opção D</option>
+    </select>
+    <button class="btn btn-primary btn-block" style="margin-top:14px" onclick="salvarQuiz()">Publicar quiz</button>`);
+}
+
+async function salvarQuiz() {
+  const pergunta = document.getElementById('quiz-pergunta').value.trim();
+  const textos = [0, 1, 2, 3].map(i => { const el = document.getElementById('quiz-op-' + i); return el ? el.value.trim() : ''; }).filter(Boolean);
+  if (!pergunta || textos.length < 2) return toast('Preencha a pergunta e pelo menos 2 opções.', 'erro');
+  const corrIdx = Number(document.getElementById('quiz-correta').value);
+  const opcoes = textos.map((txt, i) => ({ texto: txt, correta: i === corrIdx }));
+  try {
+    await api('/api/quiz', { method: 'POST', body: { pergunta, opcoes } });
+    fecharModal();
+    toast('Quiz publicado para hoje!', 'ok');
+    await carregarQuizGestor();
   } catch (err) { toast(err.message, 'erro'); }
 }
 

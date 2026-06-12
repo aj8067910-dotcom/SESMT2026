@@ -368,3 +368,153 @@ hr { border: none; border-top: 1px solid var(--cinza-borda); margin: 16px 0; }
 /* ── "Entrar" button ── */
 .btn-destaque { background: var(--destaque, #7DC528); color: #fff; }
 .btn-destaque:hover { filter: brightness(1.1); }
+
+/* ══════════════════════════════════════════
+   SafePoint 2.0 — Nível, Streak, Missões
+   ══════════════════════════════════════════ */
+
+/* Nivel card */
+.nivel-card {
+  background: linear-gradient(135deg, var(--azul-escuro, #14406e) 0%, var(--azul, #1e5aa8) 100%);
+  border-radius: 14px; padding: 18px 20px; color: #fff; margin-top: 0;
+}
+.nivel-header { display: flex; align-items: center; gap: 14px; margin-bottom: 14px; }
+.nivel-emoji { font-size: 40px; line-height: 1; flex-shrink: 0; }
+.nivel-info { flex: 1; }
+.nivel-nome { font-size: 18px; font-weight: 800; }
+.nivel-sub { font-size: 12px; opacity: .75; margin-top: 2px; }
+.streak-badge {
+  background: rgba(255,255,255,.15); border-radius: 20px; padding: 6px 14px;
+  font-size: 14px; white-space: nowrap;
+}
+.streak-badge.streak-fire { background: rgba(255,120,0,.35); }
+.nivel-barra-wrap {
+  background: rgba(255,255,255,.2); border-radius: 99px; height: 10px; overflow: hidden;
+}
+.nivel-barra {
+  background: #AADF5A; height: 100%; border-radius: 99px;
+  transition: width .6s cubic-bezier(.4,0,.2,1);
+}
+.nivel-progresso-label { font-size: 12px; opacity: .8; margin-top: 6px; }
+
+/* Level up banner */
+.nivel-up-banner {
+  background: linear-gradient(90deg, #e8801a, #f0a333);
+  color: #fff; border-radius: 10px; padding: 12px 16px;
+  font-size: 14px; font-weight: 600; margin-bottom: 12px; text-align: center;
+  animation: pulse-banner .6s ease 3;
+}
+@keyframes pulse-banner {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.02); }
+}
+
+/* Missões card */
+.missoes-card { padding: 16px 20px; }
+.missoes-card h3 { font-size: 15px; margin-bottom: 10px; }
+.missoes-lista { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 6px; }
+.missao-item { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 8px; background: #f8fafc; transition: background .2s; }
+.missao-item.concluida { background: #eaf9ee; }
+.missao-check { font-size: 18px; flex-shrink: 0; }
+.missao-desc { flex: 1; font-size: 13px; color: var(--texto-sec); }
+.missao-item.concluida .missao-desc { text-decoration: line-through; color: var(--texto-suave); }
+.missao-pts { font-size: 12px; font-weight: 700; color: var(--verde); white-space: nowrap; }
+
+/* Nivel badge grande (perfil) */
+.nivel-badge-grande {
+  display: inline-flex; align-items: center; gap: 6px;
+  background: var(--azul); color: #fff; border-radius: 20px;
+  padding: 5px 14px; font-size: 13px; font-weight: 700; margin-top: 8px;
+}
+
+/* ══════════════════════════════════════════
+   Feed / Mural Social
+   ══════════════════════════════════════════ */
+.feed-card {
+  background: #fff; border-radius: 12px; padding: 16px 18px;
+  margin-bottom: 12px; box-shadow: 0 1px 4px rgba(0,0,0,.07);
+  border: 1px solid var(--cinza-borda);
+}
+.feed-header { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
+.feed-avatar {
+  width: 40px; height: 40px; border-radius: 50%;
+  background: linear-gradient(135deg, var(--azul), var(--azul-escuro));
+  color: #fff; display: flex; align-items: center; justify-content: center;
+  font-weight: 800; font-size: 16px; flex-shrink: 0;
+}
+.feed-meta { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.feed-meta strong { font-size: 14px; color: var(--texto-pri); }
+.feed-ts { font-size: 11px; color: var(--texto-suave); }
+.feed-body { font-size: 14px; color: var(--texto-sec); line-height: 1.5; white-space: pre-wrap; }
+.feed-footer { display: flex; align-items: center; gap: 6px; margin-top: 12px; flex-wrap: wrap; }
+.btn-reacao {
+  background: #f0f4f8; border: 1px solid transparent; border-radius: 20px;
+  padding: 4px 12px; font-size: 13px; cursor: pointer; transition: all .15s;
+}
+.btn-reacao:hover { background: #e2eaf4; }
+.btn-reacao.ativo { background: #dceeff; border-color: var(--azul); color: var(--azul); }
+.feed-total-reac { font-size: 12px; color: var(--texto-suave); margin-left: 4px; }
+
+/* ══════════════════════════════════════════
+   Comunicados
+   ══════════════════════════════════════════ */
+.comunicado-card {
+  background: #fff; border-radius: 12px; padding: 18px 20px;
+  margin-bottom: 12px; border-left: 4px solid var(--azul);
+  box-shadow: 0 1px 4px rgba(0,0,0,.07);
+}
+.comunicado-card.comunicado-novo { border-left-color: var(--laranja); }
+.comunicado-card.comunicado-lido { border-left-color: var(--verde); opacity: .85; }
+.comunicado-header { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; flex-wrap: wrap; }
+.comunicado-titulo { font-size: 16px; font-weight: 700; color: var(--azul-escuro); margin-bottom: 6px; }
+.comunicado-corpo { font-size: 14px; color: var(--texto-sec); line-height: 1.5; white-space: pre-wrap; }
+.comunicado-data { font-size: 12px; color: var(--texto-suave); }
+
+/* tag cores extra */
+.tag-azul { background: #e3ecfc; color: #1e5aa8; }
+.tag-ouro { background: #fef9e7; color: #b8860b; }
+
+/* ══════════════════════════════════════════
+   Quiz Diário
+   ══════════════════════════════════════════ */
+.quiz-card { max-width: 620px; margin: 0 auto; }
+.quiz-badge {
+  display: inline-block; background: var(--azul); color: #fff;
+  border-radius: 20px; padding: 4px 14px; font-size: 12px; font-weight: 700;
+  margin-bottom: 14px;
+}
+.quiz-card h3 { font-size: 18px; color: var(--azul-escuro); line-height: 1.4; margin-bottom: 18px; }
+.quiz-opcoes { display: flex; flex-direction: column; gap: 10px; }
+.quiz-opcao-btn {
+  display: flex; align-items: center; gap: 12px; padding: 14px 18px;
+  border: 2px solid var(--cinza-borda); border-radius: 10px; background: #fff;
+  cursor: pointer; font-size: 14px; text-align: left; transition: all .15s;
+}
+.quiz-opcao-btn:hover { border-color: var(--azul); background: #f0f5ff; }
+.quiz-letra {
+  width: 28px; height: 28px; border-radius: 50%; background: var(--azul);
+  color: #fff; font-weight: 800; font-size: 13px; display: flex;
+  align-items: center; justify-content: center; flex-shrink: 0;
+}
+.quiz-resultado {
+  margin-top: 16px; padding: 14px 18px; border-radius: 10px;
+  font-size: 15px; font-weight: 600;
+}
+.quiz-acerto { background: #eaf9ee; color: #1a8a4c; border: 1px solid #b7e4c7; }
+.quiz-erro   { background: #fdecea; color: #c43a3a; border: 1px solid #f5c6c6; }
+.quiz-neutro { background: #f0f4f8; color: var(--texto-sec); border: 1px solid var(--cinza-borda); }
+
+/* ══════════════════════════════════════════
+   Perfil colaborador
+   ══════════════════════════════════════════ */
+.perfil-hero {
+  display: flex; align-items: center; gap: 20px; flex-wrap: wrap;
+}
+.perfil-avatar {
+  width: 72px; height: 72px; border-radius: 50%;
+  background: linear-gradient(135deg, var(--azul), var(--azul-escuro));
+  color: #fff; display: flex; align-items: center; justify-content: center;
+  font-size: 30px; font-weight: 800; flex-shrink: 0;
+}
+.perfil-dados h2 { font-size: 22px; color: var(--azul-escuro); margin-bottom: 4px; }
+

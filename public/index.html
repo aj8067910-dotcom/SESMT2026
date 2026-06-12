@@ -52,6 +52,8 @@
       <button data-view="dashboard"      class="nav-btn active" onclick="navegar('dashboard')">Painel</button>
       <button data-view="eventos"        class="nav-btn"        onclick="navegar('eventos')">Atividades</button>
       <button data-view="colaboradores"  class="nav-btn"        onclick="navegar('colaboradores')">Colaboradores</button>
+      <button data-view="comunicados"    class="nav-btn"        onclick="navegar('comunicados')">📢 Comunicados</button>
+      <button data-view="quiz-gestor"    class="nav-btn"        onclick="navegar('quiz-gestor')">🧠 Quiz</button>
       <button data-view="observacoes"    class="nav-btn"        onclick="navegar('observacoes')">Observações</button>
       <button data-view="sugestoes"      class="nav-btn"        onclick="navegar('sugestoes')">Sugestões</button>
       <button data-view="ranking"        class="nav-btn"        onclick="navegar('ranking')">Ranking</button>
@@ -178,6 +180,25 @@
       <table class="tabela" id="tabela-ranking"></table>
     </section>
 
+    <!-- Comunicados (gestor) -->
+    <section id="view-comunicados" class="view hidden">
+      <div class="view-head">
+        <h2>📢 Comunicados Oficiais</h2>
+        <button class="btn btn-primary" onclick="abrirNovoComunicado()">+ Novo comunicado</button>
+      </div>
+      <div id="comunicados-gestor-lista"></div>
+    </section>
+
+    <!-- Quiz (gestor) -->
+    <section id="view-quiz-gestor" class="view hidden">
+      <div class="view-head">
+        <h2>🧠 Banco de Quizzes</h2>
+        <button class="btn btn-primary" onclick="abrirNovoQuiz()">+ Novo quiz</button>
+      </div>
+      <p class="hint">Quizzes são sorteados automaticamente para os colaboradores como Quiz Diário. Cada resposta correta vale <strong>30 pontos</strong>.</p>
+      <table class="tabela" id="tabela-quizzes"></table>
+    </section>
+
     <!-- Config -->
     <section id="view-config" class="view hidden">
       <h2>Configurações</h2>
@@ -257,11 +278,15 @@
       <span id="colab-logo-wrap"></span>
     </div>
     <nav class="topbar-nav">
-      <button data-cview="painel"      class="nav-btn active" onclick="navegarColab('painel')">Meu Painel</button>
-      <button data-cview="checkin"     class="nav-btn"        onclick="navegarColab('checkin')">Check-in</button>
-      <button data-cview="observar"    class="nav-btn"        onclick="navegarColab('observar')">Observações</button>
-      <button data-cview="sugerir"     class="nav-btn"        onclick="navegarColab('sugerir')">Sugestões</button>
-      <button data-cview="historico"   class="nav-btn"        onclick="navegarColab('historico')">Histórico</button>
+      <button data-cview="painel"       class="nav-btn active" onclick="navegarColab('painel')">🏠 Início</button>
+      <button data-cview="mural"        class="nav-btn"        onclick="navegarColab('mural')">📣 Mural</button>
+      <button data-cview="comunicados"  class="nav-btn"        onclick="navegarColab('comunicados')">📢 Comunicados</button>
+      <button data-cview="quiz"         class="nav-btn"        onclick="navegarColab('quiz')">🧠 Quiz</button>
+      <button data-cview="checkin"      class="nav-btn"        onclick="navegarColab('checkin')">Check-in</button>
+      <button data-cview="observar"     class="nav-btn"        onclick="navegarColab('observar')">Observações</button>
+      <button data-cview="sugerir"      class="nav-btn"        onclick="navegarColab('sugerir')">Sugestões</button>
+      <button data-cview="historico"    class="nav-btn"        onclick="navegarColab('historico')">Histórico</button>
+      <button data-cview="perfil"       class="nav-btn"        onclick="navegarColab('perfil')">👤 Perfil</button>
     </nav>
     <div class="topbar-user">
       <span id="colab-nome"></span>
@@ -274,9 +299,11 @@
 
     <!-- Painel colaborador -->
     <section id="cview-painel" class="cview">
-      <div id="colab-conquista-banner" class="conquista-banner hidden"></div>
-      <div id="colab-cards" class="cards"></div>
-      <div class="grid-2">
+      <div id="colab-nivel-banner" class="nivel-up-banner hidden"></div>
+      <div id="colab-nivel-card" class="nivel-card"></div>
+      <div id="colab-missoes-card" class="missoes-card panel" style="margin-top:14px"></div>
+      <div id="colab-cards" class="cards" style="margin-top:14px"></div>
+      <div class="grid-2" style="margin-top:14px">
         <div class="panel">
           <h3>Pontuação por tipo</h3>
           <table class="tabela" id="colab-tipos"></table>
@@ -290,6 +317,35 @@
         <h3>Loja de Recompensas</h3>
         <div id="colab-recompensas" class="recompensas-grid"></div>
       </div>
+    </section>
+
+    <!-- Mural Social -->
+    <section id="cview-mural" class="cview hidden">
+      <div class="panel" style="margin-bottom:14px">
+        <h3>📣 Mural de Segurança</h3>
+        <textarea id="feed-novo-post" placeholder="Compartilhe uma boa prática, conquista ou observação..." style="min-height:80px;margin-top:10px"></textarea>
+        <div style="display:flex;gap:8px;margin-top:8px">
+          <button class="btn btn-primary" onclick="publicarFeed()">Publicar</button>
+          <button class="btn" onclick="publicarReconhecimento()">🤝 Reconhecer colega</button>
+        </div>
+      </div>
+      <div id="feed-lista"></div>
+    </section>
+
+    <!-- Comunicados -->
+    <section id="cview-comunicados" class="cview hidden">
+      <h3 style="margin-bottom:14px">📢 Comunicados Oficiais</h3>
+      <div id="comunicados-lista"></div>
+    </section>
+
+    <!-- Quiz Diário -->
+    <section id="cview-quiz" class="cview hidden">
+      <div id="quiz-conteudo" style="max-width:600px;margin:0 auto"></div>
+    </section>
+
+    <!-- Perfil -->
+    <section id="cview-perfil" class="cview hidden">
+      <div id="perfil-conteudo"></div>
     </section>
 
     <!-- Check-in -->
