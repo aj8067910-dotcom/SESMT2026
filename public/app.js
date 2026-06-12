@@ -223,8 +223,10 @@ async function navegar(view) {
   if (view === 'observacoes')  await carregarObservacoes();
   if (view === 'sugestoes')    await carregarSugestoes();
   if (view === 'ranking')      await carregarRanking();
-  if (view === 'comunicados')  await carregarComunicadosGestor();
-  if (view === 'quiz-gestor')  await carregarQuizGestor();
+  if (view === 'comunicados')     await carregarComunicadosGestor();
+  if (view === 'quiz-gestor')     await carregarQuizGestor();
+  if (view === 'engajamento')     await carregarEngajamento();
+  if (view === 'pesquisas-gestor') await carregarPesquisasGestor();
   if (view === 'config') { renderConfig(); carregarBrandingConfig(); }
 }
 
@@ -237,6 +239,7 @@ async function navegarColab(view) {
   if (view === 'comunicados')  await carregarComunicados();
   if (view === 'quiz')         await carregarQuiz();
   if (view === 'perfil')       await carregarPerfil();
+  if (view === 'pesquisas')    await carregarPesquisasColab();
   if (view === 'observar')     await carregarMinhasObservacoes();
   if (view === 'sugerir')      await carregarMinhasSugestoes();
   if (view === 'historico')    await carregarHistoricoCompleto();
@@ -649,7 +652,51 @@ async function excluirGestor(id, username) {
 /* ── Dashboard ── */
 
 async function carregarDashboard() {
-  const d = await api('/api/dashboard');
+  // Carrega tudo em paralelo
+  const [d, hoje, mes, ics] = await Promise.all([
+    api('/api/dashboard'),
+    api('/api/dashboard/hoje').catch(() => null),
+    api('/api/dashboard/mes').catch(() => null),
+    api('/api/ics').catch(() => null)
+  ]);
+
+  // Indicadores do dia
+  const hojeEl = document.getElementById('dash-hoje');
+  const dataEl = document.getElementById('dash-hoje-data');
+  if (dataEl) dataEl.textContent = new Date().toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long' });
+  if (hojeEl && hoje) {
+    hojeEl.innerHTML = [
+      { n: hoje.ddsHoje,              l: 'DDS hoje',             cor: '' },
+      { n: hoje.ddsRealizados,         l: 'DDS realizados',       cor: '' },
+      { n: hoje.treinamentosAgendados, l: 'Treinamentos agend.',  cor: '' },
+      { n: hoje.comunicadosPendentes,  l: 'Comunicados pend.',    cor: hoje.comunicadosPendentes > 0 ? 'color:var(--laranja)' : '' },
+      { n: `${hoje.participacaoHojePct}%`, l: 'Participação hoje', cor: '' },
+      { n: hoje.obsHoje,               l: 'Observações hoje',     cor: '' },
+      { n: hoje.sugsHoje,              l: 'Sugestões hoje',       cor: '' },
+      { n: hoje.pesquisasAtivas,       l: 'Pesquisas ativas',     cor: '' },
+    ].map(k => `<div class="kpi-hoje-card"><div class="kpi-hoje-num" style="${k.cor}">${k.n}</div><div class="kpi-hoje-label">${k.l}</div></div>`).join('');
+  }
+
+  // Indicadores do mês
+  const mesEl = document.getElementById('dash-mes');
+  if (mesEl && mes) {
+    mesEl.innerHTML = [
+      { l: 'Total DDS',          v: mes.totalDDS },
+      { l: 'Total treinamentos', v: mes.totalTreinamentos },
+      { l: 'Participantes únicos', v: mes.totalParticipantes },
+      { l: 'Horas de treinamento', v: mes.horasTreinamento + 'h' },
+      { l: 'Taxa de adesão',     v: mes.taxaAdesao + '%' },
+      { l: 'IEI médio (0-100)', v: mes.ieiMedio },
+      { l: 'Sugestões aprovadas', v: mes.sugsAprovadas },
+      { l: 'Observações',        v: mes.obsRegistradas },
+      { l: '% Leitura comunicados', v: mes.pctLeituras + '%' },
+    ].map(k => `<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid #f0f3f7;font-size:13px"><span style="color:var(--texto-suave)">${k.l}</span><strong>${k.v}</strong></div>`).join('');
+  }
+
+  // ICS
+  const icsEl = document.getElementById('dash-ics');
+  if (icsEl && ics) renderICS(icsEl, ics);
+
   document.getElementById('dash-cards').innerHTML = `
     <div class="card"><div class="num">${d.colaboradoresAtivos}</div><div class="rotulo">Colaboradores ativos</div></div>
     <div class="card"><div class="num">${d.totalEventos}</div><div class="rotulo">Atividades realizadas</div></div>
@@ -666,13 +713,46 @@ async function carregarDashboard() {
   }
   document.getElementById('dash-tipos').innerHTML = linhas;
   document.getElementById('dash-top10').innerHTML = htmlRankingCompacto(d.top10);
-  const obsAbertas = OBSERVACOES.length ? OBSERVACOES.filter(o => o.status === 'aberta').slice(0, 8) : await api('/api/observacoes').then(l => l.filter(o => o.status === 'aberta').slice(0, 8));
+  const obsAbertas = await api('/api/observacoes').then(l => l.filter(o => o.status === 'aberta').slice(0, 8)).catch(() => []);
   let obsHtml = '<tr><th>Colaborador</th><th>Tipo</th><th>Criticidade</th></tr>';
   if (!obsAbertas.length) obsHtml += '<tr><td colspan="3" class="vazio">Nenhuma observação aberta.</td></tr>';
   for (const o of obsAbertas) {
     obsHtml += `<tr><td>${esc(o.nomeColaborador)}</td><td>${tipoObsTag(o.tipo)}</td><td>${critTag(o.criticidade)}</td></tr>`;
   }
   document.getElementById('dash-obs').innerHTML = obsHtml;
+}
+
+function renderICS(el, ics) {
+  const NOTA_CORES = { A: '#1a8a4c', B: '#2563eb', C: '#e8801a', D: '#f97316', E: '#c43a3a' };
+  const NOTA_LABELS = { A: 'Excelente', B: 'Bom', C: 'Regular', D: 'Atenção', E: 'Crítico' };
+  const cor = NOTA_CORES[ics.nota] || '#637080';
+  const dims = [
+    { nome: 'Participação',  val: ics.dimensoes.participacao,  peso: '30%' },
+    { nome: 'Comunicação',   val: ics.dimensoes.comunicacao,   peso: '20%' },
+    { nome: 'Observações',   val: ics.dimensoes.observacoes,   peso: '15%' },
+    { nome: 'Sugestões',     val: ics.dimensoes.sugestoes,     peso: '10%' },
+    { nome: 'Quiz',          val: ics.dimensoes.quiz,          peso: '10%' },
+    { nome: 'Engajamento',   val: ics.dimensoes.engajamento,   peso: '15%' },
+  ];
+  el.innerHTML = `
+    <div style="display:flex;align-items:center;gap:18px;margin-bottom:14px">
+      <div style="text-align:center">
+        <div class="ics-grade-badge" style="color:${cor}">${ics.nota}</div>
+        <div style="font-size:11px;color:var(--texto-suave);margin-top:2px">${NOTA_LABELS[ics.nota]}</div>
+      </div>
+      <div>
+        <div style="font-size:32px;font-weight:900;color:var(--azul-escuro)">${ics.ics}</div>
+        <div style="font-size:11px;color:var(--texto-suave)">Pontos (0–100)</div>
+      </div>
+    </div>
+    ${dims.map(d => `
+      <div class="ics-dimensao-linha">
+        <span class="ics-dimensao-nome">${d.nome}<span class="hint"> ${d.peso}</span></span>
+        <div class="ics-dimensao-barra-wrap">
+          <div class="ics-dimensao-barra" style="width:${d.val}%"></div>
+        </div>
+        <span class="ics-dimensao-valor">${d.val}%</span>
+      </div>`).join('')}`;
 }
 
 function htmlRankingCompacto(lista) {
@@ -943,6 +1023,7 @@ async function abrirDetalheEvento(eventId) {
     </div>
     <div class="modal-rodape">
       <button class="btn btn-primary" onclick="abrirPresencaManual(${eventId})">Adicionar presença manual</button>
+      <button class="btn" onclick="window.open('/api/evidencias/${eventId}','_blank')">🖨 Gerar evidência</button>
       <button class="btn" onclick="fecharDetalheEvento()">Fechar</button>
     </div>`;
   document.getElementById('modal-evento-detalhe').classList.remove('hidden');
@@ -1025,6 +1106,7 @@ function renderColaboradores() {
       <td class="pontos-cel">${c.pontos}</td>
       <td>${c.ativo !== false ? '<span class="tag tag-verde">Ativo</span>' : '<span class="tag tag-inativo">Inativo</span>'}</td>
       <td class="acoes">
+        <button class="btn btn-sm" onclick="abrirPerfilCompleto(${c.id})">👤 Perfil</button>
         <button class="btn btn-sm" onclick="abrirEditarColaborador(${c.id})">Editar</button>
         <button class="btn btn-sm btn-perigo" onclick="excluirColaborador(${c.id})">✕</button>
       </td>
@@ -2134,6 +2216,615 @@ async function carregarHistoricoCompleto() {
     </tr>`;
   }
   document.getElementById('colab-historico').innerHTML = h;
+}
+
+/* ── Perfil completo do colaborador (gestor) ── */
+
+async function abrirPerfilCompleto(empId) {
+  try {
+    const p = await api(`/api/colaboradores/${empId}/perfil`);
+    const c = p.colaborador;
+    const nivel = p.nivel || {};
+    const prox = nivel.proximo || null;
+    const pct = prox ? Math.min(100, Math.round(((p.pontos - nivel.minPontos) / (prox.minPontos - nivel.minPontos)) * 100)) : 100;
+
+    const extrasHtml = (p.extrasLog || []).slice(0, 15).map(e => `
+      <div class="audit-entry">
+        <span>${esc(e.descricao)}</span>
+        <span class="${e.pontos >= 0 ? 'audit-pts-pos' : 'audit-pts-neg'}">${e.pontos >= 0 ? '+' : ''}${e.pontos}</span>
+      </div>`).join('') || '<p class="hint">Nenhum registro.</p>';
+
+    const recHtml = (p.reconhecimentos || []).map(r => `
+      <div class="audit-entry"><span>${esc(r.badgeLabel)} — ${esc(r.mensagem)}</span><span class="hint">${tsDataHora(r.timestamp)}</span></div>`
+    ).join('') || '<p class="hint">Nenhum reconhecimento ainda.</p>';
+
+    abrirModal(`👤 ${esc(c.nome)}`, `
+      <div class="cards" style="margin-bottom:14px">
+        <div class="card destaque"><div class="num">${p.pontos}</div><div class="rotulo">Pontos</div></div>
+        <div class="card"><div class="num">${nivel.emoji || '🔰'} ${nivel.nivel || 1}</div><div class="rotulo">Nível</div></div>
+        <div class="card"><div class="num">${p.streakAtual || 0}🔥</div><div class="rotulo">Streak</div></div>
+        <div class="card"><div class="num">${p.totalObs || 0}</div><div class="rotulo">Observações</div></div>
+        <div class="card"><div class="num">${p.totalSugs || 0}</div><div class="rotulo">Sugestões</div></div>
+        <div class="card"><div class="num">${p.sugsAprovadas || 0}</div><div class="rotulo">Sugs. aprovadas</div></div>
+      </div>
+
+      <div class="grid-2" style="margin-bottom:14px">
+        <div>
+          <p><strong>Matrícula:</strong> ${esc(c.matricula)}</p>
+          <p><strong>CPF:</strong> ${esc(c.cpf || '—')}</p>
+          <p><strong>Função:</strong> ${esc(c.funcao || '—')}</p>
+          <p><strong>Setor:</strong> ${esc(c.setor || '—')}</p>
+          <p><strong>Equipe:</strong> ${esc(c.equipe || '—')}</p>
+          <p><strong>Unidade:</strong> ${esc(c.unidade || '—')}</p>
+          <p><strong>Maior streak:</strong> ${p.maiorStreak || 0} dias</p>
+        </div>
+        <div>
+          <h4 style="margin-bottom:6px">Progresso de nível</h4>
+          <div class="nivel-barra-wrap" style="margin-bottom:4px"><div class="nivel-barra" style="width:${pct}%"></div></div>
+          <p class="hint">${prox ? `${p.pontos} / ${prox.minPontos} pts → ${prox.emoji} ${prox.nome}` : '🏆 Nível máximo!'}</p>
+          <h4 style="margin:10px 0 6px">Últimas participações</h4>
+          <table class="tabela" style="font-size:12px">
+            <tr><th>Data</th><th>Tipo</th><th>Pts</th></tr>
+            ${(p.checkins || []).slice(0, 5).map(ck => `<tr><td>${dataBr(ck.timestamp)}</td><td>${esc(ck.eventTipo)}</td><td class="pontos-cel">${ck.pontos}</td></tr>`).join('') || '<tr><td colspan="3" class="vazio">—</td></tr>'}
+          </table>
+        </div>
+      </div>
+
+      <div class="grid-2">
+        <div>
+          <h4 style="margin-bottom:8px">Pontos extras / histórico</h4>
+          ${extrasHtml}
+        </div>
+        <div>
+          <h4 style="margin-bottom:8px">Reconhecimentos recebidos</h4>
+          ${recHtml}
+        </div>
+      </div>
+
+      <hr style="margin:16px 0;border:none;border-top:1px solid var(--cinza-borda)">
+      <h4 style="margin-bottom:10px">⚡ Ajuste de pontos</h4>
+      <div style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap">
+        <div style="flex:1;min-width:80px">
+          <label>Pontos (use negativo para remover)</label>
+          <input type="number" id="adj-pontos-val" placeholder="Ex: 50 ou -20" style="width:100%">
+        </div>
+        <div style="flex:2;min-width:160px">
+          <label>Motivo</label>
+          <input type="text" id="adj-pontos-motivo" placeholder="Ex: Participação extraordinária">
+        </div>
+        <button class="btn btn-primary" onclick="ajustarPontos(${empId})">Aplicar</button>
+      </div>
+      <p id="adj-pontos-msg" class="hint" style="margin-top:6px"></p>`);
+  } catch (err) { toast(err.message, 'erro'); }
+}
+
+async function ajustarPontos(empId) {
+  const pontos = Number(document.getElementById('adj-pontos-val').value);
+  const motivo = document.getElementById('adj-pontos-motivo').value.trim();
+  if (!pontos || isNaN(pontos)) return toast('Informe um valor de pontos.', 'erro');
+  try {
+    const r = await api(`/api/colaboradores/${empId}/pontos`, { method: 'POST', body: { pontos, motivo } });
+    const msg = document.getElementById('adj-pontos-msg');
+    if (msg) msg.textContent = `Novo total: ${r.novoTotal} pontos.`;
+    document.getElementById('adj-pontos-val').value = '';
+    document.getElementById('adj-pontos-motivo').value = '';
+    toast(`${pontos > 0 ? '+' : ''}${pontos} pontos aplicados!`, 'ok');
+    await carregarColaboradores();
+  } catch (err) { toast(err.message, 'erro'); }
+}
+
+/* ── Central de Engajamento ── */
+
+let ENG_TAB_ATIVA = 'campanhas';
+
+async function carregarEngajamento() {
+  engTab(ENG_TAB_ATIVA);
+}
+
+function engTab(qual) {
+  ENG_TAB_ATIVA = qual;
+  document.querySelectorAll('.eng-tab').forEach(b => b.classList.toggle('active', b.textContent.toLowerCase().includes(qual === 'hall' ? 'campe' : qual === 'batalha' ? 'equipe' : qual === 'reconhecimentos' ? 'reconhec' : qual)));
+  ['campanhas', 'desafios', 'reconhecimentos', 'batalha', 'hall'].forEach(t => {
+    const el = document.getElementById('eng-' + t);
+    if (el) el.classList.toggle('hidden', t !== qual);
+  });
+  if (qual === 'campanhas')       carregarCampanhas();
+  if (qual === 'desafios')        carregarDesafios();
+  if (qual === 'reconhecimentos') carregarReconhecimentos();
+  if (qual === 'batalha')         carregarBatalhaEquipes();
+  if (qual === 'hall')            carregarHallOfChampions();
+}
+
+/* Campanhas */
+async function carregarCampanhas() {
+  try {
+    const lista = await api('/api/campanhas');
+    const el = document.getElementById('campanhas-lista');
+    if (!el) return;
+    if (!lista.length) { el.innerHTML = '<p class="hint" style="text-align:center;padding:24px">Nenhuma campanha criada ainda.</p>'; return; }
+    const TIPOS = { participacao: '✅ Participação', observacoes: '🔍 Observações', sugestoes: '💡 Sugestões', quiz: '🧠 Quiz', feed: '📣 Mural' };
+    el.innerHTML = lista.map(c => `
+      <div class="campanha-card panel" style="margin-bottom:10px">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:8px">
+          <div>
+            <strong>${esc(c.nome)}</strong>
+            <span class="tag tag-azul" style="margin-left:8px">${TIPOS[c.tipo] || c.tipo}</span>
+            ${c.ativo ? '<span class="tag tag-verde">Ativa</span>' : '<span class="tag tag-inativo">Encerrada</span>'}
+          </div>
+          <div style="display:flex;gap:6px">
+            ${c.ativo ? `<button class="btn btn-sm" onclick="encerrarCampanha(${c.id})">Encerrar</button>` : ''}
+            <button class="btn btn-sm btn-perigo" onclick="excluirCampanha(${c.id})">✕</button>
+          </div>
+        </div>
+        <p class="hint" style="margin-top:6px">${esc(c.descricao || '')} ${c.inicio ? `· ${dataBr(c.inicio)} a ${dataBr(c.fim) || '...'}` : ''} ${c.meta ? `· Meta: ${c.meta}` : ''} ${c.pontosBonus ? `· Bônus: ${c.pontosBonus} pts` : ''}</p>
+      </div>`).join('');
+  } catch (err) { toast(err.message, 'erro'); }
+}
+
+function abrirNovaCampanha() {
+  abrirModal('🎯 Nova Campanha', `
+    <label>Nome *</label>
+    <input type="text" id="camp-nome" placeholder="Ex.: SIPAT 2026, Maio Amarelo">
+    <label>Tipo de meta</label>
+    <select id="camp-tipo">
+      <option value="participacao">Participação (check-ins)</option>
+      <option value="observacoes">Observações de segurança</option>
+      <option value="sugestoes">Sugestões de melhoria</option>
+      <option value="quiz">Respostas de quiz</option>
+      <option value="feed">Publicações no mural</option>
+    </select>
+    <label>Descrição</label>
+    <textarea id="camp-desc" style="min-height:60px" placeholder="Objetivo da campanha..."></textarea>
+    <div class="grid-2">
+      <div><label>Data início</label><input type="date" id="camp-ini"></div>
+      <div><label>Data fim</label><input type="date" id="camp-fim"></div>
+    </div>
+    <div class="grid-2">
+      <div><label>Meta (quantidade)</label><input type="number" id="camp-meta" min="0" value="0"></div>
+      <div><label>Bônus de pontos</label><input type="number" id="camp-bonus" min="0" value="0"></div>
+    </div>
+    <button class="btn btn-primary btn-block" style="margin-top:14px" onclick="salvarCampanha()">Criar campanha</button>`);
+}
+
+async function salvarCampanha() {
+  const nome = document.getElementById('camp-nome').value.trim();
+  if (!nome) return toast('Nome obrigatório.', 'erro');
+  try {
+    await api('/api/campanhas', { method: 'POST', body: {
+      nome, tipo: document.getElementById('camp-tipo').value,
+      descricao: document.getElementById('camp-desc').value,
+      inicio: document.getElementById('camp-ini').value,
+      fim: document.getElementById('camp-fim').value,
+      meta: Number(document.getElementById('camp-meta').value),
+      pontosBonus: Number(document.getElementById('camp-bonus').value)
+    }});
+    fecharModal();
+    toast('Campanha criada!', 'ok');
+    await carregarCampanhas();
+  } catch (err) { toast(err.message, 'erro'); }
+}
+
+async function encerrarCampanha(id) {
+  try {
+    await api(`/api/campanhas/${id}`, { method: 'PUT', body: { ativo: false } });
+    toast('Campanha encerrada.', 'ok');
+    await carregarCampanhas();
+  } catch (err) { toast(err.message, 'erro'); }
+}
+
+async function excluirCampanha(id) {
+  if (!confirm('Excluir esta campanha?')) return;
+  try {
+    await api(`/api/campanhas/${id}`, { method: 'DELETE' });
+    await carregarCampanhas();
+  } catch (err) { toast(err.message, 'erro'); }
+}
+
+/* Desafios */
+async function carregarDesafios() {
+  try {
+    const lista = await api('/api/desafios');
+    const el = document.getElementById('desafios-lista');
+    if (!el) return;
+    if (!lista.length) { el.innerHTML = '<p class="hint" style="text-align:center;padding:24px">Nenhum desafio criado ainda.</p>'; return; }
+    const TIPOS = { checkin: '✅ Check-in', observacoes: '🔍 Observações', sugestoes: '💡 Sugestões', quiz: '🧠 Quiz', feed: '📣 Mural' };
+    el.innerHTML = lista.map(d => `
+      <div class="panel" style="margin-bottom:10px">
+        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
+          <div>
+            <strong>${esc(d.nome)}</strong>
+            <span class="tag tag-azul" style="margin-left:8px">${TIPOS[d.tipo] || d.tipo}</span>
+          </div>
+          <button class="btn btn-sm" onclick="verProgressoDesafio(${d.id})">Ver progresso</button>
+        </div>
+        <p class="hint" style="margin-top:4px">${esc(d.descricao || '')} · Meta: ${d.metaValor} · +${d.pontosRecompensa} pts · ${dataBr(d.semanaInicio)} a ${dataBr(d.semanaFim)}</p>
+      </div>`).join('');
+  } catch (err) { toast(err.message, 'erro'); }
+}
+
+function abrirNovoDesafio() {
+  const hoje = new Date().toISOString().slice(0, 10);
+  const dom = new Date(); dom.setDate(dom.getDate() + (7 - dom.getDay()));
+  const fimSemana = dom.toISOString().slice(0, 10);
+  abrirModal('⚡ Novo Desafio da Semana', `
+    <label>Nome *</label>
+    <input type="text" id="des-nome" placeholder="Ex.: Registre uma observação esta semana">
+    <label>Descrição</label>
+    <textarea id="des-desc" style="min-height:60px" placeholder="Detalhe do desafio..."></textarea>
+    <label>Tipo de ação</label>
+    <select id="des-tipo">
+      <option value="checkin">Participar de DDS/Treinamento</option>
+      <option value="observacoes">Registrar observação de segurança</option>
+      <option value="sugestoes">Enviar sugestão de melhoria</option>
+      <option value="quiz">Responder quiz diário</option>
+      <option value="feed">Publicar no mural</option>
+    </select>
+    <div class="grid-2">
+      <div><label>Meta (quantidade)</label><input type="number" id="des-meta" min="1" value="1"></div>
+      <div><label>Pontos de recompensa</label><input type="number" id="des-pts" min="0" value="50"></div>
+    </div>
+    <div class="grid-2">
+      <div><label>Início</label><input type="date" id="des-ini" value="${hoje}"></div>
+      <div><label>Fim</label><input type="date" id="des-fim" value="${fimSemana}"></div>
+    </div>
+    <button class="btn btn-primary btn-block" style="margin-top:14px" onclick="salvarDesafio()">Criar desafio</button>`);
+}
+
+async function salvarDesafio() {
+  const nome = document.getElementById('des-nome').value.trim();
+  if (!nome) return toast('Nome obrigatório.', 'erro');
+  try {
+    await api('/api/desafios', { method: 'POST', body: {
+      nome, descricao: document.getElementById('des-desc').value,
+      tipo: document.getElementById('des-tipo').value,
+      metaValor: Number(document.getElementById('des-meta').value),
+      pontosRecompensa: Number(document.getElementById('des-pts').value),
+      semanaInicio: document.getElementById('des-ini').value,
+      semanaFim: document.getElementById('des-fim').value
+    }});
+    fecharModal();
+    toast('Desafio criado!', 'ok');
+    await carregarDesafios();
+  } catch (err) { toast(err.message, 'erro'); }
+}
+
+async function verProgressoDesafio(id) {
+  try {
+    const r = await api(`/api/desafios/${id}/progresso`);
+    const rows = r.progresso.map(p => `<tr><td>${esc(p.nome)}</td><td>${esc(p.equipe)}</td><td>${p.valor}/${p.meta}</td><td>${p.concluido ? '<span class="tag tag-verde">✅ Concluído</span>' : '<span class="tag tag-laranja">Em andamento</span>'}</td></tr>`).join('');
+    abrirModal(`⚡ Progresso — ${esc(r.desafio.nome)}`, `
+      <p class="hint">${r.concluidos} de ${r.progresso.length} colaboradores concluíram este desafio.</p>
+      <table class="tabela"><tr><th>Colaborador</th><th>Equipe</th><th>Progresso</th><th>Status</th></tr>${rows}</table>`);
+  } catch (err) { toast(err.message, 'erro'); }
+}
+
+/* Reconhecimentos */
+async function carregarReconhecimentos() {
+  try {
+    const lista = await api('/api/reconhecimentos');
+    const el = document.getElementById('reconhecimentos-lista');
+    if (!el) return;
+    if (!lista.length) { el.innerHTML = '<p class="hint" style="text-align:center;padding:24px">Nenhum reconhecimento publicado ainda.</p>'; return; }
+    el.innerHTML = lista.map(r => `
+      <div class="panel" style="margin-bottom:10px;border-left:4px solid var(--verde)">
+        <div style="display:flex;align-items:center;gap:10px">
+          <div style="font-size:28px">${r.badgeLabel ? r.badgeLabel.split(' ')[0] : '🌟'}</div>
+          <div>
+            <strong>${esc(r.badgeLabel || 'Reconhecimento')}</strong>
+            <span style="margin-left:8px;font-weight:700;color:var(--azul)">${esc(r.homenageadoNome)}</span>
+            <span class="hint" style="margin-left:8px">por ${esc(r.gestorNome)} · ${tsDataHora(r.timestamp)}</span>
+          </div>
+        </div>
+        ${r.mensagem ? `<p style="margin-top:8px;font-size:13px;color:var(--texto-sec)">${esc(r.mensagem)}</p>` : ''}
+      </div>`).join('');
+  } catch (err) { toast(err.message, 'erro'); }
+}
+
+function abrirNovoReconhecimento() {
+  const opts = COLABORADORES.filter(c => c.ativo !== false).map(c => `<option value="${c.id}">${esc(c.nome)} (${esc(c.matricula)})</option>`).join('');
+  abrirModal('🏆 Reconhecimento Público', `
+    <label>Colaborador homenageado *</label>
+    <select id="rec-hom">${opts || '<option value="">Nenhum colaborador cadastrado</option>'}</select>
+    <label>Tipo de badge</label>
+    <select id="rec-badge">
+      <option value="destaque_mes">🏆 Destaque do Mês</option>
+      <option value="heroi_seguranca">🛡 Herói da Segurança</option>
+      <option value="inovador">💡 Inovador</option>
+      <option value="persistencia">💪 Persistência</option>
+    </select>
+    <label>Mensagem *</label>
+    <textarea id="rec-msg-g" style="min-height:80px" placeholder="Descreva a conquista ou comportamento reconhecido..."></textarea>
+    <button class="btn btn-primary btn-block" style="margin-top:14px" onclick="salvarReconhecimento()">Publicar reconhecimento</button>`);
+}
+
+async function salvarReconhecimento() {
+  const homenageadoId = Number(document.getElementById('rec-hom').value);
+  const mensagem = document.getElementById('rec-msg-g').value.trim();
+  if (!homenageadoId || !mensagem) return toast('Selecione o colaborador e escreva a mensagem.', 'erro');
+  try {
+    await api('/api/reconhecimentos', { method: 'POST', body: { homenageadoId, tipoBadge: document.getElementById('rec-badge').value, mensagem } });
+    fecharModal();
+    toast('Reconhecimento publicado no mural! 🏆', 'ok');
+    await carregarReconhecimentos();
+  } catch (err) { toast(err.message, 'erro'); }
+}
+
+/* Batalha de Equipes */
+async function carregarBatalhaEquipes() {
+  try {
+    const equipes = await api('/api/batalha-equipes');
+    const el = document.getElementById('batalha-lista');
+    if (!el) return;
+    if (!equipes.length) { el.innerHTML = '<p class="hint" style="text-align:center;padding:24px">Nenhuma equipe cadastrada ainda. Adicione o campo "Equipe" nos colaboradores.</p>'; return; }
+    const maxPts = equipes[0]?.pontos || 1;
+    el.innerHTML = equipes.map(eq => {
+      const pct = Math.round((eq.pontos / maxPts) * 100);
+      const medalha = eq.posicao === 1 ? '🥇' : eq.posicao === 2 ? '🥈' : eq.posicao === 3 ? '🥉' : `${eq.posicao}º`;
+      return `
+        <div class="equipe-row">
+          <div style="display:flex;align-items:center;gap:16px">
+            <div style="font-size:28px;width:40px;text-align:center">${medalha}</div>
+            <div style="flex:1">
+              <div class="equipe-nome">${esc(eq.equipe)}</div>
+              <div class="equipe-membros">${eq.membros.length} membros: ${eq.membros.slice(0, 5).map(m => esc(m.nome)).join(', ')}${eq.membros.length > 5 ? '...' : ''}</div>
+              <div class="nivel-barra-wrap" style="margin-top:6px"><div class="nivel-barra" style="width:${pct}%"></div></div>
+            </div>
+            <div class="equipe-pts">${eq.pontos.toLocaleString('pt-BR')}<div style="font-size:11px;color:var(--texto-suave);font-weight:400">pontos</div></div>
+          </div>
+        </div>`;
+    }).join('');
+  } catch (err) { toast(err.message, 'erro'); }
+}
+
+/* Hall of Champions */
+async function carregarHallOfChampions() {
+  try {
+    const h = await api('/api/hall-of-champions');
+    const el = document.getElementById('hall-conteudo');
+    if (!el) return;
+    const top10Html = h.top10.map((r, i) => {
+      const medalha = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `${r.posicao}º`;
+      return `<div class="champion-card"><div class="champion-pos">${medalha}</div><div class="champion-nome">${esc(r.nome)}</div><div style="font-size:12px;opacity:.8;margin-top:2px">${r.conquista ? r.conquista.emoji + ' ' + r.conquista.nome : '—'}</div><div class="champion-pts">${r.pontos.toLocaleString('pt-BR')}<span style="font-size:12px;font-weight:400;opacity:.8"> pts</span></div></div>`;
+    }).join('');
+
+    const top10EqHtml = h.top10Equipes.map((eq, i) => {
+      const medalha = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `${eq.posicao}º`;
+      return `<div style="display:flex;align-items:center;gap:12px;padding:8px 0;border-bottom:1px solid #f0f3f7"><span style="font-size:20px;width:32px">${medalha}</span><span style="flex:1;font-weight:700">${esc(eq.equipe)}</span><span class="pontos-cel">${eq.pontos.toLocaleString('pt-BR')} pts</span></div>`;
+    }).join('') || '<p class="hint">Nenhuma equipe cadastrada.</p>';
+
+    const NIVEL_NOMES = ['', 'Iniciante', 'Observador', 'Protetor', 'Inspiração', 'Agente', 'Guardião Op.', 'Embaixador', 'Mestre', 'Lenda', 'Guardião Sup.'];
+    const NIVEL_EMOJIS = ['', '🔰', '👀', '🛡️', '⭐', '⚡', '🏅', '👑', '🔥', '💎', '🏆'];
+    const totalEmps = Object.values(h.nivelDist).reduce((a, b) => a + b, 0) || 1;
+    const nivelDistHtml = Object.entries(h.nivelDist).map(([n, cnt]) => {
+      const pct = Math.round((cnt / totalEmps) * 100);
+      return `<div class="ics-dimensao-linha"><span class="ics-dimensao-nome">${NIVEL_EMOJIS[n]} N${n} ${NIVEL_NOMES[n]}</span><div class="ics-dimensao-barra-wrap"><div class="ics-dimensao-barra" style="width:${pct}%"></div></div><span class="ics-dimensao-valor">${cnt}</span></div>`;
+    }).join('');
+
+    el.innerHTML = `
+      <h3 style="margin-bottom:14px">🏆 Top 10 Colaboradores — Todos os Tempos</h3>
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:10px;margin-bottom:24px">${top10Html || '<p class="hint">Nenhum dado.</p>'}</div>
+      <div class="grid-2">
+        <div class="panel">
+          <h3 style="margin-bottom:12px">🏅 Top 10 Equipes</h3>
+          ${top10EqHtml}
+        </div>
+        <div class="panel">
+          <h3 style="margin-bottom:12px">📊 Distribuição de Níveis</h3>
+          ${nivelDistHtml}
+        </div>
+      </div>`;
+  } catch (err) { toast(err.message, 'erro'); }
+}
+
+/* ── Pesquisas (gestor) ── */
+
+async function carregarPesquisasGestor() {
+  try {
+    const lista = await api('/api/pesquisas');
+    const el = document.getElementById('tabela-pesquisas');
+    if (!el) return;
+    let h = '<tr><th>Título</th><th>Perguntas</th><th>Respostas</th><th>Status</th><th></th></tr>';
+    if (!lista.length) h += '<tr><td colspan="5" class="vazio">Nenhuma pesquisa criada ainda.</td></tr>';
+    for (const p of lista) {
+      h += `<tr>
+        <td><strong>${esc(p.titulo)}</strong><br><span class="hint">${esc(p.descricao || '')}</span></td>
+        <td>${p.totalPerguntas || (p.perguntas || []).length}</td>
+        <td>${p.totalRespostas || 0}</td>
+        <td>${p.ativo ? '<span class="tag tag-verde">Ativa</span>' : '<span class="tag tag-inativo">Encerrada</span>'}</td>
+        <td class="acoes">
+          <button class="btn btn-sm" onclick="verResultados(${p.id})">Resultados</button>
+          ${p.ativo ? `<button class="btn btn-sm" onclick="encerrarPesquisa(${p.id})">Encerrar</button>` : ''}
+        </td>
+      </tr>`;
+    }
+    el.innerHTML = h;
+  } catch (err) { toast(err.message, 'erro'); }
+}
+
+let PERGUNTAS_FORM = [];
+
+function abrirNovaPesquisa() {
+  PERGUNTAS_FORM = [];
+  abrirModal('📋 Nova Pesquisa', `
+    <label>Título *</label>
+    <input type="text" id="pes-titulo" placeholder="Ex.: Pesquisa de Clima 2026">
+    <label>Descrição</label>
+    <textarea id="pes-desc" style="min-height:60px" placeholder="Contexto e objetivo da pesquisa..."></textarea>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin:14px 0 8px">
+      <h4 style="margin:0">Perguntas</h4>
+      <button class="btn btn-sm btn-primary" onclick="adicionarPergunta()">+ Pergunta</button>
+    </div>
+    <div id="perguntas-form-lista"></div>
+    <button class="btn btn-primary btn-block" style="margin-top:14px" onclick="salvarPesquisa()">Publicar pesquisa</button>`);
+  adicionarPergunta();
+}
+
+function adicionarPergunta() {
+  const id = Date.now();
+  PERGUNTAS_FORM.push(id);
+  const el = document.getElementById('perguntas-form-lista');
+  if (!el) return;
+  const div = document.createElement('div');
+  div.className = 'pergunta-row';
+  div.id = 'perg-' + id;
+  div.innerHTML = `
+    <select id="perg-tipo-${id}">
+      <option value="escala">Escala 1-5</option>
+      <option value="sim_nao">Sim / Não</option>
+      <option value="aberta">Resposta livre</option>
+    </select>
+    <input type="text" id="perg-txt-${id}" placeholder="Texto da pergunta *">
+    <button class="btn btn-sm btn-perigo" onclick="removerPergunta(${id})">✕</button>`;
+  el.appendChild(div);
+}
+
+function removerPergunta(id) {
+  PERGUNTAS_FORM = PERGUNTAS_FORM.filter(x => x !== id);
+  const el = document.getElementById('perg-' + id);
+  if (el) el.remove();
+}
+
+async function salvarPesquisa() {
+  const titulo = document.getElementById('pes-titulo').value.trim();
+  if (!titulo) return toast('Título obrigatório.', 'erro');
+  const perguntas = PERGUNTAS_FORM.map(id => ({
+    texto: (document.getElementById('perg-txt-' + id) || {}).value?.trim() || '',
+    tipo: (document.getElementById('perg-tipo-' + id) || {}).value || 'escala'
+  })).filter(p => p.texto);
+  if (!perguntas.length) return toast('Adicione ao menos uma pergunta.', 'erro');
+  try {
+    await api('/api/pesquisas', { method: 'POST', body: { titulo, descricao: document.getElementById('pes-desc').value, perguntas } });
+    fecharModal();
+    toast('Pesquisa publicada!', 'ok');
+    await carregarPesquisasGestor();
+  } catch (err) { toast(err.message, 'erro'); }
+}
+
+async function verResultados(id) {
+  try {
+    const r = await api(`/api/pesquisas/${id}/resultados`);
+    const area = document.getElementById('pesquisa-resultados-area');
+    if (!area) return;
+    area.classList.remove('hidden');
+    area.innerHTML = `
+      <div class="panel">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+          <h3>${esc(r.pesquisa.titulo)} — Resultados</h3>
+          <span class="hint">${r.totalRespostas} resposta(s)</span>
+        </div>
+        ${r.resultados.map(perg => {
+          let detHtml = '';
+          if (perg.tipo === 'escala') {
+            const dist = perg.distribuicao || {};
+            const maxVal = Math.max(...Object.values(dist), 1);
+            detHtml = `<p class="hint">Média: <strong>${perg.media || '—'}</strong> / 5</p>` +
+              [1,2,3,4,5].map(n => {
+                const cnt = dist[n] || 0;
+                const pct = Math.round((cnt / maxVal) * 100);
+                return `<div class="survey-barra-wrap"><span class="survey-barra-label">${n} ⭐ (${cnt})</span><div class="survey-barra" style="width:${pct}%;max-width:200px"></div></div>`;
+              }).join('');
+          } else if (perg.tipo === 'sim_nao') {
+            const total = (perg.sim || 0) + (perg.nao || 0) || 1;
+            detHtml = `<div class="survey-barra-wrap"><span class="survey-barra-label">Sim (${perg.sim || 0})</span><div class="survey-barra" style="width:${Math.round(((perg.sim||0)/total)*100)}%;max-width:200px;background:var(--verde)"></div></div>
+            <div class="survey-barra-wrap"><span class="survey-barra-label">Não (${perg.nao || 0})</span><div class="survey-barra" style="width:${Math.round(((perg.nao||0)/total)*100)}%;max-width:200px;background:var(--vermelho)"></div></div>`;
+          } else {
+            detHtml = (perg.textos || []).map(t => `<div class="audit-entry"><span>${esc(t)}</span></div>`).join('') || '<p class="hint">Sem respostas abertas ainda.</p>';
+          }
+          return `<div style="margin-bottom:16px;padding:12px;background:#f8fafc;border-radius:8px"><p style="font-weight:600;margin-bottom:6px">${esc(perg.texto)}</p>${detHtml}</div>`;
+        }).join('')}
+      </div>`;
+    area.scrollIntoView({ behavior: 'smooth' });
+  } catch (err) { toast(err.message, 'erro'); }
+}
+
+async function encerrarPesquisa(id) {
+  if (!confirm('Encerrar esta pesquisa? Os colaboradores não poderão mais responder.')) return;
+  try {
+    await api(`/api/pesquisas/${id}`, { method: 'PUT', body: { ativo: false } });
+    toast('Pesquisa encerrada.', 'ok');
+    await carregarPesquisasGestor();
+  } catch (err) { toast(err.message, 'erro'); }
+}
+
+/* ── Pesquisas (colaborador) ── */
+
+async function carregarPesquisasColab() {
+  const el = document.getElementById('pesquisas-colab-lista');
+  if (!el) return;
+  try {
+    const lista = await api('/api/pesquisas/ativas');
+    if (!lista.length) {
+      el.innerHTML = '<div class="panel" style="text-align:center;padding:32px"><div style="font-size:48px">📋</div><h3>Nenhuma pesquisa ativa</h3><p class="hint">Fique atento! Novas pesquisas aparecerão aqui.</p></div>';
+      return;
+    }
+    el.innerHTML = lista.map(p => `
+      <div class="panel pesquisa-colab-card" id="pesq-card-${p.id}" style="margin-bottom:14px">
+        <h3>${esc(p.titulo)}</h3>
+        ${p.descricao ? `<p class="hint">${esc(p.descricao)}</p>` : ''}
+        <div id="pesq-form-${p.id}">
+          ${p.perguntas.map(perg => `
+            <div style="margin-bottom:14px">
+              <p style="font-weight:600;margin-bottom:6px">${esc(perg.texto)}</p>
+              ${perg.tipo === 'escala' ? `
+                <div class="quiz-opcoes" style="flex-direction:row;flex-wrap:wrap">
+                  ${[1,2,3,4,5].map(n => `<button class="quiz-opcao-btn escala-btn" onclick="selecionarEscala(${p.id},${perg.id},${n},this)" data-perg="${perg.id}" data-val="${n}" style="min-width:60px"><span class="quiz-letra">${n}</span></button>`).join('')}
+                  <span style="font-size:11px;align-self:center;color:var(--texto-suave)">1=Discordo · 5=Concordo</span>
+                </div>` :
+              perg.tipo === 'sim_nao' ? `
+                <div style="display:flex;gap:8px">
+                  <button class="quiz-opcao-btn simnao-btn" onclick="selecionarSimNao(${p.id},${perg.id},'sim',this)" data-perg="${perg.id}" data-val="sim">✅ Sim</button>
+                  <button class="quiz-opcao-btn simnao-btn" onclick="selecionarSimNao(${p.id},${perg.id},'nao',this)" data-perg="${perg.id}" data-val="nao">❌ Não</button>
+                </div>` :
+              `<textarea class="aberta-resp" data-perg="${perg.id}" placeholder="Sua resposta..." style="width:100%;min-height:70px;margin-top:4px"></textarea>`}
+            </div>`).join('')}
+          <button class="btn btn-primary btn-block" onclick="enviarPesquisa(${p.id})">Enviar respostas (+15 pts)</button>
+        </div>
+      </div>`).join('');
+    // Track selected values
+    window._pesqRespostas = {};
+  } catch (err) {
+    el.innerHTML = '<p class="hint" style="text-align:center;padding:24px">Não foi possível carregar as pesquisas.</p>';
+  }
+}
+
+function selecionarEscala(pesqId, pergId, val, btn) {
+  document.querySelectorAll(`#pesq-form-${pesqId} .escala-btn[data-perg="${pergId}"]`).forEach(b => b.classList.remove('quiz-acerto'));
+  btn.classList.add('quiz-acerto');
+  if (!window._pesqRespostas) window._pesqRespostas = {};
+  if (!window._pesqRespostas[pesqId]) window._pesqRespostas[pesqId] = {};
+  window._pesqRespostas[pesqId][pergId] = val;
+}
+
+function selecionarSimNao(pesqId, pergId, val, btn) {
+  document.querySelectorAll(`#pesq-form-${pesqId} .simnao-btn[data-perg="${pergId}"]`).forEach(b => b.classList.remove('quiz-acerto'));
+  btn.classList.add('quiz-acerto');
+  if (!window._pesqRespostas) window._pesqRespostas = {};
+  if (!window._pesqRespostas[pesqId]) window._pesqRespostas[pesqId] = {};
+  window._pesqRespostas[pesqId][pergId] = val;
+}
+
+async function enviarPesquisa(pesqId) {
+  const formEl = document.getElementById('pesq-form-' + pesqId);
+  if (!formEl) return;
+  const respostas = [];
+  const selecionadas = window._pesqRespostas?.[pesqId] || {};
+  formEl.querySelectorAll('[data-perg]').forEach(el => {
+    const pid = Number(el.dataset.perg);
+    if (selecionadas[pid] !== undefined && !respostas.find(r => r.perguntaId === pid)) {
+      respostas.push({ perguntaId: pid, valor: selecionadas[pid] });
+    }
+  });
+  formEl.querySelectorAll('.aberta-resp').forEach(el => {
+    const pid = Number(el.dataset.perg);
+    const val = el.value.trim();
+    if (val) respostas.push({ perguntaId: pid, valor: val });
+  });
+  try {
+    await api(`/api/pesquisas/${pesqId}/responder`, { method: 'POST', body: { respostas } });
+    const card = document.getElementById('pesq-card-' + pesqId);
+    if (card) card.innerHTML = `<div style="text-align:center;padding:20px"><span style="font-size:40px">✅</span><h3 style="margin-top:8px">Obrigado pela sua resposta!</h3><p class="hint">+15 pontos adicionados.</p></div>`;
+    toast('Pesquisa respondida! +15 pontos 📋', 'ok');
+  } catch (err) { toast(err.message, 'erro'); }
 }
 
 /* ── Boot ── */

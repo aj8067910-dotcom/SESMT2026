@@ -168,11 +168,16 @@ function loadDb() {
     if (c.dataAtivacao   === undefined)      c.dataAtivacao = '';
     if (c.dataVencimento === undefined)      c.dataVencimento = '';
   }
-  if (!db.auditLog)      db.auditLog = [];
-  if (!db.pontosExtras)  db.pontosExtras = [];
-  if (!db.feed)          db.feed = [];
-  if (!db.comunicados)   db.comunicados = [];
-  if (!db.quizzes)       db.quizzes = [];
+  if (!db.auditLog)           db.auditLog = [];
+  if (!db.pontosExtras)       db.pontosExtras = [];
+  if (!db.feed)               db.feed = [];
+  if (!db.comunicados)        db.comunicados = [];
+  if (!db.quizzes)            db.quizzes = [];
+  if (!db.campanhas)          db.campanhas = [];
+  if (!db.desafios)           db.desafios = [];
+  if (!db.pesquisas)          db.pesquisas = [];
+  if (!db.respostasPesquisa)  db.respostasPesquisa = [];
+  if (!db.reconhecimentos)    db.reconhecimentos = [];
   // migrar colaboradores sem streak/nivel
   for (const e of db.employees) {
     if (e.streakAtual     === undefined) e.streakAtual = 0;
@@ -468,6 +473,75 @@ function calcIES(employeeId) {
   const bonusObs = Math.min(20, myObs * 5);
   const bonusSug = Math.min(10, mySugs * 5);
   return Math.round((taxaParticipacao * 0.5 + taxaAvaliacao * 0.3 + bonusObs + bonusSug));
+}
+
+function calcICS(companyId) {
+  const emps = db.employees.filter(e => e.ativo !== false && e.companyId === companyId);
+  if (!emps.length) return { ics: 0, nota: 'E', dimensoes: {} };
+  const empIds = new Set(emps.map(e => e.id));
+  const n = emps.length;
+
+  // Participação (30%): % de colaboradores com ao menos 1 check-in
+  const events = db.events.filter(ev => ev.companyId === companyId);
+  const empComCheckin = new Set(db.checkins.filter(c => empIds.has(c.employeeId)).map(c => c.employeeId)).size;
+  const participacao = events.length ? Math.min(100, (empComCheckin / n) * 100) : 0;
+
+  // Comunicação (20%): % de leituras de comunicados confirmadas
+  const coms = (db.comunicados || []).filter(c => c.companyId === companyId);
+  let comunicacao = 0;
+  if (coms.length) {
+    const totalConfirmacoes = coms.reduce((s, c) => s + (c.leituras || []).filter(l => empIds.has(l.empId)).length, 0);
+    comunicacao = Math.min(100, (totalConfirmacoes / (coms.length * n)) * 100);
+  }
+
+  // Observações (15%): (obs/colab) / 2 * 100, alvo = 2 obs por colaborador
+  const totalObs = db.observations.filter(o => empIds.has(o.employeeId)).length;
+  const observacoes = Math.min(100, (totalObs / n) / 2 * 100);
+
+  // Sugestões (10%): (sugs/colab) * 100, alvo = 1 por colaborador
+  const totalSugs = db.suggestions.filter(sg => empIds.has(sg.employeeId)).length;
+  const sugestoes = Math.min(100, (totalSugs / n) * 100);
+
+  // Quiz (10%): respondentes únicos / colaboradores
+  const quizzes = (db.quizzes || []).filter(q => q.companyId === companyId);
+  let quiz = 0;
+  if (quizzes.length) {
+    const unicos = new Set(quizzes.flatMap(q => (q.respostas || []).filter(r => empIds.has(r.empId)).map(r => r.empId))).size;
+    quiz = Math.min(100, (unicos / n) * 100);
+  }
+
+  // Engajamento (15%): posts no feed / colaboradores, alvo = 1 por colaborador
+  const feedPosts = (db.feed || []).filter(f => f.companyId === companyId && empIds.has(f.autorId)).length;
+  const engajamento = Math.min(100, (feedPosts / n) * 100);
+
+  const ics = Math.min(100, Math.max(0, Math.round(
+    participacao * 0.30 + comunicacao * 0.20 + observacoes * 0.15 +
+    sugestoes * 0.10 + quiz * 0.10 + engajamento * 0.15
+  )));
+  const nota = ics >= 80 ? 'A' : ics >= 60 ? 'B' : ics >= 40 ? 'C' : ics >= 20 ? 'D' : 'E';
+  return {
+    ics, nota,
+    dimensoes: {
+      participacao: Math.round(participacao),
+      comunicacao: Math.round(comunicacao),
+      observacoes: Math.round(observacoes),
+      sugestoes: Math.round(sugestoes),
+      quiz: Math.round(quiz),
+      engajamento: Math.round(engajamento)
+    }
+  };
+}
+
+function calcBatalhaEquipes(companyId) {
+  const ranking = buildRanking(companyId);
+  const map = {};
+  for (const r of ranking) {
+    const eq = r.equipe || 'Sem equipe';
+    if (!map[eq]) map[eq] = { equipe: eq, pontos: 0, membros: [] };
+    map[eq].pontos += r.pontos;
+    map[eq].membros.push({ id: r.id, nome: r.nome, pontos: r.pontos, nivel: r.conquista ? r.conquista.emoji : '🔰' });
+  }
+  return Object.values(map).sort((a, b) => b.pontos - a.pontos).map((eq, i) => ({ ...eq, posicao: i + 1 }));
 }
 
 function generateCode() {
@@ -1204,6 +1278,315 @@ route('GET', /^\/api\/dashboard$/, { role: 'gestor' }, async (req, res, m, body,
     top10: ranking.slice(0, 10),
     rankingCompleto: ranking
   });
+});
+
+/* ── Dashboard avançado ──────────────────────────────────────── */
+
+route('GET', /^\/api\/dashboard\/hoje$/, { role: 'gestor' }, async (req, res, m, body, s) => {
+  const hoje = todayStr();
+  const emps = db.employees.filter(e => e.ativo !== false && e.companyId === s.companyId);
+  const empIds = new Set(emps.map(e => e.id));
+  const evHoje = db.events.filter(ev => ev.companyId === s.companyId && ev.data === hoje);
+  const checkinsHoje = db.checkins.filter(c => empIds.has(c.employeeId) && c.timestamp && c.timestamp.startsWith(hoje));
+  const obsHoje = db.observations.filter(o => empIds.has(o.employeeId) && o.criadoEm && new Date(o.criadoEm).toISOString().startsWith(hoje));
+  const sugsHoje = db.suggestions.filter(sg => empIds.has(sg.employeeId) && sg.criadaEm && new Date(sg.criadaEm).toISOString().startsWith(hoje));
+  const comunsPendentes = (db.comunicados || []).filter(c => c.companyId === s.companyId && (c.leituras || []).filter(l => empIds.has(l.empId)).length < emps.length).length;
+  const pesquisasAtivas = (db.pesquisas || []).filter(p => p.companyId === s.companyId && p.ativo).length;
+  const empComCheckinHoje = new Set(checkinsHoje.map(c => c.employeeId)).size;
+  sendJson(res, 200, {
+    ddsHoje: evHoje.length,
+    ddsRealizados: evHoje.filter(ev => db.checkins.some(c => c.eventId === ev.id)).length,
+    treinamentosAgendados: db.events.filter(ev => ev.companyId === s.companyId && ev.tipo === 'Treinamento' && ev.data >= hoje).length,
+    comunicadosPendentes: comunsPendentes,
+    participacaoHoje: empComCheckinHoje,
+    participacaoHojePct: emps.length ? Math.round((empComCheckinHoje / emps.length) * 100) : 0,
+    obsHoje: obsHoje.length,
+    sugsHoje: sugsHoje.length,
+    pesquisasAtivas
+  });
+});
+
+route('GET', /^\/api\/dashboard\/mes$/, { role: 'gestor' }, async (req, res, m, body, s) => {
+  const agora = new Date();
+  const inicioMes = `${agora.getFullYear()}-${String(agora.getMonth() + 1).padStart(2, '0')}-01`;
+  const fimMes = agora.toISOString().slice(0, 10);
+  const emps = db.employees.filter(e => e.ativo !== false && e.companyId === s.companyId);
+  const empIds = new Set(emps.map(e => e.id));
+  const evMes = db.events.filter(ev => ev.companyId === s.companyId && ev.data >= inicioMes && ev.data <= fimMes);
+  const checkinsMes = db.checkins.filter(c => empIds.has(c.employeeId) && c.timestamp >= inicioMes);
+  const obsMes = db.observations.filter(o => empIds.has(o.employeeId) && o.criadoEm && new Date(o.criadoEm).toISOString() >= inicioMes);
+  const sugsMes = db.suggestions.filter(sg => empIds.has(sg.employeeId) && sg.criadaEm && new Date(sg.criadaEm).toISOString() >= inicioMes);
+  const participantesUnicos = new Set(checkinsMes.map(c => c.employeeId)).size;
+  const taxaAdesao = emps.length ? Math.round((participantesUnicos / emps.length) * 100) : 0;
+  const totalHorasTreinamento = evMes.filter(ev => ev.tipo === 'Treinamento').length; // estimativa: 1h por evento
+  const totalLeituras = (db.comunicados || []).filter(c => c.companyId === s.companyId).reduce((s, c) => s + (c.leituras || []).filter(l => empIds.has(l.empId)).length, 0);
+  const totalEsperadoLeituras = (db.comunicados || []).filter(c => c.companyId === s.companyId).length * emps.length;
+  const pctLeituras = totalEsperadoLeituras ? Math.round((totalLeituras / totalEsperadoLeituras) * 100) : 0;
+  const iesTotal = emps.reduce((s, e) => s + calcIES(e.id), 0);
+  const ieiMedio = emps.length ? Math.round(iesTotal / emps.length) : 0;
+  const ics = calcICS(s.companyId);
+  sendJson(res, 200, {
+    totalDDS: evMes.filter(ev => ev.tipo === 'DDS').length,
+    totalTreinamentos: evMes.filter(ev => ev.tipo === 'Treinamento').length,
+    totalParticipantes: participantesUnicos,
+    horasTreinamento: totalHorasTreinamento,
+    taxaAdesao,
+    ieiMedio,
+    ics: ics.ics,
+    icsNota: ics.nota,
+    sugsAprovadas: sugsMes.filter(sg => sg.status === 'aprovada').length,
+    obsRegistradas: obsMes.length,
+    pctLeituras
+  });
+});
+
+route('GET', /^\/api\/ics$/, { role: 'gestor' }, async (req, res, m, body, s) => {
+  sendJson(res, 200, calcICS(s.companyId));
+});
+
+/* ── Perfil completo e pontos (gestor) ───────────────────────── */
+
+route('GET', /^\/api\/colaboradores\/(\d+)\/perfil$/, { role: 'gestor' }, async (req, res, m, body, s) => {
+  const emp = db.employees.find(e => e.id === Number(m[1]) && e.companyId === s.companyId);
+  if (!emp) return sendJson(res, 404, { error: 'Colaborador não encontrado.' });
+  const pts = employeePoints(emp.id);
+  const nivel = getNivel(pts.total);
+  const checkins = db.checkins.filter(c => c.employeeId === emp.id).sort((a, b) => b.timestamp.localeCompare(a.timestamp)).slice(0, 20).map(c => {
+    const ev = db.events.find(e => e.id === c.eventId);
+    return { id: c.id, eventTema: ev ? ev.tema : '—', eventTipo: ev ? ev.tipo : '—', timestamp: c.timestamp, pontos: c.pontosAtribuidos };
+  });
+  const obs = db.observations.filter(o => o.employeeId === emp.id).length;
+  const sugs = db.suggestions.filter(sg => sg.employeeId === emp.id);
+  const extrasLog = (db.pontosExtras || []).filter(pe => pe.empId === emp.id).sort((a, b) => b.timestamp - a.timestamp).slice(0, 30);
+  const reconhecidos = (db.reconhecimentos || []).filter(r => r.homenageadoId === emp.id);
+  sendJson(res, 200, {
+    colaborador: emp,
+    pontos: pts.total, porTipo: pts.byType,
+    nivel, streakAtual: emp.streakAtual || 0, maiorStreak: emp.maiorStreak || 0,
+    checkins, totalObs: obs,
+    totalSugs: sugs.length, sugsAprovadas: sugs.filter(sg => sg.status === 'aprovada').length,
+    extrasLog, reconhecimentos: reconhecidos
+  });
+});
+
+route('POST', /^\/api\/colaboradores\/(\d+)\/pontos$/, { role: 'gestor' }, async (req, res, m, body, s) => {
+  const emp = db.employees.find(e => e.id === Number(m[1]) && e.companyId === s.companyId);
+  if (!emp) return sendJson(res, 404, { error: 'Colaborador não encontrado.' });
+  const pontos = Number(body.pontos);
+  if (!pontos || isNaN(pontos)) return sendJson(res, 400, { error: 'Valor de pontos inválido.' });
+  const motivo = String(body.motivo || '').trim() || (pontos > 0 ? 'Pontos adicionados pelo gestor' : 'Pontos removidos pelo gestor');
+  const mgr = db.managers.find(mg => mg.id === s.userId);
+  db.pontosExtras.push({ id: nextId(), empId: emp.id, companyId: s.companyId, tipo: 'gestor', descricao: `${pontos > 0 ? '➕' : '➖'} ${motivo}`, pontos, timestamp: Date.now() });
+  logAudit(s.userId, 'gestor', pontos > 0 ? 'adicionar_pontos' : 'remover_pontos', `${motivo} (${pontos > 0 ? '+' : ''}${pontos} pts) → ${emp.nome}`, s.companyId);
+  saveDb();
+  const novoTotal = employeePoints(emp.id).total;
+  sendJson(res, 200, { ok: true, novoTotal });
+});
+
+/* ── Campanhas ───────────────────────────────────────────────── */
+
+route('GET', /^\/api\/campanhas$/, { role: 'gestor' }, async (req, res, m, body, s) => {
+  sendJson(res, 200, (db.campanhas || []).filter(c => c.companyId === s.companyId).sort((a, b) => b.criadoEm - a.criadoEm));
+});
+
+route('POST', /^\/api\/campanhas$/, { role: 'gestor' }, async (req, res, m, body, s) => {
+  const nome = String(body.nome || '').trim();
+  if (!nome) return sendJson(res, 400, { error: 'Nome obrigatório.' });
+  const campanha = { id: nextId(), companyId: s.companyId, nome, tipo: body.tipo || 'participacao', inicio: body.inicio || todayStr(), fim: body.fim || '', meta: Number(body.meta) || 0, pontosBonus: Number(body.pontosBonus) || 0, descricao: String(body.descricao || ''), ativo: true, criadoEm: Date.now() };
+  db.campanhas.push(campanha);
+  saveDb();
+  sendJson(res, 201, campanha);
+});
+
+route('PUT', /^\/api\/campanhas\/(\d+)$/, { role: 'gestor' }, async (req, res, m, body, s) => {
+  const c = (db.campanhas || []).find(x => x.id === Number(m[1]) && x.companyId === s.companyId);
+  if (!c) return sendJson(res, 404, { error: 'Campanha não encontrada.' });
+  Object.assign(c, { nome: body.nome || c.nome, tipo: body.tipo || c.tipo, inicio: body.inicio || c.inicio, fim: body.fim !== undefined ? body.fim : c.fim, meta: body.meta !== undefined ? Number(body.meta) : c.meta, pontosBonus: body.pontosBonus !== undefined ? Number(body.pontosBonus) : c.pontosBonus, descricao: body.descricao !== undefined ? body.descricao : c.descricao, ativo: body.ativo !== undefined ? !!body.ativo : c.ativo });
+  saveDb();
+  sendJson(res, 200, c);
+});
+
+route('DELETE', /^\/api\/campanhas\/(\d+)$/, { role: 'gestor' }, async (req, res, m, body, s) => {
+  const idx = (db.campanhas || []).findIndex(x => x.id === Number(m[1]) && x.companyId === s.companyId);
+  if (idx < 0) return sendJson(res, 404, { error: 'Campanha não encontrada.' });
+  db.campanhas.splice(idx, 1);
+  saveDb();
+  sendJson(res, 200, { ok: true });
+});
+
+/* ── Desafios da Semana ──────────────────────────────────────── */
+
+route('GET', /^\/api\/desafios$/, { role: 'gestor' }, async (req, res, m, body, s) => {
+  const lista = (db.desafios || []).filter(d => d.companyId === s.companyId).sort((a, b) => b.criadoEm - a.criadoEm);
+  sendJson(res, 200, lista);
+});
+
+route('POST', /^\/api\/desafios$/, { role: 'gestor' }, async (req, res, m, body, s) => {
+  const nome = String(body.nome || '').trim();
+  if (!nome) return sendJson(res, 400, { error: 'Nome obrigatório.' });
+  const hoje = todayStr();
+  const d = { id: nextId(), companyId: s.companyId, nome, descricao: String(body.descricao || ''), tipo: body.tipo || 'checkin', metaValor: Number(body.metaValor) || 1, pontosRecompensa: Number(body.pontosRecompensa) || 50, semanaInicio: body.semanaInicio || hoje, semanaFim: body.semanaFim || hoje, criadoEm: Date.now() };
+  db.desafios.push(d);
+  saveDb();
+  sendJson(res, 201, d);
+});
+
+route('GET', /^\/api\/desafios\/(\d+)\/progresso$/, { role: 'gestor' }, async (req, res, m, body, s) => {
+  const desafio = (db.desafios || []).find(d => d.id === Number(m[1]) && d.companyId === s.companyId);
+  if (!desafio) return sendJson(res, 404, { error: 'Desafio não encontrado.' });
+  const emps = db.employees.filter(e => e.ativo !== false && e.companyId === s.companyId);
+  const empIds = new Set(emps.map(e => e.id));
+  const { semanaInicio, semanaFim, tipo, metaValor } = desafio;
+  const progresso = emps.map(emp => {
+    let valor = 0;
+    if (tipo === 'checkin') {
+      valor = db.checkins.filter(c => c.employeeId === emp.id && c.timestamp >= semanaInicio && c.timestamp <= semanaFim + 'T23:59:59').length;
+    } else if (tipo === 'observacoes') {
+      valor = db.observations.filter(o => o.employeeId === emp.id && o.criadoEm && new Date(o.criadoEm).toISOString() >= semanaInicio).length;
+    } else if (tipo === 'sugestoes') {
+      valor = db.suggestions.filter(sg => sg.employeeId === emp.id && sg.criadaEm && new Date(sg.criadaEm).toISOString() >= semanaInicio).length;
+    } else if (tipo === 'quiz') {
+      valor = (db.quizzes || []).filter(q => q.companyId === s.companyId && q.data >= semanaInicio && (q.respostas || []).some(r => r.empId === emp.id)).length;
+    } else if (tipo === 'feed') {
+      valor = (db.feed || []).filter(f => f.autorId === emp.id && f.companyId === s.companyId && new Date(f.timestamp).toISOString() >= semanaInicio).length;
+    }
+    return { id: emp.id, nome: emp.nome, equipe: emp.equipe || '', valor, meta: metaValor, concluido: valor >= metaValor };
+  });
+  sendJson(res, 200, { desafio, progresso, concluidos: progresso.filter(p => p.concluido).length });
+});
+
+/* ── Reconhecimentos Públicos ────────────────────────────────── */
+
+route('GET', /^\/api\/reconhecimentos$/, { role: 'gestor' }, async (req, res, m, body, s) => {
+  sendJson(res, 200, (db.reconhecimentos || []).filter(r => r.companyId === s.companyId).sort((a, b) => b.timestamp - a.timestamp).slice(0, 50));
+});
+
+route('POST', /^\/api\/reconhecimentos$/, { role: 'gestor' }, async (req, res, m, body, s) => {
+  const emp = db.employees.find(e => e.id === Number(body.homenageadoId) && e.companyId === s.companyId);
+  if (!emp) return sendJson(res, 400, { error: 'Colaborador não encontrado.' });
+  const mgr = db.managers.find(mg => mg.id === s.userId);
+  const BADGES = { destaque_mes: '🏆 Destaque do Mês', heroi_seguranca: '🛡 Herói da Segurança', inovador: '💡 Inovador', persistencia: '💪 Persistência' };
+  const badgeLabel = BADGES[body.tipoBadge] || '🌟 Reconhecimento';
+  const rec = { id: nextId(), companyId: s.companyId, gestorId: s.userId, gestorNome: mgr ? mgr.name : 'Gestor SST', homenageadoId: emp.id, homenageadoNome: emp.nome, tipoBadge: body.tipoBadge || 'destaque_mes', badgeLabel, mensagem: String(body.mensagem || '').trim(), timestamp: Date.now() };
+  db.reconhecimentos.push(rec);
+  db.feed.push({ id: nextId(), companyId: s.companyId, autorId: s.userId, autorRole: 'gestor', autorNome: mgr ? mgr.name : 'Gestor SST', autorFuncao: 'Gestor SST', tipo: 'reconhecimento', conteudo: `${badgeLabel}\n\n🎉 ${emp.nome} recebe este reconhecimento!\n\n${rec.mensagem}`, timestamp: Date.now(), reacoes: { like: [], aplausos: [], estrela: [] }, comentarios: [] });
+  saveDb();
+  sendJson(res, 201, rec);
+});
+
+/* ── Batalha de Equipes ──────────────────────────────────────── */
+
+route('GET', /^\/api\/batalha-equipes$/, { role: 'gestor' }, async (req, res, m, body, s) => {
+  sendJson(res, 200, calcBatalhaEquipes(s.companyId));
+});
+
+/* ── Hall of Champions ───────────────────────────────────────── */
+
+route('GET', /^\/api\/hall-of-champions$/, { role: 'gestor' }, async (req, res, m, body, s) => {
+  const ranking = buildRanking(s.companyId);
+  const equipes = calcBatalhaEquipes(s.companyId);
+  const emps = db.employees.filter(e => e.ativo !== false && e.companyId === s.companyId);
+  const nivelDist = {};
+  for (let i = 1; i <= 10; i++) nivelDist[i] = 0;
+  for (const emp of emps) {
+    const pts = employeePoints(emp.id);
+    const nivel = getNivel(pts.total);
+    nivelDist[nivel.nivel] = (nivelDist[nivel.nivel] || 0) + 1;
+  }
+  sendJson(res, 200, { top10: ranking.slice(0, 10), top10Equipes: equipes.slice(0, 10), nivelDist });
+});
+
+/* ── Pesquisas ───────────────────────────────────────────────── */
+
+route('GET', /^\/api\/pesquisas$/, { role: 'gestor' }, async (req, res, m, body, s) => {
+  const lista = (db.pesquisas || []).filter(p => p.companyId === s.companyId).sort((a, b) => b.criadoEm - a.criadoEm).map(p => ({
+    ...p, totalRespostas: (db.respostasPesquisa || []).filter(r => r.pesquisaId === p.id).length
+  }));
+  sendJson(res, 200, lista);
+});
+
+route('POST', /^\/api\/pesquisas$/, { role: 'gestor' }, async (req, res, m, body, s) => {
+  const titulo = String(body.titulo || '').trim();
+  if (!titulo) return sendJson(res, 400, { error: 'Título obrigatório.' });
+  if (!Array.isArray(body.perguntas) || !body.perguntas.length) return sendJson(res, 400, { error: 'Adicione ao menos uma pergunta.' });
+  const pesquisa = { id: nextId(), companyId: s.companyId, titulo, descricao: String(body.descricao || ''), perguntas: body.perguntas.map((p, i) => ({ id: i + 1, texto: String(p.texto || ''), tipo: p.tipo || 'escala' })), ativo: true, criadoEm: Date.now(), encerradaEm: null };
+  db.pesquisas.push(pesquisa);
+  saveDb();
+  sendJson(res, 201, pesquisa);
+});
+
+route('PUT', /^\/api\/pesquisas\/(\d+)$/, { role: 'gestor' }, async (req, res, m, body, s) => {
+  const p = (db.pesquisas || []).find(x => x.id === Number(m[1]) && x.companyId === s.companyId);
+  if (!p) return sendJson(res, 404, { error: 'Pesquisa não encontrada.' });
+  if (body.ativo === false) { p.ativo = false; p.encerradaEm = Date.now(); }
+  if (body.titulo) p.titulo = body.titulo;
+  saveDb();
+  sendJson(res, 200, p);
+});
+
+route('GET', /^\/api\/pesquisas\/(\d+)\/resultados$/, { role: 'gestor' }, async (req, res, m, body, s) => {
+  const pesquisa = (db.pesquisas || []).find(p => p.id === Number(m[1]) && p.companyId === s.companyId);
+  if (!pesquisa) return sendJson(res, 404, { error: 'Pesquisa não encontrada.' });
+  const respostas = (db.respostasPesquisa || []).filter(r => r.pesquisaId === pesquisa.id);
+  const resultados = pesquisa.perguntas.map(perg => {
+    const vals = respostas.map(r => (r.respostas || []).find(a => a.perguntaId === perg.id)?.valor).filter(v => v !== undefined && v !== null && v !== '');
+    if (perg.tipo === 'escala') {
+      const dist = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
+      vals.forEach(v => { const n = Number(v); if (n >= 1 && n <= 5) dist[n]++; });
+      const media = vals.length ? (vals.reduce((a, b) => a + Number(b), 0) / vals.length).toFixed(1) : null;
+      return { ...perg, respostas: vals.length, media, distribuicao: dist };
+    } else if (perg.tipo === 'sim_nao') {
+      const sim = vals.filter(v => v === 'sim').length;
+      const nao = vals.filter(v => v === 'nao').length;
+      return { ...perg, respostas: vals.length, sim, nao };
+    } else {
+      return { ...perg, respostas: vals.length, textos: vals.slice(-10) };
+    }
+  });
+  sendJson(res, 200, { pesquisa, totalRespostas: respostas.length, resultados });
+});
+
+route('GET', /^\/api\/pesquisas\/ativas$/, { role: 'colaborador' }, async (req, res, m, body, s) => {
+  const ativas = (db.pesquisas || []).filter(p => p.companyId === s.companyId && p.ativo);
+  const naoRespondidas = ativas.filter(p => !(db.respostasPesquisa || []).some(r => r.pesquisaId === p.id && r.empId === s.employeeId));
+  sendJson(res, 200, naoRespondidas.map(p => ({ id: p.id, titulo: p.titulo, descricao: p.descricao, totalPerguntas: p.perguntas.length, perguntas: p.perguntas })));
+});
+
+route('POST', /^\/api\/pesquisas\/(\d+)\/responder$/, { role: 'colaborador' }, async (req, res, m, body, s) => {
+  const pesquisa = (db.pesquisas || []).find(p => p.id === Number(m[1]) && p.companyId === s.companyId && p.ativo);
+  if (!pesquisa) return sendJson(res, 404, { error: 'Pesquisa não encontrada.' });
+  if ((db.respostasPesquisa || []).some(r => r.pesquisaId === pesquisa.id && r.empId === s.employeeId)) return sendJson(res, 200, { ok: true, jaRespondeu: true });
+  if (!Array.isArray(body.respostas)) return sendJson(res, 400, { error: 'Respostas obrigatórias.' });
+  const resp = { id: nextId(), pesquisaId: pesquisa.id, empId: s.employeeId, companyId: s.companyId, respostas: body.respostas, timestamp: Date.now() };
+  db.respostasPesquisa.push(resp);
+  db.pontosExtras.push({ id: nextId(), empId: s.employeeId, companyId: s.companyId, tipo: 'pesquisa', descricao: `📋 Respondeu pesquisa: ${pesquisa.titulo}`, pontos: 15, timestamp: Date.now() });
+  saveDb();
+  sendJson(res, 201, { ok: true, pontos: 15 });
+});
+
+/* ── Evidências ──────────────────────────────────────────────── */
+
+route('GET', /^\/api\/evidencias\/(\d+)$/, { role: 'gestor' }, async (req, res, m, body, s) => {
+  const ev = db.events.find(e => e.id === Number(m[1]) && e.companyId === s.companyId);
+  if (!ev) { res.writeHead(404, { 'Content-Type': 'text/plain' }); return res.end('Evento não encontrado.'); }
+  const evCheckins = db.checkins.filter(c => c.eventId === ev.id);
+  const linhas = evCheckins.map(c => {
+    const emp = db.employees.find(e => e.id === c.employeeId);
+    if (!emp) return '';
+    const hora = c.timestamp ? new Date(c.timestamp).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : '—';
+    return `<tr><td>${emp.nome || ''}</td><td>${emp.cpf || ''}</td><td>${emp.matricula || ''}</td><td>${emp.funcao || ''}</td><td>${emp.equipe || ''}</td><td>${hora}</td><td style="width:160px;border-bottom:1px solid #000">&nbsp;</td></tr>`;
+  }).join('');
+  const html = `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><title>Lista de Presença — ${ev.tema || ''}</title>
+<style>body{font-family:Arial,sans-serif;font-size:12px;padding:24px;color:#000} h1{font-size:16px;margin-bottom:4px} .info{margin-bottom:16px;line-height:1.6} table{width:100%;border-collapse:collapse;margin-top:8px} th{background:#f0f0f0;border:1px solid #999;padding:6px 8px;text-align:left} td{border:1px solid #ccc;padding:6px 8px} .rodape{margin-top:32px;display:flex;gap:60px} .assinatura{flex:1;text-align:center;padding-top:40px;border-top:1px solid #000;font-size:11px} @media print{button{display:none!important}}</style>
+</head><body>
+<h1>Lista de Presença — ${ev.tema || ''}</h1>
+<div class="info"><strong>Tipo:</strong> ${ev.tipo || ''} &nbsp;&nbsp; <strong>Data:</strong> ${ev.data || ''} &nbsp;&nbsp; <strong>Local:</strong> ${ev.local || '—'} &nbsp;&nbsp; <strong>Responsável:</strong> ${ev.responsavel || '—'}<br><strong>Total de participantes:</strong> ${evCheckins.length}</div>
+<button onclick="window.print()" style="margin-bottom:12px;padding:8px 18px;background:#1e5aa8;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:13px">🖨 Imprimir / Salvar PDF</button>
+<table><thead><tr><th>Nome</th><th>CPF</th><th>Matrícula</th><th>Função</th><th>Equipe</th><th>Check-in</th><th>Assinatura</th></tr></thead><tbody>${linhas || '<tr><td colspan="7" style="text-align:center;color:#999">Nenhum check-in registrado.</td></tr>'}</tbody></table>
+<div class="rodape"><div class="assinatura">Responsável pelo evento</div><div class="assinatura">Gestor SST</div></div>
+</body></html>`;
+  res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+  res.end(html);
 });
 
 /* ── Painel do colaborador ───────────────────────────────────── */

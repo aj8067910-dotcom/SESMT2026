@@ -52,11 +52,13 @@
       <button data-view="dashboard"      class="nav-btn active" onclick="navegar('dashboard')">Painel</button>
       <button data-view="eventos"        class="nav-btn"        onclick="navegar('eventos')">Atividades</button>
       <button data-view="colaboradores"  class="nav-btn"        onclick="navegar('colaboradores')">Colaboradores</button>
-      <button data-view="comunicados"    class="nav-btn"        onclick="navegar('comunicados')">📢 Comunicados</button>
+      <button data-view="comunicados"     class="nav-btn"        onclick="navegar('comunicados')">📢 Comunicados</button>
       <button data-view="quiz-gestor"    class="nav-btn"        onclick="navegar('quiz-gestor')">🧠 Quiz</button>
       <button data-view="observacoes"    class="nav-btn"        onclick="navegar('observacoes')">Observações</button>
       <button data-view="sugestoes"      class="nav-btn"        onclick="navegar('sugestoes')">Sugestões</button>
       <button data-view="ranking"        class="nav-btn"        onclick="navegar('ranking')">Ranking</button>
+      <button data-view="engajamento"    class="nav-btn"        onclick="navegar('engajamento')">🎯 Engajamento</button>
+      <button data-view="pesquisas-gestor" class="nav-btn"      onclick="navegar('pesquisas-gestor')">📋 Pesquisas</button>
       <button data-view="config"         class="nav-btn"        onclick="navegar('config')">Config</button>
     </nav>
     <div class="topbar-user">
@@ -76,15 +78,38 @@
     <!-- Painel -->
     <section id="view-dashboard" class="view">
       <h2>Painel Geral</h2>
-      <div id="dash-cards" class="cards"></div>
+
+      <!-- Indicadores do dia -->
+      <div class="panel" style="margin-bottom:14px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+          <h3 style="margin:0">Hoje</h3>
+          <span id="dash-hoje-data" class="hint"></span>
+        </div>
+        <div id="dash-hoje" class="kpi-hoje-grid"></div>
+      </div>
+
+      <!-- ICS + KPIs do mês + top10 -->
       <div class="grid-3" style="margin-bottom:14px">
         <div class="panel">
-          <h3>Atividades por tipo</h3>
-          <table class="tabela" id="dash-tipos"></table>
+          <h3>Indicadores do Mês</h3>
+          <div id="dash-mes"></div>
+        </div>
+        <div class="panel">
+          <h3>Índice de Cultura de Segurança</h3>
+          <div id="dash-ics"></div>
         </div>
         <div class="panel">
           <h3>Top 10 — Pontuação</h3>
           <table class="tabela" id="dash-top10"></table>
+        </div>
+      </div>
+
+      <!-- Cartões gerais + tipos -->
+      <div id="dash-cards" class="cards" style="margin-bottom:14px"></div>
+      <div class="grid-2" style="margin-bottom:14px">
+        <div class="panel">
+          <h3>Atividades por tipo</h3>
+          <table class="tabela" id="dash-tipos"></table>
         </div>
         <div class="panel">
           <h3>Observações abertas</h3>
@@ -178,6 +203,62 @@
       </div>
       <div id="conquista-resumo" class="cards" style="margin-bottom:14px"></div>
       <table class="tabela" id="tabela-ranking"></table>
+    </section>
+
+    <!-- Engajamento -->
+    <section id="view-engajamento" class="view hidden">
+      <h2>🎯 Central de Engajamento</h2>
+      <div class="eng-tabs">
+        <button class="eng-tab active" onclick="engTab('campanhas')">Campanhas</button>
+        <button class="eng-tab" onclick="engTab('desafios')">Desafios da Semana</button>
+        <button class="eng-tab" onclick="engTab('reconhecimentos')">Reconhecimento Público</button>
+        <button class="eng-tab" onclick="engTab('batalha')">Batalha de Equipes</button>
+        <button class="eng-tab" onclick="engTab('hall')">Hall dos Campeões</button>
+      </div>
+
+      <div id="eng-campanhas">
+        <div class="view-head">
+          <h3>Campanhas Ativas</h3>
+          <button class="btn btn-primary" onclick="abrirNovaCampanha()">+ Nova campanha</button>
+        </div>
+        <div id="campanhas-lista"></div>
+      </div>
+
+      <div id="eng-desafios" class="hidden">
+        <div class="view-head">
+          <h3>Desafios da Semana</h3>
+          <button class="btn btn-primary" onclick="abrirNovoDesafio()">+ Novo desafio</button>
+        </div>
+        <div id="desafios-lista"></div>
+      </div>
+
+      <div id="eng-reconhecimentos" class="hidden">
+        <div class="view-head">
+          <h3>Reconhecimentos Públicos</h3>
+          <button class="btn btn-primary" onclick="abrirNovoReconhecimento()">+ Reconhecer colaborador</button>
+        </div>
+        <div id="reconhecimentos-lista"></div>
+      </div>
+
+      <div id="eng-batalha" class="hidden">
+        <h3>Batalha de Equipes — Ranking Mensal</h3>
+        <div id="batalha-lista" style="margin-top:14px"></div>
+      </div>
+
+      <div id="eng-hall" class="hidden">
+        <div id="hall-conteudo"></div>
+      </div>
+    </section>
+
+    <!-- Pesquisas (gestor) -->
+    <section id="view-pesquisas-gestor" class="view hidden">
+      <div class="view-head">
+        <h2>📋 Gestão de Pesquisas</h2>
+        <button class="btn btn-primary" onclick="abrirNovaPesquisa()">+ Nova pesquisa</button>
+      </div>
+      <p class="hint">Crie pesquisas de clima, cultura de segurança, COPSOQ e outras. Colaboradores ganham <strong>15 pontos</strong> por resposta.</p>
+      <table class="tabela" id="tabela-pesquisas"></table>
+      <div id="pesquisa-resultados-area" style="margin-top:18px"></div>
     </section>
 
     <!-- Comunicados (gestor) -->
@@ -286,6 +367,7 @@
       <button data-cview="observar"     class="nav-btn"        onclick="navegarColab('observar')">Observações</button>
       <button data-cview="sugerir"      class="nav-btn"        onclick="navegarColab('sugerir')">Sugestões</button>
       <button data-cview="historico"    class="nav-btn"        onclick="navegarColab('historico')">Histórico</button>
+      <button data-cview="pesquisas"    class="nav-btn"        onclick="navegarColab('pesquisas')">📋 Pesquisas</button>
       <button data-cview="perfil"       class="nav-btn"        onclick="navegarColab('perfil')">👤 Perfil</button>
     </nav>
     <div class="topbar-user">
@@ -341,6 +423,13 @@
     <!-- Quiz Diário -->
     <section id="cview-quiz" class="cview hidden">
       <div id="quiz-conteudo" style="max-width:600px;margin:0 auto"></div>
+    </section>
+
+    <!-- Pesquisas colaborador -->
+    <section id="cview-pesquisas" class="cview hidden">
+      <h3 style="margin-bottom:14px">📋 Pesquisas de Engajamento</h3>
+      <p class="hint" style="margin-bottom:14px">Sua participação é anônima e vale <strong>+15 pontos</strong>!</p>
+      <div id="pesquisas-colab-lista"></div>
     </section>
 
     <!-- Perfil -->
