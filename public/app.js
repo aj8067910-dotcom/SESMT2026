@@ -1201,12 +1201,12 @@ function formColaboradorHtml(c) {
     : `<input type="text" id="co-unidade" value="${c ? esc(c.unidade || '') : ''}" placeholder="Nome da unidade">`;
 
   const ROLE_DEFS = [
-    { key: 'sesmt',             emoji: '🦺', label: 'SESMT',               desc: 'Acesso ao Painel de Gestão' },
-    { key: 'cipa',              emoji: '⚠️', label: 'CIPA',                desc: 'Membro da CIPA' },
-    { key: 'brigada',           emoji: '🚒', label: 'Brigada de Emergência', desc: '' },
-    { key: 'tecnico_seguranca', emoji: '🔧', label: 'Técnico de Segurança', desc: '' },
-    { key: 'medico_trabalho',   emoji: '🩺', label: 'Médico do Trabalho',   desc: '' },
-    { key: 'ergonomista',       emoji: '🪑', label: 'Ergonomista',          desc: '' }
+    { key: 'sesmt',             emoji: '🦺', label: 'SESMT',               desc: 'Acesso ao Painel de Gestão', master: true },
+    { key: 'cipa',              emoji: '⚠️', label: 'CIPA',                desc: 'Membro da CIPA',             master: false },
+    { key: 'brigada',           emoji: '🚒', label: 'Brigada de Emergência', desc: '',                          master: false },
+    { key: 'tecnico_seguranca', emoji: '🔧', label: 'Técnico de Segurança', desc: '',                          master: false },
+    { key: 'medico_trabalho',   emoji: '🩺', label: 'Médico do Trabalho',   desc: '',                          master: false },
+    { key: 'ergonomista',       emoji: '🪑', label: 'Ergonomista',          desc: '',                          master: false }
   ];
   const rolesAtuais = (c && c.roles) ? c.roles : [];
 
@@ -1229,16 +1229,20 @@ function formColaboradorHtml(c) {
     ${c ? `<label class="check-inline" style="margin-top:12px"><input type="checkbox" id="co-ativo" ${c.ativo !== false ? 'checked' : ''}> colaborador ativo</label>` : ''}
 
     <hr style="margin:18px 0 14px;border:none;border-top:1px solid var(--cinza-borda)">
-    <label style="font-weight:700;font-size:13px;display:block;margin-bottom:8px">🏅 Perfil de Acesso</label>
-    <p class="hint" style="margin-bottom:10px">Defina o(s) papel(éis) deste colaborador na plataforma. O papel <strong>SESMT</strong> concede acesso ao Painel de Gestão.</p>
+    <label style="font-weight:700;font-size:13px;display:block;margin-bottom:4px">🏅 Perfil de Acesso</label>
+    <p class="hint" style="margin-bottom:10px">
+      <strong>SESMT</strong> é o acesso mais alto — libera o Painel de Gestão completo.
+      Os demais papéis são crachás informativos (acesso colaborador normal).
+      Somente o SESMT pode alterar perfis de acesso.
+    </p>
     <div class="roles-check-grid">
       ${ROLE_DEFS.map(r => `
-        <label class="role-check-item ${rolesAtuais.includes(r.key) ? 'role-check-ativo' : ''}">
+        <label class="role-check-item ${r.master ? 'role-check-master' : ''} ${rolesAtuais.includes(r.key) ? 'role-check-ativo' : ''}">
           <input type="checkbox" id="co-role-${r.key}" value="${r.key}" ${rolesAtuais.includes(r.key) ? 'checked' : ''}
             onchange="this.closest('.role-check-item').classList.toggle('role-check-ativo', this.checked)">
           <span class="role-check-emoji">${r.emoji}</span>
           <span class="role-check-label">
-            <strong>${r.label}</strong>
+            <strong>${r.label}</strong>${r.master ? ' <span class="role-master-tag">gestor</span>' : ''}
             ${r.desc ? `<span class="hint" style="display:block;font-size:11px">${r.desc}</span>` : ''}
           </span>
         </label>`).join('')}

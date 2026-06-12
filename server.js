@@ -791,8 +791,15 @@ route('POST', /^\/api\/aceitar-termos$/, { role: 'any' }, async (req, res, m, bo
   sendJson(res, 200, { ok: true });
 });
 
-// SafePoint 2.1 — role management
+// SafePoint 2.1 — role management (somente SESMT ou gestor legado)
+function checkSesmtPermission(s) {
+  if (!s.isEmployee) return true; // gestor legado (tabela managers) → pode
+  const requester = db.employees.find(e => e.id === s.userId);
+  return requester && (requester.roles || []).includes('sesmt');
+}
+
 route('POST', /^\/api\/usuarios\/(\d+)\/roles$/, { role: 'gestor' }, async (req, res, m, body, s) => {
+  if (!checkSesmtPermission(s)) return sendJson(res, 403, { error: 'Apenas o SESMT pode gerenciar papéis de acesso.' });
   const emp = db.employees.find(e => e.id === Number(m[1]) && e.companyId === s.companyId);
   if (!emp) return sendJson(res, 404, { error: 'Colaborador não encontrado.' });
   const role = String(body.role || '');
@@ -800,16 +807,17 @@ route('POST', /^\/api\/usuarios\/(\d+)\/roles$/, { role: 'gestor' }, async (req,
   if (!emp.roles) emp.roles = [];
   if (!emp.roles.includes(role)) emp.roles.push(role);
   saveDb();
-  logAudit(s.userId || s.employeeId, s.role, 'atribuir_role', `${role} → ${emp.nome}`, s.companyId);
+  logAudit(s.userId, s.role, 'atribuir_role', `${role} → ${emp.nome}`, s.companyId);
   sendJson(res, 200, { ok: true, roles: emp.roles });
 });
 
 route('DELETE', /^\/api\/usuarios\/(\d+)\/roles\/(\w+)$/, { role: 'gestor' }, async (req, res, m, body, s) => {
+  if (!checkSesmtPermission(s)) return sendJson(res, 403, { error: 'Apenas o SESMT pode gerenciar papéis de acesso.' });
   const emp = db.employees.find(e => e.id === Number(m[1]) && e.companyId === s.companyId);
   if (!emp) return sendJson(res, 404, { error: 'Colaborador não encontrado.' });
   emp.roles = (emp.roles || []).filter(r => r !== m[2]);
   saveDb();
-  logAudit(s.userId || s.employeeId, s.role, 'remover_role', `${m[2]} → ${emp.nome}`, s.companyId);
+  logAudit(s.userId, s.role, 'remover_role', `${m[2]} → ${emp.nome}`, s.companyId);
   sendJson(res, 200, { ok: true, roles: emp.roles });
 });
 
