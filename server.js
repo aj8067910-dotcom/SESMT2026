@@ -41,12 +41,29 @@ const DEFAULT_POINTS = {
   'Sugestão Aprovada': 50
 };
 
-const ACHIEVEMENTS = [
-  { key: 'bronze',   nome: 'Bronze',               emoji: '🥉', minPontos: 50 },
-  { key: 'prata',    nome: 'Prata',                 emoji: '🥈', minPontos: 150 },
-  { key: 'ouro',     nome: 'Ouro',                  emoji: '🥇', minPontos: 300 },
-  { key: 'diamante', nome: 'Diamante',               emoji: '💎', minPontos: 500 },
-  { key: 'guardiao', nome: 'Guardião da Segurança',  emoji: '🏆', minPontos: 1000 }
+const NIVEIS = [
+  { nivel:1,  nome:'Iniciante da Segurança',  emoji:'🔰', minPontos:0,    bonus:0    },
+  { nivel:2,  nome:'Observador de Riscos',    emoji:'👀', minPontos:700,  bonus:100  },
+  { nivel:3,  nome:'Protetor da Equipe',      emoji:'🛡️', minPontos:1300, bonus:200  },
+  { nivel:4,  nome:'Inspiração Segura',       emoji:'⭐', minPontos:1900, bonus:300  },
+  { nivel:5,  nome:'Agente Preventivo',       emoji:'⚡', minPontos:2500, bonus:400  },
+  { nivel:6,  nome:'Guardião Operacional',    emoji:'🏅', minPontos:3100, bonus:500  },
+  { nivel:7,  nome:'Embaixador da Segurança', emoji:'👑', minPontos:3700, bonus:600  },
+  { nivel:8,  nome:'Mestre da Prevenção',     emoji:'🔥', minPontos:4300, bonus:700  },
+  { nivel:9,  nome:'Lenda da Segurança',      emoji:'💎', minPontos:4900, bonus:800  },
+  { nivel:10, nome:'Guardião Supremo',        emoji:'🏆', minPontos:5500, bonus:1000 }
+];
+
+const ACHIEVEMENTS = NIVEIS.map(n => ({ key: 'n' + n.nivel, nome: n.nome, emoji: n.emoji, minPontos: n.minPontos }));
+
+const STREAK_BONUSES = [
+  { dias:7,   pontos:50,  desc:'🔥 Sequência de 7 dias!' },
+  { dias:15,  pontos:100, desc:'🔥 Sequência de 15 dias!' },
+  { dias:30,  pontos:150, desc:'🔥 30 dias seguidos — Engajamento Total!' },
+  { dias:60,  pontos:200, desc:'🔥 60 dias — Dedicação Extrema!' },
+  { dias:100, pontos:300, desc:'🔥 100 dias — Lenda do Engajamento!' },
+  { dias:180, pontos:500, desc:'🔥 180 dias — Distintivo Elite!' },
+  { dias:365, pontos:1000,desc:'🔥 365 dias — Lenda Absoluta!' }
 ];
 
 const DEFAULT_CORES = {
@@ -151,7 +168,18 @@ function loadDb() {
     if (c.dataAtivacao   === undefined)      c.dataAtivacao = '';
     if (c.dataVencimento === undefined)      c.dataVencimento = '';
   }
-  if (!db.auditLog) db.auditLog = [];
+  if (!db.auditLog)      db.auditLog = [];
+  if (!db.pontosExtras)  db.pontosExtras = [];
+  if (!db.feed)          db.feed = [];
+  if (!db.comunicados)   db.comunicados = [];
+  if (!db.quizzes)       db.quizzes = [];
+  // migrar colaboradores sem streak/nivel
+  for (const e of db.employees) {
+    if (e.streakAtual     === undefined) e.streakAtual = 0;
+    if (e.maiorStreak     === undefined) e.maiorStreak = 0;
+    if (e.ultimoAcessoDia === undefined) e.ultimoAcessoDia = '';
+    if (e.nivelAtual      === undefined) e.nivelAtual = 1;
+  }
   // migrar gestores sem companyId
   const defaultComp = db.companies[0];
   for (const m of db.managers) {
@@ -335,6 +363,48 @@ function eventBasePoints(ev) {
   return ev.pontos !== undefined && ev.pontos !== null ? ev.pontos : (db.settings.points[ev.tipo] || 0);
 }
 
+function getNivel(pontos) {
+  let atual = NIVEIS[0];
+  for (const n of NIVEIS) { if (pontos >= n.minPontos) atual = n; }
+  const proxIdx = NIVEIS.findIndex(n => n.nivel === atual.nivel) + 1;
+  const prox = proxIdx < NIVEIS.length ? NIVEIS[proxIdx] : null;
+  return { ...atual, proximo: prox };
+}
+
+function todayStr() { return new Date().toISOString().slice(0, 10); }
+
+function processarStreak(emp) {
+  const hoje = todayStr();
+  const ontem = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
+  if (emp.ultimoAcessoDia === hoje) return;
+  if (emp.ultimoAcessoDia === ontem) {
+    emp.streakAtual = (emp.streakAtual || 0) + 1;
+  } else {
+    emp.streakAtual = 1;
+  }
+  emp.ultimoAcessoDia = hoje;
+  if ((emp.streakAtual || 0) > (emp.maiorStreak || 0)) emp.maiorStreak = emp.streakAtual;
+  const bonus = STREAK_BONUSES.find(b => emp.streakAtual === b.dias);
+  if (bonus) {
+    db.pontosExtras.push({ id: nextId(), empId: emp.id, companyId: emp.companyId, tipo: 'streak', descricao: bonus.desc, pontos: bonus.pontos, timestamp: Date.now() });
+    db.feed.push({ id: nextId(), companyId: emp.companyId, autorId: emp.id, autorRole: 'colaborador', autorNome: emp.nome, tipo: 'conquista', conteudo: `${bonus.desc}\n${emp.nome} completou ${emp.streakAtual} dias consecutivos de acesso ao SafePoint! 🎉`, timestamp: Date.now(), reacoes: { like: [], aplausos: [], estrela: [] }, comentarios: [] });
+  }
+}
+
+function processarNivel(emp, pontos) {
+  const nivel = getNivel(pontos);
+  const nivelAntes = emp.nivelAtual || 1;
+  if (nivel.nivel > nivelAntes) {
+    emp.nivelAtual = nivel.nivel;
+    if (nivel.bonus > 0) {
+      db.pontosExtras.push({ id: nextId(), empId: emp.id, companyId: emp.companyId, tipo: 'nivel', descricao: `${nivel.emoji} Nível ${nivel.nivel} — ${nivel.nome}`, pontos: nivel.bonus, timestamp: Date.now() });
+    }
+    db.feed.push({ id: nextId(), companyId: emp.companyId, autorId: emp.id, autorRole: 'colaborador', autorNome: emp.nome, tipo: 'conquista', conteudo: `${nivel.emoji} ${emp.nome} alcançou o nível ${nivel.nivel} — ${nivel.nome}!\nParabéns por contribuir para uma cultura de segurança mais forte! 🎉`, timestamp: Date.now(), reacoes: { like: [], aplausos: [], estrela: [] }, comentarios: [] });
+    return true;
+  }
+  return false;
+}
+
 function employeePoints(employeeId) {
   let total = 0;
   const byType = {};
@@ -354,6 +424,10 @@ function employeePoints(employeeId) {
   }
   for (const sug of db.suggestions) {
     if (sug.employeeId === employeeId && sug.status === 'aprovada') total += db.settings.points['Sugestão Aprovada'] || 50;
+  }
+  // pontos extras (streak, quiz, comunicados, bônus de nível)
+  for (const pe of (db.pontosExtras || [])) {
+    if (pe.empId === employeeId) total += pe.pontos || 0;
   }
   return { total, byType };
 }
@@ -485,6 +559,8 @@ route('POST', /^\/api\/login$/, { public: true }, async (req, res, m, body) => {
       emp = db.employees.find(e => e.matricula === mat && e.ativo !== false);
       if (!emp) return sendJson(res, 401, { error: 'Matrícula não encontrada. Selecione a empresa ou consulte o gestor SST.' });
     }
+    processarStreak(emp);
+    saveDb();
     const token = createSession({ role: 'colaborador', employeeId: emp.id, companyId: emp.companyId });
     res.setHeader('Set-Cookie', `sesmt_token=${token}; Path=/; HttpOnly; SameSite=Lax`);
     const branding = getCompanyBranding(emp.companyId);
@@ -1136,32 +1212,219 @@ route('GET', /^\/api\/meu-painel$/, { role: 'colaborador' }, async (req, res, m,
   const emp = db.employees.find(e => e.id === s.employeeId);
   if (!emp) return sendJson(res, 404, { error: 'Colaborador não encontrado.' });
   const pts = employeePoints(emp.id);
+  // verificar subida de nível (ANTES de usar pts.total, pois processarNivel pode adicionar bônus)
+  const subiu = processarNivel(emp, pts.total);
+  if (subiu) { pts.total = employeePoints(emp.id).total; saveDb(); }
+  const nivel = getNivel(pts.total);
   const ranking = buildRanking(emp.companyId);
   const minha = ranking.find(r => r.id === emp.id);
   const myCheckins = db.checkins.filter(c => c.employeeId === emp.id).sort((a, b) => b.timestamp.localeCompare(a.timestamp));
-  const historico = myCheckins.map(c => {
+  const historico = myCheckins.slice(0, 30).map(c => {
     const ev = db.events.find(e => e.id === c.eventId);
     return { id: c.id, timestamp: c.timestamp, tipo: ev ? ev.tipo : '?', tema: ev ? ev.tema : '', pontos: c.pontosAtribuidos, avaliado: c.avaliado };
   });
   const ies = calcIES(emp.id);
   const conquista = getAchievement(pts.total);
-  const proxConquista = ACHIEVEMENTS.find(a => a.minPontos > pts.total);
   const minhaObs = db.observations.filter(o => o.employeeId === emp.id).length;
   const minhasSugs = db.suggestions.filter(s => s.employeeId === emp.id);
   const checkinPendente = db.checkins.find(c => c.employeeId === emp.id && !c.avaliado);
+  // missões do dia
+  const hoje = todayStr();
+  const fezCheckinHoje = db.checkins.some(c => c.employeeId === emp.id && c.timestamp && c.timestamp.startsWith(hoje));
+  const leuComunicadoHoje = (db.comunicados || []).some(cm => cm.leituras && cm.leituras.some(l => l.empId === emp.id && l.data === hoje));
+  const respondeuQuizHoje = (db.quizzes || []).some(q => q.data === hoje && q.respostas && q.respostas.some(r => r.empId === emp.id));
+  const postouFeedHoje = (db.feed || []).some(f => f.autorId === emp.id && f.timestamp && new Date(f.timestamp).toISOString().startsWith(hoje));
+  const registrouObsHoje = db.observations.some(o => o.employeeId === emp.id && o.criadoEm && new Date(o.criadoEm).toISOString().startsWith(hoje));
+  const missoes = [
+    { id:'checkin',     desc:'Participar de uma atividade SST',     pontos:50,  feita: fezCheckinHoje },
+    { id:'comunicado',  desc:'Ler um comunicado oficial',            pontos:10,  feita: leuComunicadoHoje },
+    { id:'quiz',        desc:'Responder o quiz diário de segurança', pontos:20,  feita: respondeuQuizHoje },
+    { id:'feed',        desc:'Publicar no Mural de Segurança',       pontos:10,  feita: postouFeedHoje },
+    { id:'observacao',  desc:'Registrar uma observação de campo',    pontos:25,  feita: registrouObsHoje }
+  ];
   sendJson(res, 200, {
     colaborador: { matricula: emp.matricula, nome: emp.nome, setor: emp.setor, funcao: emp.funcao, equipe: emp.equipe, unidade: emp.unidade, empresa: emp.empresa },
     pontos: pts.total, porTipo: pts.byType,
     posicao: minha ? minha.posicao : null,
     totalColaboradores: ranking.length,
-    conquista, proxConquista, ies,
+    conquista, nivel, ies,
+    streakAtual: emp.streakAtual || 0,
+    maiorStreak: emp.maiorStreak || 0,
     historico,
     top10: ranking.slice(0, 10),
-    totalObs: minhaObs,
+    totalObs: minhaObs, totalDDS: myCheckins.length,
     totalSugs: minhasSugs.length,
     sugsAprovadas: minhasSugs.filter(s => s.status === 'aprovada').length,
-    checkinPendente: checkinPendente ? { checkinId: checkinPendente.id } : null
+    checkinPendente: checkinPendente ? { checkinId: checkinPendente.id } : null,
+    missoes, subiu: subiu ? nivel : null
   });
+});
+
+/* ── Feed / Mural Social ─────────────────────────────────────── */
+
+route('GET', /^\/api\/feed$/, { role: 'any' }, async (req, res, m, body, s) => {
+  const posts = (db.feed || [])
+    .filter(f => f.companyId === s.companyId)
+    .sort((a, b) => b.timestamp - a.timestamp)
+    .slice(0, 50)
+    .map(f => ({
+      ...f,
+      minhasReacoes: {
+        like: (f.reacoes?.like || []).includes(s.employeeId || s.userId),
+        aplausos: (f.reacoes?.aplausos || []).includes(s.employeeId || s.userId),
+        estrela: (f.reacoes?.estrela || []).includes(s.employeeId || s.userId)
+      },
+      totalLikes: (f.reacoes?.like || []).length,
+      totalAplausos: (f.reacoes?.aplausos || []).length,
+      totalEstrelas: (f.reacoes?.estrela || []).length
+    }));
+  sendJson(res, 200, posts);
+});
+
+route('POST', /^\/api\/feed$/, { role: 'any' }, async (req, res, m, body, s) => {
+  const conteudo = String(body.conteudo || '').trim();
+  if (!conteudo) return sendJson(res, 400, { error: 'Conteúdo obrigatório.' });
+  const emp = s.role === 'colaborador' ? db.employees.find(e => e.id === s.employeeId) : null;
+  const mgr = s.role === 'gestor' ? db.managers.find(mg => mg.id === s.userId) : null;
+  const post = {
+    id: nextId(), companyId: s.companyId,
+    autorId: s.employeeId || s.userId,
+    autorRole: s.role,
+    autorNome: emp ? emp.nome : (mgr ? mgr.name : 'Gestor SST'),
+    autorFuncao: emp ? (emp.funcao || '') : 'Gestor SST',
+    tipo: body.tipo || 'post',
+    conteudo, timestamp: Date.now(),
+    reacoes: { like: [], aplausos: [], estrela: [] }, comentarios: []
+  };
+  db.feed.push(post);
+  // pontos por publicar no feed (1x por dia)
+  if (s.role === 'colaborador' && emp) {
+    const hoje = todayStr();
+    const jaPostouHoje = db.feed.filter(f => f.autorId === emp.id && f.tipo === 'post' && f.id !== post.id && new Date(f.timestamp).toISOString().startsWith(hoje)).length > 0;
+    if (!jaPostouHoje) {
+      db.pontosExtras.push({ id: nextId(), empId: emp.id, companyId: emp.companyId, tipo: 'feed', descricao: '📣 Publicou no Mural', pontos: 10, timestamp: Date.now() });
+    }
+  }
+  saveDb();
+  sendJson(res, 201, post);
+});
+
+route('POST', /^\/api\/feed\/(\d+)\/reagir$/, { role: 'any' }, async (req, res, m, body, s) => {
+  const post = (db.feed || []).find(f => f.id === Number(m[1]) && f.companyId === s.companyId);
+  if (!post) return sendJson(res, 404, { error: 'Post não encontrado.' });
+  if (!post.reacoes) post.reacoes = { like: [], aplausos: [], estrela: [] };
+  const tipo = body.tipo || 'like';
+  if (!post.reacoes[tipo]) post.reacoes[tipo] = [];
+  const uid = s.employeeId || s.userId;
+  const idx = post.reacoes[tipo].indexOf(uid);
+  if (idx >= 0) post.reacoes[tipo].splice(idx, 1); // toggle off
+  else post.reacoes[tipo].push(uid);
+  saveDb();
+  sendJson(res, 200, { ok: true, total: post.reacoes[tipo].length });
+});
+
+route('DELETE', /^\/api\/feed\/(\d+)$/, { role: 'any' }, async (req, res, m, body, s) => {
+  const idx = (db.feed || []).findIndex(f => f.id === Number(m[1]) && f.companyId === s.companyId);
+  if (idx < 0) return sendJson(res, 404, { error: 'Post não encontrado.' });
+  const post = db.feed[idx];
+  if (post.autorId !== (s.employeeId || s.userId) && s.role !== 'gestor') return sendJson(res, 403, { error: 'Sem permissão.' });
+  db.feed.splice(idx, 1);
+  saveDb();
+  sendJson(res, 200, { ok: true });
+});
+
+/* ── Comunicados Oficiais ────────────────────────────────────── */
+
+route('GET', /^\/api\/comunicados$/, { role: 'any' }, async (req, res, m, body, s) => {
+  const list = (db.comunicados || [])
+    .filter(c => c.companyId === s.companyId)
+    .sort((a, b) => b.criadoEm - a.criadoEm)
+    .map(c => ({
+      ...c,
+      lido: s.role === 'colaborador' && (c.leituras || []).some(l => l.empId === s.employeeId),
+      totalLeituras: (c.leituras || []).length
+    }));
+  sendJson(res, 200, list);
+});
+
+route('POST', /^\/api\/comunicados$/, { role: 'gestor' }, async (req, res, m, body, s) => {
+  const titulo  = String(body.titulo || '').trim();
+  const conteudo = String(body.conteudo || '').trim();
+  if (!titulo || !conteudo) return sendJson(res, 400, { error: 'Título e conteúdo obrigatórios.' });
+  const mgr = db.managers.find(mg => mg.id === s.userId);
+  const com = {
+    id: nextId(), companyId: s.companyId,
+    gestorNome: mgr ? mgr.name : 'Gestor SST',
+    titulo, conteudo,
+    pontosPorLeitura: Number(body.pontosPorLeitura) || 10,
+    criadoEm: Date.now(), leituras: []
+  };
+  db.comunicados.push(com);
+  // Post automático no feed
+  db.feed.push({ id: nextId(), companyId: s.companyId, autorId: s.userId, autorRole: 'gestor', autorNome: mgr ? mgr.name : 'Gestor SST', autorFuncao: 'Gestor SST', tipo: 'comunicado', conteudo: `📢 COMUNICADO: ${titulo}\n\nAcesse a aba Comunicados para ler e confirmar sua leitura.`, comunicadoId: com.id, timestamp: Date.now(), reacoes: { like: [], aplausos: [], estrela: [] }, comentarios: [] });
+  saveDb();
+  sendJson(res, 201, com);
+});
+
+route('POST', /^\/api\/comunicados\/(\d+)\/confirmar$/, { role: 'colaborador' }, async (req, res, m, body, s) => {
+  const com = (db.comunicados || []).find(c => c.id === Number(m[1]) && c.companyId === s.companyId);
+  if (!com) return sendJson(res, 404, { error: 'Comunicado não encontrado.' });
+  if ((com.leituras || []).some(l => l.empId === s.employeeId)) return sendJson(res, 200, { ok: true, jaLido: true });
+  if (!com.leituras) com.leituras = [];
+  com.leituras.push({ empId: s.employeeId, data: todayStr(), timestamp: Date.now() });
+  if (com.pontosPorLeitura > 0) {
+    db.pontosExtras.push({ id: nextId(), empId: s.employeeId, companyId: s.companyId, tipo: 'comunicado', descricao: `📢 Leu comunicado: ${com.titulo}`, pontos: com.pontosPorLeitura, timestamp: Date.now() });
+  }
+  saveDb();
+  sendJson(res, 200, { ok: true, pontos: com.pontosPorLeitura });
+});
+
+/* ── Quiz Diário ─────────────────────────────────────────────── */
+
+route('GET', /^\/api\/quiz\/hoje$/, { role: 'any' }, async (req, res, m, body, s) => {
+  const hoje = todayStr();
+  const quiz = (db.quizzes || []).find(q => q.companyId === s.companyId && q.data === hoje);
+  if (!quiz) return sendJson(res, 200, { quiz: null });
+  const jaNovRes = s.role === 'colaborador' && (quiz.respostas || []).some(r => r.empId === s.employeeId);
+  sendJson(res, 200, { quiz: { ...quiz, jaRespondeu: jaNovRes, respostas: undefined } });
+});
+
+route('POST', /^\/api\/quiz\/(\d+)\/responder$/, { role: 'colaborador' }, async (req, res, m, body, s) => {
+  const quiz = (db.quizzes || []).find(q => q.id === Number(m[1]) && q.companyId === s.companyId);
+  if (!quiz) return sendJson(res, 404, { error: 'Quiz não encontrado.' });
+  if ((quiz.respostas || []).some(r => r.empId === s.employeeId)) return sendJson(res, 200, { ok: true, jaRespondeu: true });
+  if (!quiz.respostas) quiz.respostas = [];
+  const opcaoIdx = Number(body.opcao);
+  const correta = quiz.opcoes[opcaoIdx]?.correta === true;
+  quiz.respostas.push({ empId: s.employeeId, opcao: opcaoIdx, correta, timestamp: Date.now() });
+  const pontos = correta ? (quiz.pontosPorAcerto || 20) : (quiz.pontosPorTentativa || 5);
+  db.pontosExtras.push({ id: nextId(), empId: s.employeeId, companyId: s.companyId, tipo: 'quiz', descricao: correta ? '✅ Quiz diário — acerto!' : '📝 Quiz diário — participação', pontos, timestamp: Date.now() });
+  saveDb();
+  sendJson(res, 200, { ok: true, correta, pontos, respostaCorreta: quiz.opcoes.findIndex(o => o.correta) });
+});
+
+route('POST', /^\/api\/quiz$/, { role: 'gestor' }, async (req, res, m, body, s) => {
+  const pergunta = String(body.pergunta || '').trim();
+  if (!pergunta) return sendJson(res, 400, { error: 'Pergunta obrigatória.' });
+  if (!Array.isArray(body.opcoes) || body.opcoes.length < 2) return sendJson(res, 400, { error: 'Mínimo 2 opções.' });
+  const hoje = todayStr();
+  const existente = (db.quizzes || []).find(q => q.companyId === s.companyId && q.data === hoje);
+  if (existente) return sendJson(res, 409, { error: 'Já existe um quiz para hoje.' });
+  const quiz = {
+    id: nextId(), companyId: s.companyId,
+    pergunta, opcoes: body.opcoes,
+    pontosPorAcerto: Number(body.pontosPorAcerto) || 20,
+    pontosPorTentativa: Number(body.pontosPorTentativa) || 5,
+    data: hoje, respostas: []
+  };
+  db.quizzes.push(quiz);
+  saveDb();
+  sendJson(res, 201, quiz);
+});
+
+route('GET', /^\/api\/quiz$/, { role: 'gestor' }, async (req, res, m, body, s) => {
+  const list = (db.quizzes || []).filter(q => q.companyId === s.companyId).sort((a, b) => b.data.localeCompare(a.data)).slice(0, 30).map(q => ({ ...q, totalRespostas: (q.respostas || []).length, acertos: (q.respostas || []).filter(r => r.correta).length }));
+  sendJson(res, 200, list);
 });
 
 /* ── Exportação ──────────────────────────────────────────────── */
