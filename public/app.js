@@ -14,6 +14,16 @@ let AVAL_CHECKIN_ID = null;
 let ESTRELAS_SEL = 0;
 let codigoTimer = null;
 let LOGO_PENDENTE = null;
+let EMPRESA_INFO = { nome: '', unidades: [] };
+
+const MODULOS_LABELS = {
+  dds: 'DDS', treinamentos: 'Treinamentos', ranking: 'Ranking',
+  loja: 'Loja de Recompensas', dashboardAvancado: 'Dashboard Avançado',
+  ia: 'Inteligência Artificial', certificados: 'Certificados Automáticos'
+};
+const STATUS_LABELS = { ativa: 'Ativa', em_implantacao: 'Em implantação', suspensa: 'Suspensa', bloqueada: 'Bloqueada', cancelada: 'Cancelada' };
+const PLANO_LABELS  = { basico: 'Básico', profissional: 'Profissional', enterprise: 'Enterprise' };
+const STATUS_CORES  = { ativa: '#1a8a4c', em_implantacao: '#e8801a', suspensa: '#e8801a', bloqueada: '#c43a3a', cancelada: '#637080' };
 
 /* ── Util ── */
 
@@ -137,8 +147,10 @@ async function loginGestor(e) {
 
 async function loginColaborador(e) {
   e.preventDefault();
+  const empresaSel = document.getElementById('login-empresa');
+  const companyId  = empresaSel ? (Number(empresaSel.value) || null) : null;
   try {
-    const r = await api('/api/login', { method: 'POST', body: { perfil: 'colaborador', matricula: document.getElementById('login-matricula').value } });
+    const r = await api('/api/login', { method: 'POST', body: { perfil: 'colaborador', matricula: document.getElementById('login-matricula').value, companyId } });
     if (r.branding) aplicarBranding(r.branding);
     await iniciar();
   } catch (err) { mostrarErroLogin(err.message); }
@@ -182,8 +194,13 @@ async function iniciar() {
   if (me.perfil === 'gestor') {
     document.getElementById('gestor-nome').textContent = me.nome;
     document.getElementById('app-gestor').classList.remove('hidden');
+    // banner de impersonação
+    const banner = document.getElementById('impersonation-banner');
+    if (banner) banner.classList.toggle('hidden', !me.adminImpersonando);
     preencherFiltroTipos();
     await Promise.all([carregarColaboradores(), carregarEventos()]);
+    // carregar info da empresa (unidades etc.)
+    try { EMPRESA_INFO = await api('/api/empresa/branding'); } catch {}
     navegar('dashboard');
     carregarBrandingConfig();
   } else {
@@ -223,8 +240,47 @@ async function navegarAdmin(view) {
   document.querySelectorAll('#app-admin .nav-btn').forEach(b => b.classList.toggle('active', b.dataset.aview === view));
   document.querySelectorAll('#app-admin .aview').forEach(v => v.classList.add('hidden'));
   document.getElementById('aview-' + view).classList.remove('hidden');
-  if (view === 'empresas') await carregarEmpresas();
-  if (view === 'gestores') await carregarGestoresAdmin();
+  if (view === 'dashboard') await carregarStatsAdmin();
+  if (view === 'empresas')  await carregarEmpresas();
+  if (view === 'gestores')  await carregarGestoresAdmin();
+}
+
+async function carregarStatsAdmin() {
+  try {
+    const s = await api('/api/admin/stats');
+    const grid = document.getElementById('admin-stats-grid');
+    if (grid) grid.innerHTML = [
+      { l: 'Empresas ativas',    n: s.totalEmpresas },
+      { l: 'Colaboradores',      n: s.totalColaboradores },
+      { l: 'Gestores SST',       n: s.totalGestores },
+      { l: 'Eventos realizados', n: s.totalEventos },
+      { l: 'Check-ins',          n: s.totalCheckins },
+      { l: 'Pontos distribuídos',n: s.totalPontos.toLocaleString('pt-BR') },
+      { l: 'Sugestões',          n: s.totalSugestoes },
+      { l: 'Observações',        n: s.totalObservacoes }
+    ].map(i => `<div class="card-stat"><div class="card-stat-n">${i.n}</div><div class="card-stat-l">${i.l}</div></div>`).join('');
+    const statusDiv = document.getElementById('admin-stats-empresas');
+    if (statusDiv && s.empresasPorStatus) {
+      statusDiv.innerHTML = '<h3 style="margin-bottom:12px">Empresas por status</h3><div class="cards">' +
+        Object.entries(s.empresasPorStatus).map(([k, v]) =>
+          `<div class="card-stat" style="border-top:3px solid ${STATUS_CORES[k]||'#999'}">
+             <div class="card-stat-n">${v}</div>
+             <div class="card-stat-l">${STATUS_LABELS[k]||k}</div>
+           </div>`
+        ).join('') + '</div>';
+    }
+  } catch {}
+}
+
+async function entrarComoEmpresa(id) {
+  const e = EMPRESAS.find(x => x.id === id);
+  if (!e) return;
+  if (!confirm(`Entrar no ambiente de "${e.nomeFantasia || e.nome}"?\n\nSua sessão de admin será substituída por uma sessão de gestor desta empresa. Para voltar ao painel admin, clique em "Encerrar visita" ou faça logout e logue novamente.`)) return;
+  try {
+    const r = await api('/api/admin/empresas/' + id + '/entrar', { method: 'POST', body: {} });
+    if (r.branding) aplicarBranding(r.branding);
+    await iniciar();
+  } catch (err) { toast(err.message, 'erro'); }
 }
 
 /* ── Admin ── */
@@ -245,31 +301,36 @@ function renderEmpresas() {
     grid.innerHTML = '<p class="hint" style="padding:20px">Nenhuma empresa cadastrada ainda.</p>';
     return;
   }
-  grid.innerHTML = EMPRESAS.map(e => `
+  grid.innerHTML = EMPRESAS.map(e => {
+    const status = e.status || 'ativa';
+    const statusCor = STATUS_CORES[status] || '#637080';
+    return `
     <div class="empresa-card${e.ativo === false ? ' empresa-inativa' : ''}">
       <div class="empresa-card-header">
         ${e.logo && e.logo !== '[logo]'
           ? `<img src="${e.logo}" alt="${esc(e.nome)}" class="empresa-card-logo">`
           : `<div class="empresa-card-logo-placeholder">🏢</div>`}
         <div class="empresa-card-info">
-          <h3>${esc(e.nome)}</h3>
+          <h3>${esc(e.nomeFantasia || e.nome)}</h3>
           <div class="cnpj">${e.cnpj ? esc(e.cnpj) : 'CNPJ não informado'}</div>
+          <span class="empresa-status-badge" style="background:${statusCor}">${STATUS_LABELS[status] || status}</span>
+          ${e.plano ? `<span class="empresa-plano-badge">${PLANO_LABELS[e.plano]||e.plano}</span>` : ''}
         </div>
-      </div>
-      <div class="empresa-card-cores">
-        ${e.cores ? Object.values(e.cores).map(c => `<span class="cor-bolinha" style="background:${esc(c)}" title="${esc(c)}"></span>`).join('') : ''}
       </div>
       <div class="empresa-card-stats">
         <div class="empresa-stat"><div class="n">${e.totalGestores || 0}</div><div class="l">Gestores</div></div>
         <div class="empresa-stat"><div class="n">${e.totalColaboradores || 0}</div><div class="l">Colaboradores</div></div>
+        ${e.dataVencimento ? `<div class="empresa-stat"><div class="n" style="font-size:11px">${esc(e.dataVencimento)}</div><div class="l">Vencimento</div></div>` : ''}
       </div>
       <div class="empresa-card-acoes">
         <button class="btn btn-sm btn-primary" onclick="abrirEditarEmpresa(${e.id})">Editar</button>
         <button class="btn btn-sm" onclick="abrirBrandingEmpresa(${e.id})">🎨 Visual</button>
         <button class="btn btn-sm" onclick="abrirAdicionarGestor(${e.id}, '${esc(e.nome)}')">+ Gestor</button>
+        <button class="btn btn-sm btn-destaque" onclick="entrarComoEmpresa(${e.id})">👁 Entrar</button>
         <button class="btn btn-sm btn-perigo" onclick="inativarEmpresa(${e.id})">${e.ativo === false ? 'Reativar' : 'Inativar'}</button>
       </div>
-    </div>`).join('');
+    </div>`;
+  }).join('');
 }
 
 function abrirNovaEmpresa() {
@@ -283,9 +344,43 @@ function abrirEditarEmpresa(id) {
 
 function formEmpresaHtml(e) {
   const unidades = e && e.unidades ? e.unidades : [{ nome: 'Matriz', endereco: '', cidade: '', estado: '' }];
+  const modulos  = e && e.modulos ? e.modulos : {};
+  const modulosHtml = Object.entries(MODULOS_LABELS).map(([k, v]) =>
+    `<label class="check-inline"><input type="checkbox" id="mod-${k}" ${modulos[k] !== false ? 'checked' : ''}> ${esc(v)}</label>`
+  ).join('');
   return `
-    <label>Nome da empresa *</label>
-    <input type="text" id="emp-nome" value="${e ? esc(e.nome) : ''}">
+    <div class="linha-2">
+      <div><label>Razão Social *</label><input type="text" id="emp-nome" value="${e ? esc(e.nome) : ''}"></div>
+      <div><label>Nome Fantasia</label><input type="text" id="emp-nomeFantasia" value="${e ? esc(e.nomeFantasia || '') : ''}"></div>
+    </div>
+    <div class="linha-2">
+      <div><label>CNPJ</label><input type="text" id="emp-cnpj" value="${e ? esc(e.cnpj || '') : ''}" placeholder="00.000.000/0001-00"></div>
+      <div><label>Responsável</label><input type="text" id="emp-responsavel" value="${e ? esc(e.responsavel || '') : ''}"></div>
+    </div>
+    <div class="linha-2">
+      <div><label>E-mail</label><input type="email" id="emp-email" value="${e ? esc(e.email || '') : ''}"></div>
+      <div><label>Telefone</label><input type="text" id="emp-telefone" value="${e ? esc(e.telefone || '') : ''}" placeholder="(11) 99999-9999"></div>
+    </div>
+    <div class="linha-3">
+      <div><label>Status</label>
+        <select id="emp-status">
+          ${Object.entries(STATUS_LABELS).map(([k, v]) => `<option value="${k}" ${(e?.status||'ativa')===k?'selected':''}>${v}</option>`).join('')}
+        </select>
+      </div>
+      <div><label>Plano</label>
+        <select id="emp-plano">
+          ${Object.entries(PLANO_LABELS).map(([k, v]) => `<option value="${k}" ${(e?.plano||'basico')===k?'selected':''}>${v}</option>`).join('')}
+        </select>
+      </div>
+      <div><label>Limite colaboradores</label><input type="number" id="emp-limite" value="${e ? (e.limiteColaboradores||0) : 0}" min="0"></div>
+    </div>
+    <div class="linha-2">
+      <div><label>Data ativação</label><input type="date" id="emp-dataAtivacao" value="${e ? esc(e.dataAtivacao||'') : ''}"></div>
+      <div><label>Data vencimento</label><input type="date" id="emp-dataVencimento" value="${e ? esc(e.dataVencimento||'') : ''}"></div>
+    </div>
+    <div style="margin:12px 0 6px"><strong>Módulos ativos</strong></div>
+    <div class="modulos-grid">${modulosHtml}</div>
+    <div style="margin:14px 0 6px"><strong>Unidades / Filiais</strong></div>
     <label>CNPJ</label>
     <input type="text" id="emp-cnpj" value="${e ? esc(e.cnpj || '') : ''}" placeholder="00.000.000/0001-00">
     <label>Unidades / Filiais</label>
@@ -333,9 +428,24 @@ function lerUnidades() {
 
 async function salvarEmpresa(id) {
   const nome = document.getElementById('emp-nome').value.trim();
-  if (!nome) return toast('Nome da empresa é obrigatório.', 'erro');
+  if (!nome) return toast('Razão Social é obrigatória.', 'erro');
+  const modulos = {};
+  Object.keys(MODULOS_LABELS).forEach(k => {
+    const el = document.getElementById('mod-' + k);
+    if (el) modulos[k] = el.checked;
+  });
   const body = {
     nome,
+    nomeFantasia:       (document.getElementById('emp-nomeFantasia')?.value || '').trim(),
+    responsavel:        (document.getElementById('emp-responsavel')?.value || '').trim(),
+    email:              (document.getElementById('emp-email')?.value || '').trim(),
+    telefone:           (document.getElementById('emp-telefone')?.value || '').trim(),
+    limiteColaboradores: Number(document.getElementById('emp-limite')?.value) || 0,
+    status:             document.getElementById('emp-status')?.value || 'ativa',
+    plano:              document.getElementById('emp-plano')?.value || 'basico',
+    dataAtivacao:       document.getElementById('emp-dataAtivacao')?.value || '',
+    dataVencimento:     document.getElementById('emp-dataVencimento')?.value || '',
+    modulos,
     cnpj: document.getElementById('emp-cnpj').value.trim(),
     unidades: lerUnidades()
   };
@@ -918,6 +1028,13 @@ function renderColaboradores() {
 }
 
 function formColaboradorHtml(c) {
+  const unidades = (EMPRESA_INFO.unidades || []);
+  const unidadeSelect = unidades.length > 0
+    ? `<select id="co-unidade">
+        <option value="">Selecione...</option>
+        ${unidades.map(u => `<option value="${esc(u.nome)}" ${c && c.unidade === u.nome ? 'selected' : ''}>${esc(u.nome)}</option>`).join('')}
+       </select>`
+    : `<input type="text" id="co-unidade" value="${c ? esc(c.unidade || '') : ''}" placeholder="Nome da unidade">`;
   return `
     <div class="linha-2">
       <div><label>Matrícula *</label><input type="text" id="co-matricula" value="${c ? esc(c.matricula) : ''}"></div>
@@ -931,8 +1048,8 @@ function formColaboradorHtml(c) {
     </div>
     <div class="linha-3">
       <div><label>Função</label><input type="text" id="co-funcao" value="${c ? esc(c.funcao || '') : ''}"></div>
-      <div><label>Unidade</label><input type="text" id="co-unidade" value="${c ? esc(c.unidade || '') : ''}"></div>
-      <div><label>Empresa</label><input type="text" id="co-empresa" value="${c ? esc(c.empresa || '') : ''}"></div>
+      <div><label>Unidade</label>${unidadeSelect}</div>
+      <div><label>Empresa</label><input type="text" id="co-empresa" value="${esc(EMPRESA_INFO.nome || (c ? c.empresa || '' : ''))}" readonly class="input-readonly"></div>
     </div>
     ${c ? `<label class="check-inline" style="margin-top:12px"><input type="checkbox" id="co-ativo" ${c.ativo !== false ? 'checked' : ''}> colaborador ativo</label>` : ''}
     <div class="modal-rodape">
@@ -1611,7 +1728,18 @@ async function carregarHistoricoCompleto() {
 
 /* ── Boot ── */
 
+async function carregarEmpresasLogin() {
+  try {
+    const empresas = await api('/api/empresas-publicas');
+    const sel = document.getElementById('login-empresa');
+    if (!sel) return;
+    sel.innerHTML = '<option value="">Selecione sua empresa...</option>' +
+      empresas.map(e => `<option value="${e.id}">${esc(e.nome)}</option>`).join('');
+  } catch {}
+}
+
 iniciar().catch(err => {
   document.getElementById('tela-login').classList.remove('hidden');
   console.error(err);
 });
+carregarEmpresasLogin();

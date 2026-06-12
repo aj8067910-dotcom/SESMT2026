@@ -16,29 +16,25 @@
     </div>
     <p class="login-sub">Gestão de Segurança do Trabalho Gamificada</p>
     <div class="login-tabs">
-      <button id="tab-gestor" class="login-tab active"      onclick="trocarAbaLogin('gestor')">Gestor SST</button>
-      <button id="tab-colab"  class="login-tab"             onclick="trocarAbaLogin('colaborador')">Colaborador</button>
-      <button id="tab-admin"  class="login-tab login-tab-admin" onclick="trocarAbaLogin('admin')">Admin</button>
+      <button id="tab-gestor" class="login-tab active" onclick="trocarAbaLogin('gestor')">Gestor SST</button>
+      <button id="tab-colab"  class="login-tab"        onclick="trocarAbaLogin('colaborador')">Colaborador</button>
     </div>
     <form id="form-login-gestor" onsubmit="return loginGestor(event)">
       <label>Usuário</label>
       <input type="text" id="login-usuario" autocomplete="username" required>
       <label>Senha</label>
       <input type="password" id="login-senha" autocomplete="current-password" required>
-      <button type="submit" class="btn btn-primary btn-block">Entrar como Gestor</button>
+      <button type="submit" class="btn btn-primary btn-block">Entrar</button>
     </form>
     <form id="form-login-colab" class="hidden" onsubmit="return loginColaborador(event)">
+      <label>Empresa</label>
+      <select id="login-empresa">
+        <option value="">Carregando empresas...</option>
+      </select>
       <label>Matrícula</label>
       <input type="text" id="login-matricula" placeholder="Digite sua matrícula" required>
       <button type="submit" class="btn btn-primary btn-block">Acessar meu painel</button>
       <p class="hint">Consulte pontos, histórico, faça check-in e registre observações.</p>
-    </form>
-    <form id="form-login-admin" class="hidden" onsubmit="return loginAdmin(event)">
-      <label>Usuário administrador</label>
-      <input type="text" id="login-admin-usuario" autocomplete="username" required>
-      <label>Senha</label>
-      <input type="password" id="login-admin-senha" autocomplete="current-password" required>
-      <button type="submit" class="btn btn-primary btn-block">Entrar como Administrador</button>
     </form>
     <p id="login-erro" class="erro hidden"></p>
     <p class="login-platform">SafePoint &mdash; SST Gamificado</p>
@@ -67,6 +63,11 @@
       <button class="btn btn-sm" onclick="sair()">Sair</button>
     </div>
   </header>
+
+  <div id="impersonation-banner" class="impersonation-banner hidden">
+    👀 Você está visitando esta empresa como <strong>Master Admin</strong>.
+    <button class="btn btn-sm" onclick="sair()" style="margin-left:12px">Encerrar visita</button>
+  </div>
 
   <main class="container">
 
@@ -375,17 +376,25 @@
       <img src="/logo.svg" alt="SafePoint" style="height:36px;width:auto;filter:brightness(0) invert(1)">
     </div>
     <nav class="topbar-nav">
+      <button data-aview="dashboard" class="nav-btn"        onclick="navegarAdmin('dashboard')">Dashboard</button>
       <button data-aview="empresas"  class="nav-btn active" onclick="navegarAdmin('empresas')">Empresas</button>
       <button data-aview="gestores"  class="nav-btn"        onclick="navegarAdmin('gestores')">Gestores</button>
     </nav>
     <div class="topbar-user">
       <span id="admin-nome"></span>
-      <span class="badge badge-admin">Super Admin</span>
+      <span class="badge badge-admin">Master Admin</span>
       <button class="btn btn-sm" onclick="sair()">Sair</button>
     </div>
   </header>
 
   <main class="container">
+
+    <!-- Dashboard global -->
+    <section id="aview-dashboard" class="aview hidden">
+      <div class="view-head"><h2>Dashboard Global</h2></div>
+      <div id="admin-stats-grid" class="cards"></div>
+      <div id="admin-stats-empresas" style="margin-top:24px"></div>
+    </section>
 
     <!-- Empresas -->
     <section id="aview-empresas" class="aview">

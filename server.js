@@ -56,6 +56,14 @@ const DEFAULT_CORES = {
   laranja:    '#e8801a'
 };
 
+const DEFAULT_MODULOS = {
+  dds: true, treinamentos: true, ranking: true, loja: true,
+  dashboardAvancado: false, ia: false, certificados: false
+};
+
+const STATUS_EMPRESA = ['ativa', 'em_implantacao', 'suspensa', 'bloqueada', 'cancelada'];
+const PLANOS = ['basico', 'profissional', 'enterprise'];
+
 /* ── Persistência ────────────────────────────────────────────── */
 
 let db = null;
@@ -130,6 +138,20 @@ function loadDb() {
     const compId = nextId();
     db.companies.push({ id: compId, nome: 'Empresa Padrão', cnpj: '', logo: null, cores: { ...DEFAULT_CORES }, unidades: [{ id: nextId(), nome: 'Matriz', endereco: '', cidade: '', estado: '' }], ativo: true, criadaEm: Date.now() });
   }
+  // migrar empresas sem campos novos
+  for (const c of db.companies) {
+    if (!c.modulos)                          c.modulos = { ...DEFAULT_MODULOS };
+    if (!c.status)                           c.status = 'ativa';
+    if (c.responsavel    === undefined)      c.responsavel = '';
+    if (c.email          === undefined)      c.email = '';
+    if (c.telefone       === undefined)      c.telefone = '';
+    if (c.plano          === undefined)      c.plano = 'basico';
+    if (c.nomeFantasia   === undefined)      c.nomeFantasia = '';
+    if (c.limiteColaboradores === undefined) c.limiteColaboradores = 0;
+    if (c.dataAtivacao   === undefined)      c.dataAtivacao = '';
+    if (c.dataVencimento === undefined)      c.dataVencimento = '';
+  }
+  if (!db.auditLog) db.auditLog = [];
   // migrar gestores sem companyId
   const defaultComp = db.companies[0];
   for (const m of db.managers) {
@@ -399,7 +421,13 @@ function getCompanyBranding(companyId) {
   if (!companyId) return null;
   const c = db.companies.find(x => x.id === companyId);
   if (!c) return null;
-  return { id: c.id, nome: c.nome, logo: c.logo || null, cores: c.cores || DEFAULT_CORES };
+  return { id: c.id, nome: c.nome, logo: c.logo || null, cores: c.cores || DEFAULT_CORES, unidades: c.unidades || [] };
+}
+
+function logAudit(userId, role, acao, detalhes, companyId) {
+  if (!db.auditLog) db.auditLog = [];
+  db.auditLog.push({ id: nextId(), timestamp: Date.now(), userId, role, acao, detalhes: detalhes || '', companyId: companyId || null });
+  saveDb();
 }
 
 /* ── Roteamento ──────────────────────────────────────────────── */
@@ -420,19 +448,43 @@ route('POST', /^\/api\/login$/, { public: true }, async (req, res, m, body) => {
     return sendJson(res, 200, { ok: true, perfil: 'admin', nome: adm.name });
   }
   if (body.perfil === 'gestor') {
-    const mgr = db.managers.find(u => u.username.toLowerCase() === String(body.usuario || '').toLowerCase().trim());
+    const usuario = String(body.usuario || '').toLowerCase().trim();
+    // Master Admin pode entrar pelo tab de Gestor SST
+    const adm = db.admins.find(u => u.username.toLowerCase() === usuario);
+    if (adm) {
+      const check = hashPassword(String(body.senha || ''), adm.salt);
+      if (check.hash !== adm.hash) return sendJson(res, 401, { error: 'Usuário ou senha incorretos.' });
+      const token = createSession({ role: 'admin', userId: adm.id });
+      res.setHeader('Set-Cookie', `sesmt_token=${token}; Path=/; HttpOnly; SameSite=Lax`);
+      logAudit(adm.id, 'admin', 'login', `Admin ${adm.username} entrou`);
+      return sendJson(res, 200, { ok: true, perfil: 'admin', nome: adm.name });
+    }
+    const mgr = db.managers.find(u => u.username.toLowerCase() === usuario);
     if (!mgr) return sendJson(res, 401, { error: 'Usuário ou senha incorretos.' });
     const check = hashPassword(String(body.senha || ''), mgr.salt);
     if (check.hash !== mgr.hash) return sendJson(res, 401, { error: 'Usuário ou senha incorretos.' });
+    // Bloquear empresa suspensa/bloqueada
+    const emp2 = db.companies.find(c => c.id === mgr.companyId);
+    if (emp2 && ['suspensa', 'bloqueada', 'cancelada'].includes(emp2.status)) {
+      return sendJson(res, 403, { error: `Acesso bloqueado. Status da empresa: ${emp2.status}.` });
+    }
     const token = createSession({ role: 'gestor', userId: mgr.id, companyId: mgr.companyId });
     res.setHeader('Set-Cookie', `sesmt_token=${token}; Path=/; HttpOnly; SameSite=Lax`);
+    logAudit(mgr.id, 'gestor', 'login', `Gestor ${mgr.username} entrou`, mgr.companyId);
     const branding = getCompanyBranding(mgr.companyId);
     return sendJson(res, 200, { ok: true, perfil: 'gestor', nome: mgr.name, branding });
   }
   if (body.perfil === 'colaborador') {
     const mat = normalizeMatricula(body.matricula);
-    const emp = db.employees.find(e => e.matricula === mat && e.ativo !== false);
-    if (!emp) return sendJson(res, 401, { error: 'Matrícula não encontrada. Procure o gestor SST.' });
+    const companyId = body.companyId ? Number(body.companyId) : null;
+    let emp;
+    if (companyId) {
+      emp = db.employees.find(e => e.matricula === mat && e.companyId === companyId && e.ativo !== false);
+      if (!emp) return sendJson(res, 401, { error: 'Matrícula não encontrada nesta empresa. Consulte o gestor SST.' });
+    } else {
+      emp = db.employees.find(e => e.matricula === mat && e.ativo !== false);
+      if (!emp) return sendJson(res, 401, { error: 'Matrícula não encontrada. Selecione a empresa ou consulte o gestor SST.' });
+    }
     const token = createSession({ role: 'colaborador', employeeId: emp.id, companyId: emp.companyId });
     res.setHeader('Set-Cookie', `sesmt_token=${token}; Path=/; HttpOnly; SameSite=Lax`);
     const branding = getCompanyBranding(emp.companyId);
@@ -457,9 +509,10 @@ route('GET', /^\/api\/me$/, { public: true }, async (req, res) => {
     return sendJson(res, 200, { autenticado: true, perfil: 'admin', nome: adm ? adm.name : 'Admin' });
   }
   if (s.role === 'gestor') {
-    const mgr = db.managers.find(u => u.id === s.userId);
+    const mgr = s.userId ? db.managers.find(u => u.id === s.userId) : null;
     const branding = getCompanyBranding(s.companyId);
-    return sendJson(res, 200, { autenticado: true, perfil: 'gestor', nome: mgr ? mgr.name : 'Gestor', branding });
+    const nome = mgr ? mgr.name : (s.adminImpersonating ? '👀 Admin visitando' : 'Gestor');
+    return sendJson(res, 200, { autenticado: true, perfil: 'gestor', nome, branding, adminImpersonando: !!s.adminImpersonating });
   }
   const emp = db.employees.find(e => e.id === s.employeeId);
   const branding = getCompanyBranding(s.companyId);
@@ -478,7 +531,33 @@ route('POST', /^\/api\/senha$/, { role: 'gestor' }, async (req, res, m, body, s)
   sendJson(res, 200, { ok: true });
 });
 
+/* ── Endpoint público: lista de empresas para o login ─────── */
+
+route('GET', /^\/api\/empresas-publicas$/, { public: true }, async (req, res) => {
+  const list = db.companies
+    .filter(c => c.ativo !== false && !['bloqueada', 'cancelada'].includes(c.status))
+    .map(c => ({ id: c.id, nome: c.nomeFantasia || c.nome }))
+    .sort((a, b) => a.nome.localeCompare(b.nome));
+  sendJson(res, 200, list);
+});
+
 /* ── Admin — Empresas ────────────────────────────────────────── */
+
+route('GET', /^\/api\/admin\/stats$/, { role: 'admin' }, async (req, res) => {
+  sendJson(res, 200, {
+    totalEmpresas:      db.companies.filter(c => c.ativo !== false).length,
+    totalColaboradores: db.employees.filter(e => e.ativo !== false).length,
+    totalGestores:      db.managers.length,
+    totalEventos:       db.events.length,
+    totalCheckins:      db.checkins.length,
+    totalSugestoes:     db.suggestions.length,
+    totalObservacoes:   db.observations.length,
+    totalPontos:        db.checkins.reduce((s, c) => s + (c.pontosAtribuidos || 0), 0),
+    empresasPorStatus:  STATUS_EMPRESA.reduce((acc, s) => {
+      acc[s] = db.companies.filter(c => c.status === s).length; return acc;
+    }, {})
+  });
+});
 
 route('GET', /^\/api\/admin\/empresas$/, { role: 'admin' }, async (req, res) => {
   const list = db.companies.map(c => ({
@@ -490,19 +569,30 @@ route('GET', /^\/api\/admin\/empresas$/, { role: 'admin' }, async (req, res) => 
   sendJson(res, 200, list);
 });
 
-route('POST', /^\/api\/admin\/empresas$/, { role: 'admin' }, async (req, res, m, body) => {
-  if (!String(body.nome || '').trim()) return sendJson(res, 400, { error: 'Nome é obrigatório.' });
+route('POST', /^\/api\/admin\/empresas$/, { role: 'admin' }, async (req, res, m, body, s) => {
+  if (!String(body.nome || '').trim()) return sendJson(res, 400, { error: 'Razão Social é obrigatória.' });
   const empresa = {
     id: nextId(),
-    nome: String(body.nome).trim(),
-    cnpj: String(body.cnpj || '').trim(),
-    logo: null,
-    cores: { ...DEFAULT_CORES, ...(body.cores || {}) },
-    unidades: Array.isArray(body.unidades) ? body.unidades : [{ id: nextId(), nome: 'Matriz', endereco: '', cidade: '', estado: '' }],
-    ativo: true,
-    criadaEm: Date.now()
+    nome:               String(body.nome || '').trim(),
+    nomeFantasia:       String(body.nomeFantasia || '').trim(),
+    cnpj:               String(body.cnpj || '').trim(),
+    responsavel:        String(body.responsavel || '').trim(),
+    email:              String(body.email || '').trim(),
+    telefone:           String(body.telefone || '').trim(),
+    limiteColaboradores: Number(body.limiteColaboradores) || 0,
+    plano:              PLANOS.includes(body.plano) ? body.plano : 'basico',
+    status:             STATUS_EMPRESA.includes(body.status) ? body.status : 'ativa',
+    dataAtivacao:       String(body.dataAtivacao || ''),
+    dataVencimento:     String(body.dataVencimento || ''),
+    modulos:            { ...DEFAULT_MODULOS, ...(body.modulos || {}) },
+    logo:               null,
+    cores:              { ...DEFAULT_CORES, ...(body.cores || {}) },
+    unidades:           Array.isArray(body.unidades) ? body.unidades : [{ id: nextId(), nome: 'Matriz', endereco: '', cidade: '', estado: '' }],
+    ativo:              true,
+    criadaEm:           Date.now()
   };
   db.companies.push(empresa);
+  logAudit(s.userId, 'admin', 'empresa_criada', `Empresa "${empresa.nome}" criada`);
   saveDb();
   sendJson(res, 201, { ...empresa, logo: null });
 });
@@ -510,9 +600,19 @@ route('POST', /^\/api\/admin\/empresas$/, { role: 'admin' }, async (req, res, m,
 route('PUT', /^\/api\/admin\/empresas\/(\d+)$/, { role: 'admin' }, async (req, res, m, body) => {
   const empresa = db.companies.find(c => c.id === Number(m[1]));
   if (!empresa) return sendJson(res, 404, { error: 'Empresa não encontrada.' });
-  if (body.nome !== undefined) empresa.nome = String(body.nome).trim();
-  if (body.cnpj !== undefined) empresa.cnpj = String(body.cnpj).trim();
-  if (body.ativo !== undefined) empresa.ativo = !!body.ativo;
+  if (body.nome         !== undefined) empresa.nome         = String(body.nome).trim();
+  if (body.nomeFantasia !== undefined) empresa.nomeFantasia = String(body.nomeFantasia).trim();
+  if (body.cnpj         !== undefined) empresa.cnpj         = String(body.cnpj).trim();
+  if (body.responsavel  !== undefined) empresa.responsavel  = String(body.responsavel).trim();
+  if (body.email        !== undefined) empresa.email        = String(body.email).trim();
+  if (body.telefone     !== undefined) empresa.telefone     = String(body.telefone).trim();
+  if (body.limiteColaboradores !== undefined) empresa.limiteColaboradores = Number(body.limiteColaboradores) || 0;
+  if (body.plano        !== undefined && PLANOS.includes(body.plano))         empresa.plano        = body.plano;
+  if (body.status       !== undefined && STATUS_EMPRESA.includes(body.status)) empresa.status       = body.status;
+  if (body.dataAtivacao   !== undefined) empresa.dataAtivacao   = String(body.dataAtivacao);
+  if (body.dataVencimento !== undefined) empresa.dataVencimento = String(body.dataVencimento);
+  if (body.modulos      !== undefined) empresa.modulos = { ...empresa.modulos, ...body.modulos };
+  if (body.ativo        !== undefined) empresa.ativo   = !!body.ativo;
   if (body.cores) empresa.cores = { ...empresa.cores, ...body.cores };
   if (Array.isArray(body.unidades)) empresa.unidades = body.unidades;
   saveDb();
@@ -546,6 +646,17 @@ route('GET', /^\/api\/admin\/empresas\/(\d+)\/branding$/, { role: 'admin' }, asy
   const empresa = db.companies.find(c => c.id === Number(m[1]));
   if (!empresa) return sendJson(res, 404, { error: 'Empresa não encontrada.' });
   sendJson(res, 200, { logo: empresa.logo || null, cores: empresa.cores || DEFAULT_CORES, nome: empresa.nome });
+});
+
+route('POST', /^\/api\/admin\/empresas\/(\d+)\/entrar$/, { role: 'admin' }, async (req, res, m, body, s) => {
+  const empresa = db.companies.find(c => c.id === Number(m[1]));
+  if (!empresa) return sendJson(res, 404, { error: 'Empresa não encontrada.' });
+  const mgr = db.managers.find(mg => mg.companyId === empresa.id);
+  const token = createSession({ role: 'gestor', userId: mgr ? mgr.id : null, companyId: empresa.id, adminImpersonating: true });
+  res.setHeader('Set-Cookie', `sesmt_token=${token}; Path=/; HttpOnly; SameSite=Lax`);
+  logAudit(s.userId, 'admin', 'entrou_empresa', `Admin entrou na empresa "${empresa.nome}"`, empresa.id);
+  const branding = getCompanyBranding(empresa.id);
+  return sendJson(res, 200, { ok: true, branding });
 });
 
 route('POST', /^\/api\/admin\/empresas\/(\d+)\/gestores$/, { role: 'admin' }, async (req, res, m, body) => {
