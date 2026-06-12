@@ -118,41 +118,59 @@ function fecharDetalheEvento(e) {
   }
 }
 
-/* ── Login ── */
+/* ── Papéis (SafePoint 2.1) ── */
 
-function trocarAbaLogin(qual) {
-  document.getElementById('tab-gestor').classList.toggle('active', qual === 'gestor');
-  document.getElementById('tab-colab').classList.toggle('active', qual === 'colaborador');
-  document.getElementById('tab-admin').classList.toggle('active', qual === 'admin');
-  document.getElementById('form-login-gestor').classList.toggle('hidden', qual !== 'gestor');
-  document.getElementById('form-login-colab').classList.toggle('hidden', qual !== 'colaborador');
-  document.getElementById('form-login-admin').classList.toggle('hidden', qual !== 'admin');
-  document.getElementById('login-erro').classList.add('hidden');
+const ROLE_LABELS = {
+  sesmt: 'SESMT', cipa: 'CIPA', brigada: 'Brigada de Emergência',
+  tecnico_seguranca: 'Técnico de Segurança', medico_trabalho: 'Médico do Trabalho', ergonomista: 'Ergonomista'
+};
+const ROLE_EMOJIS = {
+  sesmt: '🦺', cipa: '⚠️', brigada: '🚒',
+  tecnico_seguranca: '🔧', medico_trabalho: '🩺', ergonomista: '🪑'
+};
+
+function renderRoleBadges(roles) {
+  if (!roles || !roles.length) return '';
+  return roles.map(r => `<span class="role-badge role-${r}" title="${ROLE_LABELS[r] || r}">${ROLE_EMOJIS[r] || '🏅'} ${ROLE_LABELS[r] || r}</span>`).join('');
 }
+
+function renderRoleBadgesMini(roles) {
+  if (!roles || !roles.length) return '';
+  return roles.map(r => `<span class="role-badge-mini role-${r}" title="${ROLE_LABELS[r] || r}">${ROLE_EMOJIS[r] || '🏅'}</span>`).join('');
+}
+
+/* ── Login ── */
 
 function mostrarErroLogin(msg) {
   const el = document.getElementById('login-erro');
   el.textContent = msg; el.classList.remove('hidden');
 }
 
-async function loginGestor(e) {
-  e.preventDefault();
-  try {
-    const r = await api('/api/login', { method: 'POST', body: { perfil: 'gestor', usuario: document.getElementById('login-usuario').value, senha: document.getElementById('login-senha').value } });
-    if (r.branding) aplicarBranding(r.branding);
-    await iniciar();
-  } catch (err) { mostrarErroLogin(err.message); }
-  return false;
+function mostrarLoginAdmin() {
+  document.getElementById('form-login-unificado').classList.add('hidden');
+  document.getElementById('form-login-admin').classList.remove('hidden');
+  document.getElementById('login-erro').classList.add('hidden');
 }
 
-async function loginColaborador(e) {
+function esconderLoginAdmin() {
+  document.getElementById('form-login-admin').classList.add('hidden');
+  document.getElementById('form-login-unificado').classList.remove('hidden');
+  document.getElementById('login-erro').classList.add('hidden');
+}
+
+async function loginUnificado(e) {
   e.preventDefault();
-  const empresaSel = document.getElementById('login-empresa');
-  const companyId  = empresaSel ? (Number(empresaSel.value) || null) : null;
+  const matricula = document.getElementById('login-mat').value.trim();
+  const senha = document.getElementById('login-pwd').value;
   try {
-    const r = await api('/api/login', { method: 'POST', body: { perfil: 'colaborador', matricula: document.getElementById('login-matricula').value, companyId } });
+    const r = await api('/api/login', { method: 'POST', body: { perfil: 'unificado', matricula, senha } });
     if (r.branding) aplicarBranding(r.branding);
-    await iniciar();
+    if (r.primeiroAcesso || !r.termosAceitos) {
+      await iniciar();
+      abrirPrimeiroAcesso(r.primeiroAcesso, r.termosAceitos);
+    } else {
+      await iniciar();
+    }
   } catch (err) { mostrarErroLogin(err.message); }
   return false;
 }
@@ -164,6 +182,48 @@ async function loginAdmin(e) {
     await iniciar();
   } catch (err) { mostrarErroLogin(err.message); }
   return false;
+}
+
+/* ── Primeiro Acesso ── */
+
+function abrirPrimeiroAcesso(precisaSenha, termosAceitos) {
+  const overlay = document.getElementById('primeiro-acesso-overlay');
+  overlay.classList.remove('hidden');
+  document.getElementById('pa-step-senha').classList.toggle('hidden', !precisaSenha);
+  document.getElementById('pa-step-termos').classList.toggle('hidden', precisaSenha || termosAceitos);
+  document.getElementById('pa-titulo').textContent = precisaSenha
+    ? 'Crie sua senha pessoal'
+    : 'Termos de Uso';
+}
+
+async function confirmarNovaSenha() {
+  const atual  = document.getElementById('pa-senha-atual').value;
+  const nova   = document.getElementById('pa-senha-nova').value;
+  const conf   = document.getElementById('pa-senha-confirma').value;
+  const erro   = document.getElementById('pa-senha-erro');
+  erro.classList.add('hidden');
+  if (!atual || !nova || !conf) { erro.textContent = 'Preencha todos os campos.'; erro.classList.remove('hidden'); return; }
+  if (nova.length < 6) { erro.textContent = 'A nova senha precisa ter no mínimo 6 caracteres.'; erro.classList.remove('hidden'); return; }
+  if (nova !== conf) { erro.textContent = 'As senhas não coincidem.'; erro.classList.remove('hidden'); return; }
+  try {
+    await api('/api/alterar-senha-emp', { method: 'POST', body: { senhaAtual: atual, novaSenha: nova } });
+    // show terms step
+    document.getElementById('pa-step-senha').classList.add('hidden');
+    document.getElementById('pa-step-termos').classList.remove('hidden');
+    document.getElementById('pa-titulo').textContent = 'Termos de Uso';
+  } catch (err) { erro.textContent = err.message; erro.classList.remove('hidden'); }
+}
+
+async function confirmarTermos() {
+  const check = document.getElementById('pa-termos-check');
+  const erro  = document.getElementById('pa-termos-erro');
+  erro.classList.add('hidden');
+  if (!check.checked) { erro.textContent = 'Você precisa aceitar os termos para continuar.'; erro.classList.remove('hidden'); return; }
+  try {
+    await api('/api/aceitar-termos', { method: 'POST' });
+    document.getElementById('primeiro-acesso-overlay').classList.add('hidden');
+    toast('Bem-vindo ao SafePoint! 🚀');
+  } catch (err) { erro.textContent = err.message; erro.classList.remove('hidden'); }
 }
 
 async function sair() {
@@ -199,15 +259,21 @@ async function iniciar() {
     if (banner) banner.classList.toggle('hidden', !me.adminImpersonando);
     preencherFiltroTipos();
     await Promise.all([carregarColaboradores(), carregarEventos()]);
-    // carregar info da empresa (unidades etc.)
     try { EMPRESA_INFO = await api('/api/empresa/branding'); } catch {}
     navegar('dashboard');
     carregarBrandingConfig();
   } else {
     document.getElementById('colab-nome').textContent = me.nome;
+    // show role badges in topbar
+    const badgesEl = document.getElementById('colab-role-badges');
+    if (badgesEl) badgesEl.innerHTML = renderRoleBadgesMini(me.roles || []);
     document.getElementById('app-colab').classList.remove('hidden');
     await carregarPainelColaborador();
     verificarCheckinPendente();
+    // first-access check after rendering app
+    if (me.primeiroAcesso || !me.termosAceitos) {
+      abrirPrimeiroAcesso(me.primeiroAcesso, me.termosAceitos);
+    }
   }
 }
 
@@ -227,6 +293,8 @@ async function navegar(view) {
   if (view === 'quiz-gestor')     await carregarQuizGestor();
   if (view === 'engajamento')     await carregarEngajamento();
   if (view === 'pesquisas-gestor') await carregarPesquisasGestor();
+  if (view === 'quem-e-quem')    await carregarQuemEQuem();
+  if (view === 'roles')          await carregarRoles();
   if (view === 'config') { renderConfig(); carregarBrandingConfig(); }
 }
 
@@ -240,6 +308,7 @@ async function navegarColab(view) {
   if (view === 'quiz')         await carregarQuiz();
   if (view === 'perfil')       await carregarPerfil();
   if (view === 'pesquisas')    await carregarPesquisasColab();
+  if (view === 'quem-e-quem') await carregarQuemEQuemColab();
   if (view === 'observar')     await carregarMinhasObservacoes();
   if (view === 'sugerir')      await carregarMinhasSugestoes();
   if (view === 'historico')    await carregarHistoricoCompleto();
@@ -2827,6 +2896,163 @@ async function enviarPesquisa(pesqId) {
   } catch (err) { toast(err.message, 'erro'); }
 }
 
+/* ── Quem é Quem ── */
+
+let QEQ_LISTA = [];
+
+async function carregarQuemEQuem() {
+  QEQ_LISTA = await api('/api/quem-e-quem').catch(() => []);
+  filtrarQuemEQuem();
+}
+
+function filtrarQuemEQuem() {
+  const busca = (document.getElementById('qeq-busca')?.value || '').toLowerCase();
+  const role  = document.getElementById('qeq-role-filtro')?.value || '';
+  const el    = document.getElementById('qeq-grid');
+  if (!el) return;
+  let lista = QEQ_LISTA;
+  if (role)  lista = lista.filter(p => p.roles.includes(role));
+  if (busca) lista = lista.filter(p => [p.nome, p.funcao, p.setor, p.equipe].join(' ').toLowerCase().includes(busca));
+  el.innerHTML = lista.length
+    ? lista.map(p => renderQeqCard(p)).join('')
+    : '<p class="hint" style="padding:24px;text-align:center">Nenhum resultado encontrado.</p>';
+}
+
+function renderQeqCard(p) {
+  const avatarBg = p.roles.includes('sesmt') ? 'var(--azul)' : p.roles.includes('cipa') ? '#e8801a' : p.roles.includes('brigada') ? '#c43a3a' : 'var(--cinza-borda)';
+  const initial = (p.nome || '?').charAt(0).toUpperCase();
+  return `<div class="qeq-card">
+    <div class="qeq-avatar" style="background:${avatarBg}">${initial}</div>
+    <div class="qeq-info">
+      <div class="qeq-nome">${esc(p.nome)}</div>
+      <div class="qeq-funcao hint">${esc(p.funcao || p.setor || '—')}</div>
+      ${p.equipe ? `<div class="hint" style="font-size:11px">${esc(p.equipe)}</div>` : ''}
+      <div class="qeq-roles" style="margin-top:6px">${renderRoleBadges(p.roles)}</div>
+    </div>
+  </div>`;
+}
+
+/* ── Quem é Quem (colaborador) ── */
+
+let CQEQ_LISTA = [];
+
+async function carregarQuemEQuemColab() {
+  CQEQ_LISTA = await api('/api/quem-e-quem').catch(() => []);
+  filtrarQuemEQuemColab();
+}
+
+function filtrarQuemEQuemColab() {
+  const busca = (document.getElementById('cqeq-busca')?.value || '').toLowerCase();
+  const role  = document.getElementById('cqeq-role-filtro')?.value || '';
+  const el    = document.getElementById('cqeq-grid');
+  if (!el) return;
+  let lista = CQEQ_LISTA;
+  if (role)  lista = lista.filter(p => p.roles.includes(role));
+  if (busca) lista = lista.filter(p => [p.nome, p.funcao, p.setor, p.equipe].join(' ').toLowerCase().includes(busca));
+  el.innerHTML = lista.length
+    ? lista.map(p => renderQeqCard(p)).join('')
+    : '<p class="hint" style="padding:24px;text-align:center">Nenhum resultado encontrado.</p>';
+}
+
+/* ── Papéis de Segurança (gestor) ── */
+
+let ROLES_COLABORADORES = [];
+
+async function carregarRoles() {
+  ROLES_COLABORADORES = COLABORADORES.length ? COLABORADORES : await api('/api/colaboradores').catch(() => []);
+  renderOrganograma();
+  filtrarColabRoles();
+}
+
+function renderOrganograma() {
+  const el = document.getElementById('organograma-wrap');
+  if (!el) return;
+  const grupos = {
+    sesmt:             { label: '🦺 SESMT', cor: 'var(--azul)', membros: [] },
+    cipa:              { label: '⚠️ CIPA', cor: '#e8801a', membros: [] },
+    brigada:           { label: '🚒 Brigada de Emergência', cor: '#c43a3a', membros: [] },
+    tecnico_seguranca: { label: '🔧 Técnico de Segurança', cor: '#637080', membros: [] },
+    medico_trabalho:   { label: '🩺 Médico do Trabalho',  cor: '#1a8a4c', membros: [] },
+    ergonomista:       { label: '🪑 Ergonomista',          cor: '#7b5ea7', membros: [] }
+  };
+  for (const c of ROLES_COLABORADORES) {
+    for (const role of (c.roles || [])) {
+      if (grupos[role]) grupos[role].membros.push(c);
+    }
+  }
+  const ativos = Object.entries(grupos).filter(([, g]) => g.membros.length);
+  if (!ativos.length) {
+    el.innerHTML = '<p class="hint" style="text-align:center;padding:16px">Nenhum papel atribuído ainda. Utilize a seção abaixo para atribuir papéis aos colaboradores.</p>';
+    return;
+  }
+  el.innerHTML = `<div class="organograma-grid">${ativos.map(([key, g]) => `
+    <div class="org-grupo">
+      <div class="org-grupo-header" style="background:${g.cor}">${g.label}</div>
+      <div class="org-grupo-membros">
+        ${g.membros.map(m => `<div class="org-membro"><span class="org-membro-nome">${esc(m.nome)}</span><span class="hint" style="font-size:11px">${esc(m.funcao || m.setor || '')}</span></div>`).join('')}
+      </div>
+    </div>`).join('')}
+  </div>`;
+}
+
+function filtrarColabRoles() {
+  const busca = (document.getElementById('roles-busca')?.value || '').toLowerCase();
+  const el = document.getElementById('roles-lista');
+  if (!el) return;
+  const lista = ROLES_COLABORADORES.filter(c => !busca || c.nome.toLowerCase().includes(busca) || (c.matricula || '').toLowerCase().includes(busca));
+  if (!lista.length) { el.innerHTML = '<p class="hint" style="padding:16px;text-align:center">Nenhum colaborador encontrado.</p>'; return; }
+  const ROLE_LIST = ['sesmt', 'cipa', 'brigada', 'tecnico_seguranca', 'medico_trabalho', 'ergonomista'];
+  el.innerHTML = `<table class="tabela">
+    <thead><tr><th>Colaborador</th><th>Matrícula</th><th>Função</th><th>Papéis atuais</th><th>Atribuir / Remover</th></tr></thead>
+    <tbody>${lista.map(c => `
+      <tr>
+        <td>${esc(c.nome)}</td>
+        <td>${esc(c.matricula)}</td>
+        <td>${esc(c.funcao || c.setor || '—')}</td>
+        <td>${renderRoleBadges(c.roles || []) || '<span class="hint">—</span>'}</td>
+        <td>
+          <select id="role-sel-${c.id}" style="width:180px">
+            ${ROLE_LIST.map(r => `<option value="${r}">${ROLE_EMOJIS[r]} ${ROLE_LABELS[r]}</option>`).join('')}
+          </select>
+          <button class="btn btn-sm btn-primary" onclick="atribuirRole(${c.id})" style="margin-left:4px">+ Atribuir</button>
+          <button class="btn btn-sm btn-perigo" onclick="removerRolePrompt(${c.id})" style="margin-left:4px" ${!(c.roles && c.roles.length) ? 'disabled' : ''}>− Remover</button>
+        </td>
+      </tr>`).join('')}
+    </tbody>
+  </table>`;
+}
+
+async function atribuirRole(empId) {
+  const sel = document.getElementById('role-sel-' + empId);
+  if (!sel) return;
+  try {
+    await api(`/api/usuarios/${empId}/roles`, { method: 'POST', body: { role: sel.value } });
+    toast(`Papel ${ROLE_LABELS[sel.value] || sel.value} atribuído!`, 'ok');
+    ROLES_COLABORADORES = await api('/api/colaboradores').catch(() => ROLES_COLABORADORES);
+    renderOrganograma();
+    filtrarColabRoles();
+  } catch (err) { toast(err.message, 'erro'); }
+}
+
+async function removerRolePrompt(empId) {
+  const colab = ROLES_COLABORADORES.find(c => c.id === empId);
+  if (!colab || !colab.roles || !colab.roles.length) return;
+  const roles = colab.roles;
+  const opcoes = roles.map((r, i) => `${i + 1}. ${ROLE_EMOJIS[r]} ${ROLE_LABELS[r] || r}`).join('\n');
+  const resp = prompt(`Qual papel deseja remover de ${colab.nome}?\n${opcoes}\n\nDigite o número:`);
+  if (!resp) return;
+  const idx = parseInt(resp) - 1;
+  if (isNaN(idx) || idx < 0 || idx >= roles.length) { toast('Opção inválida.', 'erro'); return; }
+  const roleToRemove = roles[idx];
+  try {
+    await api(`/api/usuarios/${empId}/roles/${roleToRemove}`, { method: 'DELETE' });
+    toast(`Papel ${ROLE_LABELS[roleToRemove] || roleToRemove} removido.`, 'ok');
+    ROLES_COLABORADORES = await api('/api/colaboradores').catch(() => ROLES_COLABORADORES);
+    renderOrganograma();
+    filtrarColabRoles();
+  } catch (err) { toast(err.message, 'erro'); }
+}
+
 /* ── Boot ── */
 
 async function carregarEmpresasLogin() {
@@ -2843,4 +3069,3 @@ iniciar().catch(err => {
   document.getElementById('tela-login').classList.remove('hidden');
   console.error(err);
 });
-carregarEmpresasLogin();

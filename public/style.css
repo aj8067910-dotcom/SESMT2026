@@ -607,3 +607,92 @@ hr { border: none; border-top: 1px solid var(--cinza-borda); margin: 16px 0; }
 .pesquisa-colab-card { border-left: 4px solid var(--azul); }
 .escala-btn, .simnao-btn { min-width: 56px !important; }
 
+
+/* ══════════════════════════════════════════
+   SafePoint 2.1 — Login unificado
+   ══════════════════════════════════════════ */
+.login-hint-pwd { text-align: center; margin-top: 10px; font-size: 12px; }
+.login-admin-link { text-align: center; margin-top: 12px; font-size: 12px; }
+.login-admin-link a { color: var(--texto-suave); text-decoration: none; }
+.login-admin-link a:hover { text-decoration: underline; }
+
+/* ══════════════════════════════════════════
+   SafePoint 2.1 — Primeiro Acesso overlay
+   ══════════════════════════════════════════ */
+.primeiro-acesso-modal { max-width: 480px; }
+.termos-scroll {
+  max-height: 180px; overflow-y: auto; background: #f8fafc;
+  border: 1px solid var(--cinza-borda); border-radius: 8px;
+  padding: 14px; font-size: 13px; line-height: 1.6;
+}
+.termos-scroll ul { padding-left: 20px; margin: 8px 0 0; }
+.termos-scroll li { margin-bottom: 6px; }
+
+/* ══════════════════════════════════════════
+   SafePoint 2.1 — Role badges
+   ══════════════════════════════════════════ */
+.role-badge {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 3px 8px; border-radius: 99px;
+  font-size: 11px; font-weight: 700; white-space: nowrap;
+  background: var(--cinza-borda); color: var(--texto-sec);
+}
+.role-badge-mini {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 24px; height: 24px; border-radius: 50%;
+  font-size: 13px; background: rgba(255,255,255,0.2);
+  cursor: default;
+}
+.role-sesmt             { background: var(--azul);   color: #fff; }
+.role-cipa              { background: #e8801a;        color: #fff; }
+.role-brigada           { background: #c43a3a;        color: #fff; }
+.role-tecnico_seguranca { background: #637080;        color: #fff; }
+.role-medico_trabalho   { background: #1a8a4c;        color: #fff; }
+.role-ergonomista       { background: #7b5ea7;        color: #fff; }
+
+/* ══════════════════════════════════════════
+   SafePoint 2.1 — Quem é Quem (directory)
+   ══════════════════════════════════════════ */
+.qeq-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 12px;
+  margin-top: 14px;
+}
+.qeq-card {
+  background: #fff; border: 1px solid var(--cinza-borda); border-radius: 12px;
+  padding: 16px; display: flex; gap: 14px; align-items: flex-start;
+  transition: box-shadow .15s;
+}
+.qeq-card:hover { box-shadow: 0 4px 16px rgba(0,0,0,.08); }
+.qeq-avatar {
+  width: 44px; height: 44px; border-radius: 50%; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 20px; font-weight: 800; color: #fff;
+}
+.qeq-info { flex: 1; min-width: 0; }
+.qeq-nome { font-weight: 700; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.qeq-funcao { font-size: 12px; margin-top: 2px; }
+.qeq-roles { display: flex; flex-wrap: wrap; gap: 4px; }
+
+/* ══════════════════════════════════════════
+   SafePoint 2.1 — Organograma de Segurança
+   ══════════════════════════════════════════ */
+.organograma-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 12px;
+  margin-top: 8px;
+}
+.org-grupo { border: 1px solid var(--cinza-borda); border-radius: 10px; overflow: hidden; }
+.org-grupo-header {
+  color: #fff; font-weight: 700; font-size: 13px;
+  padding: 10px 14px;
+}
+.org-grupo-membros { padding: 10px 14px; }
+.org-membro {
+  display: flex; flex-direction: column; gap: 1px;
+  padding: 6px 0; border-bottom: 1px solid #f0f3f7;
+}
+.org-membro:last-child { border-bottom: none; }
+.org-membro-nome { font-weight: 600; font-size: 13px; }

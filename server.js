@@ -185,6 +185,20 @@ function loadDb() {
     if (e.ultimoAcessoDia === undefined) e.ultimoAcessoDia = '';
     if (e.nivelAtual      === undefined) e.nivelAtual = 1;
   }
+  // SafePoint 2.1 — campos de autenticação e papéis
+  for (const e of db.employees) {
+    if (!e.senhaSalt || !e.senhaHash) {
+      const pwd = hashPassword('SafePoint@2026');
+      e.senhaSalt = pwd.salt;
+      e.senhaHash = pwd.hash;
+    }
+    if (e.primeiroAcesso  === undefined) e.primeiroAcesso  = true;
+    if (!e.roles)                        e.roles           = [];
+    if (e.email           === undefined) e.email           = '';
+    if (e.telefone        === undefined) e.telefone        = '';
+    if (e.dataNascimento  === undefined) e.dataNascimento  = '';
+    if (e.termosAceitos   === undefined) e.termosAceitos   = false;
+  }
   // migrar gestores sem companyId
   const defaultComp = db.companies[0];
   for (const m of db.managers) {
@@ -583,6 +597,28 @@ function logAudit(userId, role, acao, detalhes, companyId) {
 const routes = [];
 function route(method, pattern, opts, handler) { routes.push({ method, pattern, opts, handler }); }
 
+/* ── Papéis de usuário (SafePoint 2.1) ──────────────────────── */
+
+const VALID_ROLES = ['sesmt', 'cipa', 'brigada', 'tecnico_seguranca', 'medico_trabalho', 'ergonomista'];
+const ROLE_LABELS = {
+  sesmt:              'SESMT',
+  cipa:               'CIPA',
+  brigada:            'Brigada de Emergência',
+  tecnico_seguranca:  'Técnico de Segurança',
+  medico_trabalho:    'Médico do Trabalho',
+  ergonomista:        'Ergonomista'
+};
+const ROLE_EMOJIS = {
+  sesmt: '🦺', cipa: '⚠️', brigada: '🚒',
+  tecnico_seguranca: '🔧', medico_trabalho: '🩺', ergonomista: '🪑'
+};
+
+function getGestorUser(s) {
+  if (!s || s.role !== 'gestor') return null;
+  if (s.isEmployee) return db.employees.find(e => e.id === s.userId) || null;
+  return db.managers.find(m => m.id === s.userId) || null;
+}
+
 /* ── Auth ───────────────────────────────────────────────────── */
 
 route('POST', /^\/api\/login$/, { public: true }, async (req, res, m, body) => {
@@ -640,6 +676,31 @@ route('POST', /^\/api\/login$/, { public: true }, async (req, res, m, body) => {
     const branding = getCompanyBranding(emp.companyId);
     return sendJson(res, 200, { ok: true, perfil: 'colaborador', nome: emp.nome, branding });
   }
+  if (body.perfil === 'unificado') {
+    const mat = normalizeMatricula(body.matricula);
+    const emp = db.employees.find(e => e.matricula === mat && e.ativo !== false);
+    if (!emp) return sendJson(res, 401, { error: 'Matrícula não encontrada. Consulte o setor de SST.' });
+    const check = hashPassword(String(body.senha || ''), emp.senhaSalt);
+    if (check.hash !== emp.senhaHash) return sendJson(res, 401, { error: 'Senha incorreta.' });
+    const comp = db.companies.find(c => c.id === emp.companyId);
+    if (comp && ['suspensa', 'bloqueada', 'cancelada'].includes(comp.status)) {
+      return sendJson(res, 403, { error: `Acesso bloqueado. Status da empresa: ${comp.status}.` });
+    }
+    processarStreak(emp);
+    saveDb();
+    const branding = getCompanyBranding(emp.companyId);
+    const isSesmt = (emp.roles || []).includes('sesmt');
+    if (isSesmt) {
+      const token = createSession({ role: 'gestor', userId: emp.id, companyId: emp.companyId, isEmployee: true });
+      res.setHeader('Set-Cookie', `sesmt_token=${token}; Path=/; HttpOnly; SameSite=Lax`);
+      logAudit(emp.id, 'gestor', 'login', `SESMT ${emp.nome} entrou`, emp.companyId);
+      return sendJson(res, 200, { ok: true, perfil: 'gestor', nome: emp.nome, branding, primeiroAcesso: !!emp.primeiroAcesso, termosAceitos: !!emp.termosAceitos, roles: emp.roles || [] });
+    }
+    const token = createSession({ role: 'colaborador', employeeId: emp.id, companyId: emp.companyId });
+    res.setHeader('Set-Cookie', `sesmt_token=${token}; Path=/; HttpOnly; SameSite=Lax`);
+    logAudit(emp.id, 'colaborador', 'login', `Colaborador ${emp.nome} entrou`, emp.companyId);
+    return sendJson(res, 200, { ok: true, perfil: 'colaborador', nome: emp.nome, branding, primeiroAcesso: !!emp.primeiroAcesso, termosAceitos: !!emp.termosAceitos, roles: emp.roles || [] });
+  }
   return sendJson(res, 400, { error: 'Perfil inválido.' });
 });
 
@@ -659,17 +720,36 @@ route('GET', /^\/api\/me$/, { public: true }, async (req, res) => {
     return sendJson(res, 200, { autenticado: true, perfil: 'admin', nome: adm ? adm.name : 'Admin' });
   }
   if (s.role === 'gestor') {
-    const mgr = s.userId ? db.managers.find(u => u.id === s.userId) : null;
     const branding = getCompanyBranding(s.companyId);
-    const nome = mgr ? mgr.name : (s.adminImpersonating ? '👀 Admin visitando' : 'Gestor');
-    return sendJson(res, 200, { autenticado: true, perfil: 'gestor', nome, branding, adminImpersonando: !!s.adminImpersonating });
+    let nome, roles = [];
+    if (s.isEmployee) {
+      const emp = db.employees.find(e => e.id === s.userId);
+      nome = emp ? emp.nome : 'Gestor';
+      roles = emp ? (emp.roles || []) : [];
+    } else {
+      const mgr = s.userId ? db.managers.find(u => u.id === s.userId) : null;
+      nome = mgr ? mgr.name : (s.adminImpersonating ? '👀 Admin visitando' : 'Gestor');
+    }
+    return sendJson(res, 200, { autenticado: true, perfil: 'gestor', nome, branding, adminImpersonando: !!s.adminImpersonating, roles, isEmployee: !!s.isEmployee });
   }
   const emp = db.employees.find(e => e.id === s.employeeId);
   const branding = getCompanyBranding(s.companyId);
-  return sendJson(res, 200, { autenticado: true, perfil: 'colaborador', nome: emp ? emp.nome : '', employeeId: s.employeeId, branding });
+  return sendJson(res, 200, { autenticado: true, perfil: 'colaborador', nome: emp ? emp.nome : '', employeeId: s.employeeId, branding, roles: emp ? (emp.roles || []) : [], primeiroAcesso: emp ? !!emp.primeiroAcesso : false, termosAceitos: emp ? !!emp.termosAceitos : true });
 });
 
 route('POST', /^\/api\/senha$/, { role: 'gestor' }, async (req, res, m, body, s) => {
+  if (s.isEmployee) {
+    const emp = db.employees.find(e => e.id === s.userId);
+    if (!emp) return sendJson(res, 404, { error: 'Usuário não encontrado.' });
+    const atual = hashPassword(String(body.senhaAtual || ''), emp.senhaSalt);
+    if (atual.hash !== emp.senhaHash) return sendJson(res, 400, { error: 'Senha atual incorreta.' });
+    if (!body.novaSenha || String(body.novaSenha).length < 6) return sendJson(res, 400, { error: 'Nova senha: mínimo 6 caracteres.' });
+    const nova = hashPassword(String(body.novaSenha));
+    emp.senhaSalt = nova.salt; emp.senhaHash = nova.hash;
+    emp.primeiroAcesso = false;
+    saveDb();
+    return sendJson(res, 200, { ok: true });
+  }
   const mgr = db.managers.find(u => u.id === s.userId);
   if (!mgr) return sendJson(res, 404, { error: 'Gestor não encontrado.' });
   const atual = hashPassword(String(body.senhaAtual || ''), mgr.salt);
@@ -679,6 +759,69 @@ route('POST', /^\/api\/senha$/, { role: 'gestor' }, async (req, res, m, body, s)
   mgr.salt = nova.salt; mgr.hash = nova.hash;
   saveDb();
   sendJson(res, 200, { ok: true });
+});
+
+// SafePoint 2.1 — employee password change (first-access or regular)
+route('POST', /^\/api\/alterar-senha-emp$/, { role: 'any' }, async (req, res, m, body, s) => {
+  let emp;
+  if (s.role === 'colaborador')                    emp = db.employees.find(e => e.id === s.employeeId);
+  else if (s.role === 'gestor' && s.isEmployee)    emp = db.employees.find(e => e.id === s.userId);
+  if (!emp) return sendJson(res, 403, { error: 'Apenas colaboradores podem usar este endpoint.' });
+  const check = hashPassword(String(body.senhaAtual || ''), emp.senhaSalt);
+  if (check.hash !== emp.senhaHash) return sendJson(res, 400, { error: 'Senha atual incorreta.' });
+  if (!body.novaSenha || String(body.novaSenha).length < 6) return sendJson(res, 400, { error: 'Nova senha: mínimo 6 caracteres.' });
+  const nova = hashPassword(String(body.novaSenha));
+  emp.senhaSalt = nova.salt; emp.senhaHash = nova.hash;
+  emp.primeiroAcesso = false;
+  saveDb();
+  sendJson(res, 200, { ok: true });
+});
+
+// SafePoint 2.1 — accept terms
+route('POST', /^\/api\/aceitar-termos$/, { role: 'any' }, async (req, res, m, body, s) => {
+  let emp;
+  if (s.role === 'colaborador')                    emp = db.employees.find(e => e.id === s.employeeId);
+  else if (s.role === 'gestor' && s.isEmployee)    emp = db.employees.find(e => e.id === s.userId);
+  if (!emp) return sendJson(res, 403, { error: 'Não autorizado.' });
+  emp.termosAceitos   = true;
+  emp.termosAceitosEm = Date.now();
+  saveDb();
+  sendJson(res, 200, { ok: true });
+});
+
+// SafePoint 2.1 — role management
+route('POST', /^\/api\/usuarios\/(\d+)\/roles$/, { role: 'gestor' }, async (req, res, m, body, s) => {
+  const emp = db.employees.find(e => e.id === Number(m[1]) && e.companyId === s.companyId);
+  if (!emp) return sendJson(res, 404, { error: 'Colaborador não encontrado.' });
+  const role = String(body.role || '');
+  if (!VALID_ROLES.includes(role)) return sendJson(res, 400, { error: 'Papel inválido.' });
+  if (!emp.roles) emp.roles = [];
+  if (!emp.roles.includes(role)) emp.roles.push(role);
+  saveDb();
+  logAudit(s.userId || s.employeeId, s.role, 'atribuir_role', `${role} → ${emp.nome}`, s.companyId);
+  sendJson(res, 200, { ok: true, roles: emp.roles });
+});
+
+route('DELETE', /^\/api\/usuarios\/(\d+)\/roles\/(\w+)$/, { role: 'gestor' }, async (req, res, m, body, s) => {
+  const emp = db.employees.find(e => e.id === Number(m[1]) && e.companyId === s.companyId);
+  if (!emp) return sendJson(res, 404, { error: 'Colaborador não encontrado.' });
+  emp.roles = (emp.roles || []).filter(r => r !== m[2]);
+  saveDb();
+  logAudit(s.userId || s.employeeId, s.role, 'remover_role', `${m[2]} → ${emp.nome}`, s.companyId);
+  sendJson(res, 200, { ok: true, roles: emp.roles });
+});
+
+// SafePoint 2.1 — Quem é Quem (corporate directory)
+route('GET', /^\/api\/quem-e-quem$/, { role: 'any' }, async (req, res, m, body, s) => {
+  const url2 = new URL('http://x' + req.url);
+  const roleFilter = url2.searchParams.get('role') || '';
+  let list = db.employees.filter(e => e.companyId === s.companyId && e.ativo !== false).map(e => ({
+    id: e.id, nome: e.nome, funcao: e.funcao || '', setor: e.setor || '',
+    equipe: e.equipe || '', unidade: e.unidade || '', roles: e.roles || [], foto: e.foto || null
+  }));
+  if (roleFilter) list = list.filter(e => e.roles.includes(roleFilter));
+  list.sort((a, b) => a.nome.localeCompare(b.nome));
+  sendJson(res, 200, list);
 });
 
 /* ── Endpoint público: lista de empresas para o login ─────── */
@@ -893,7 +1036,8 @@ route('GET', /^\/api\/colaboradores$/, { role: 'gestor' }, async (req, res, m, b
     .filter(e => e.companyId === s.companyId)
     .map(e => {
       const p = employeePoints(e.id);
-      return { ...e, pontos: p.total, conquista: getAchievement(p.total), ies: calcIES(e.id) };
+      const { senhaSalt, senhaHash, ...safe } = e;
+      return { ...safe, pontos: p.total, conquista: getAchievement(p.total), ies: calcIES(e.id) };
     });
   sendJson(res, 200, list);
 });
@@ -902,16 +1046,22 @@ route('POST', /^\/api\/colaboradores$/, { role: 'gestor' }, async (req, res, m, 
   const mat = normalizeMatricula(body.matricula);
   if (!mat || !String(body.nome || '').trim()) return sendJson(res, 400, { error: 'Matrícula e nome são obrigatórios.' });
   if (db.employees.some(e => e.matricula === mat && e.companyId === s.companyId)) return sendJson(res, 409, { error: `Matrícula ${mat} já cadastrada.` });
+  const defaultPwd = hashPassword('SafePoint@2026');
   const emp = {
     id: nextId(), matricula: mat, nome: String(body.nome).trim(),
     cpf: String(body.cpf || '').trim(),
     setor: String(body.setor || '').trim(), funcao: String(body.funcao || '').trim(),
     equipe: String(body.equipe || '').trim(), unidade: String(body.unidade || '').trim(),
-    empresa: String(body.empresa || '').trim(), ativo: true, companyId: s.companyId
+    empresa: String(body.empresa || '').trim(), ativo: true, companyId: s.companyId,
+    senhaSalt: defaultPwd.salt, senhaHash: defaultPwd.hash,
+    primeiroAcesso: true, roles: [], termosAceitos: false,
+    email: '', telefone: '', dataNascimento: '',
+    streakAtual: 0, maiorStreak: 0, ultimoAcessoDia: '', nivelAtual: 1
   };
   db.employees.push(emp);
   saveDb();
-  sendJson(res, 201, emp);
+  const { senhaSalt, senhaHash, ...safeEmp } = emp;
+  sendJson(res, 201, safeEmp);
 });
 
 route('POST', /^\/api\/colaboradores\/importar$/, { role: 'gestor' }, async (req, res, m, body, s) => {
@@ -921,7 +1071,11 @@ route('POST', /^\/api\/colaboradores\/importar$/, { role: 'gestor' }, async (req
     if (db.employees.some(e => e.matricula === r.matricula && e.companyId === s.companyId) || inseridos.some(e => e.matricula === r.matricula)) {
       duplicados.push(r.matricula); continue;
     }
-    const emp = { id: nextId(), ...r, cpf: '', ativo: true, companyId: s.companyId };
+    const bpwd = hashPassword('SafePoint@2026');
+    const emp = { id: nextId(), ...r, cpf: '', ativo: true, companyId: s.companyId,
+      senhaSalt: bpwd.salt, senhaHash: bpwd.hash, primeiroAcesso: true, roles: [],
+      termosAceitos: false, email: '', telefone: '', dataNascimento: '',
+      streakAtual: 0, maiorStreak: 0, ultimoAcessoDia: '', nivelAtual: 1 };
     db.employees.push(emp);
     inseridos.push(emp);
   }
@@ -1359,8 +1513,9 @@ route('GET', /^\/api\/colaboradores\/(\d+)\/perfil$/, { role: 'gestor' }, async 
   const sugs = db.suggestions.filter(sg => sg.employeeId === emp.id);
   const extrasLog = (db.pontosExtras || []).filter(pe => pe.empId === emp.id).sort((a, b) => b.timestamp - a.timestamp).slice(0, 30);
   const reconhecidos = (db.reconhecimentos || []).filter(r => r.homenageadoId === emp.id);
+  const { senhaSalt, senhaHash, ...empSafe } = emp;
   sendJson(res, 200, {
-    colaborador: emp,
+    colaborador: empSafe,
     pontos: pts.total, porTipo: pts.byType,
     nivel, streakAtual: emp.streakAtual || 0, maiorStreak: emp.maiorStreak || 0,
     checkins, totalObs: obs,
@@ -1626,7 +1781,7 @@ route('GET', /^\/api\/meu-painel$/, { role: 'colaborador' }, async (req, res, m,
     { id:'observacao',  desc:'Registrar uma observação de campo',    pontos:25,  feita: registrouObsHoje }
   ];
   sendJson(res, 200, {
-    colaborador: { matricula: emp.matricula, nome: emp.nome, setor: emp.setor, funcao: emp.funcao, equipe: emp.equipe, unidade: emp.unidade, empresa: emp.empresa },
+    colaborador: { matricula: emp.matricula, nome: emp.nome, setor: emp.setor, funcao: emp.funcao, equipe: emp.equipe, unidade: emp.unidade, empresa: emp.empresa, roles: emp.roles || [] },
     pontos: pts.total, porTipo: pts.byType,
     posicao: minha ? minha.posicao : null,
     totalColaboradores: ranking.length,

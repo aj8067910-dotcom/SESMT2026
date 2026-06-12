@@ -15,29 +15,75 @@
       <img src="/logo.svg" alt="SafePoint" style="height:64px;width:auto">
     </div>
     <p class="login-sub">Gestão de Segurança do Trabalho Gamificada</p>
-    <div class="login-tabs">
-      <button id="tab-gestor" class="login-tab active" onclick="trocarAbaLogin('gestor')">Gestor SST</button>
-      <button id="tab-colab"  class="login-tab"        onclick="trocarAbaLogin('colaborador')">Colaborador</button>
-    </div>
-    <form id="form-login-gestor" onsubmit="return loginGestor(event)">
-      <label>Usuário</label>
-      <input type="text" id="login-usuario" autocomplete="username" required>
-      <label>Senha</label>
-      <input type="password" id="login-senha" autocomplete="current-password" required>
-      <button type="submit" class="btn btn-primary btn-block">Entrar</button>
-    </form>
-    <form id="form-login-colab" class="hidden" onsubmit="return loginColaborador(event)">
-      <label>Empresa</label>
-      <select id="login-empresa">
-        <option value="">Carregando empresas...</option>
-      </select>
+
+    <!-- Unified login form (SafePoint 2.1) -->
+    <form id="form-login-unificado" onsubmit="return loginUnificado(event)">
       <label>Matrícula</label>
-      <input type="text" id="login-matricula" placeholder="Digite sua matrícula" required>
-      <button type="submit" class="btn btn-primary btn-block">Acessar meu painel</button>
-      <p class="hint">Consulte pontos, histórico, faça check-in e registre observações.</p>
+      <input type="text" id="login-mat" placeholder="Ex.: 12345" autocomplete="username" required>
+      <label>Senha</label>
+      <input type="password" id="login-pwd" autocomplete="current-password" required>
+      <button type="submit" class="btn btn-primary btn-block">Entrar</button>
+      <p class="hint login-hint-pwd">Primeiro acesso? Use a senha provisória <strong>SafePoint@2026</strong></p>
     </form>
+
+    <!-- Admin access - subtle link -->
+    <p class="login-admin-link"><a href="#" onclick="mostrarLoginAdmin();return false;">Acesso administrativo</a></p>
+
+    <!-- Admin form - hidden by default -->
+    <form id="form-login-admin" class="hidden" onsubmit="return loginAdmin(event)">
+      <label>Usuário</label>
+      <input type="text" id="login-admin-usuario" autocomplete="username" required>
+      <label>Senha</label>
+      <input type="password" id="login-admin-senha" autocomplete="current-password" required>
+      <button type="submit" class="btn btn-primary btn-block">Entrar como Admin</button>
+      <p style="text-align:center;margin-top:8px"><a href="#" onclick="esconderLoginAdmin();return false;">← Voltar</a></p>
+    </form>
+
     <p id="login-erro" class="erro hidden"></p>
     <p class="login-platform">SafePoint &mdash; SST Gamificado</p>
+  </div>
+</div>
+
+<!-- ═══════════════ PRIMEIRO ACESSO ═══════════════ -->
+<div id="primeiro-acesso-overlay" class="modal-fundo hidden">
+  <div class="modal primeiro-acesso-modal" onclick="event.stopPropagation()">
+    <div class="modal-head">
+      <h3 id="pa-titulo">Bem-vindo ao SafePoint!</h3>
+    </div>
+    <div class="modal-corpo">
+      <!-- Step 1: trocar senha -->
+      <div id="pa-step-senha">
+        <p style="margin-bottom:14px">Por segurança, você precisa criar uma senha pessoal antes de continuar.</p>
+        <label>Senha provisória</label>
+        <input type="password" id="pa-senha-atual" placeholder="SafePoint@2026" autocomplete="current-password">
+        <label style="margin-top:10px">Nova senha <span class="hint">(mín. 6 caracteres)</span></label>
+        <input type="password" id="pa-senha-nova" autocomplete="new-password" minlength="6">
+        <label style="margin-top:10px">Confirmar nova senha</label>
+        <input type="password" id="pa-senha-confirma" autocomplete="new-password">
+        <p id="pa-senha-erro" class="erro hidden" style="margin-top:8px"></p>
+        <button class="btn btn-primary btn-block" style="margin-top:14px" onclick="confirmarNovaSenha()">Continuar →</button>
+      </div>
+      <!-- Step 2: aceitar termos -->
+      <div id="pa-step-termos" class="hidden">
+        <h4 style="margin-bottom:10px">Termos de Uso e Privacidade</h4>
+        <div class="termos-scroll">
+          <p>Ao utilizar o SafePoint, você concorda com as seguintes condições:</p>
+          <ul>
+            <li>Seus dados (nome, matrícula, pontuação, participações) serão utilizados exclusivamente para fins de gestão de segurança do trabalho.</li>
+            <li>Suas participações, pontuações, observações e sugestões serão registradas no sistema.</li>
+            <li>Informações de check-in, incluindo localização GPS quando autorizada por você, serão armazenadas.</li>
+            <li>O tratamento de dados segue a Lei Geral de Proteção de Dados (LGPD — Lei 13.709/2018) e a política de privacidade da empresa.</li>
+            <li>Você pode solicitar acesso, correção ou exclusão dos seus dados ao setor de SST a qualquer momento.</li>
+          </ul>
+        </div>
+        <label class="check-inline" style="margin-top:14px;display:flex;align-items:flex-start;gap:8px">
+          <input type="checkbox" id="pa-termos-check" style="margin-top:3px;flex-shrink:0">
+          <span>Li e aceito os Termos de Uso e a Política de Privacidade</span>
+        </label>
+        <p id="pa-termos-erro" class="erro hidden" style="margin-top:8px"></p>
+        <button class="btn btn-primary btn-block" style="margin-top:14px" onclick="confirmarTermos()">Começar a usar o SafePoint 🚀</button>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -59,6 +105,8 @@
       <button data-view="ranking"        class="nav-btn"        onclick="navegar('ranking')">Ranking</button>
       <button data-view="engajamento"    class="nav-btn"        onclick="navegar('engajamento')">🎯 Engajamento</button>
       <button data-view="pesquisas-gestor" class="nav-btn"      onclick="navegar('pesquisas-gestor')">📋 Pesquisas</button>
+      <button data-view="quem-e-quem"    class="nav-btn"        onclick="navegar('quem-e-quem')">👥 Quem é Quem</button>
+      <button data-view="roles"          class="nav-btn"        onclick="navegar('roles')">🏅 Papéis</button>
       <button data-view="config"         class="nav-btn"        onclick="navegar('config')">Config</button>
     </nav>
     <div class="topbar-user">
@@ -280,6 +328,49 @@
       <table class="tabela" id="tabela-quizzes"></table>
     </section>
 
+    <!-- Quem é Quem (gestor) -->
+    <section id="view-quem-e-quem" class="view hidden">
+      <div class="view-head">
+        <h2>👥 Quem é Quem — Diretório de Segurança</h2>
+      </div>
+      <div class="filtros">
+        <input type="text" id="qeq-busca" placeholder="Buscar por nome, função, setor..." oninput="filtrarQuemEQuem()">
+        <select id="qeq-role-filtro" onchange="filtrarQuemEQuem()">
+          <option value="">Todos os papéis</option>
+          <option value="sesmt">🦺 SESMT</option>
+          <option value="cipa">⚠️ CIPA</option>
+          <option value="brigada">🚒 Brigada de Emergência</option>
+          <option value="tecnico_seguranca">🔧 Técnico de Segurança</option>
+          <option value="medico_trabalho">🩺 Médico do Trabalho</option>
+          <option value="ergonomista">🪑 Ergonomista</option>
+        </select>
+      </div>
+      <div id="qeq-grid" class="qeq-grid"></div>
+    </section>
+
+    <!-- Papéis de Segurança (gestor) -->
+    <section id="view-roles" class="view hidden">
+      <div class="view-head">
+        <h2>🏅 Papéis de Segurança</h2>
+      </div>
+      <p class="hint">Atribua papéis institucionais aos colaboradores. O papel <strong>SESMT</strong> concede acesso ao Painel de Gestão.</p>
+
+      <!-- Organograma -->
+      <div class="panel" style="margin-bottom:14px">
+        <h3>Organograma de Segurança</h3>
+        <div id="organograma-wrap"></div>
+      </div>
+
+      <!-- Gestão de papéis -->
+      <div class="panel">
+        <div class="view-head" style="margin-bottom:14px">
+          <h3 style="margin:0">Atribuir / Remover Papéis</h3>
+          <input type="text" id="roles-busca" placeholder="Buscar colaborador..." style="width:240px" oninput="filtrarColabRoles()">
+        </div>
+        <div id="roles-lista"></div>
+      </div>
+    </section>
+
     <!-- Config -->
     <section id="view-config" class="view hidden">
       <h2>Configurações</h2>
@@ -368,11 +459,12 @@
       <button data-cview="sugerir"      class="nav-btn"        onclick="navegarColab('sugerir')">Sugestões</button>
       <button data-cview="historico"    class="nav-btn"        onclick="navegarColab('historico')">Histórico</button>
       <button data-cview="pesquisas"    class="nav-btn"        onclick="navegarColab('pesquisas')">📋 Pesquisas</button>
+      <button data-cview="quem-e-quem" class="nav-btn"        onclick="navegarColab('quem-e-quem')">👥 Quem é Quem</button>
       <button data-cview="perfil"       class="nav-btn"        onclick="navegarColab('perfil')">👤 Perfil</button>
     </nav>
     <div class="topbar-user">
       <span id="colab-nome"></span>
-      <span class="badge badge-green">Colaborador</span>
+      <span id="colab-role-badges"></span>
       <button class="btn btn-sm" onclick="sair()">Sair</button>
     </div>
   </header>
@@ -430,6 +522,26 @@
       <h3 style="margin-bottom:14px">📋 Pesquisas de Engajamento</h3>
       <p class="hint" style="margin-bottom:14px">Sua participação é anônima e vale <strong>+15 pontos</strong>!</p>
       <div id="pesquisas-colab-lista"></div>
+    </section>
+
+    <!-- Quem é Quem (colaborador) -->
+    <section id="cview-quem-e-quem" class="cview hidden">
+      <div class="view-head">
+        <h2>👥 Quem é Quem — Equipe de Segurança</h2>
+      </div>
+      <div class="filtros">
+        <input type="text" id="cqeq-busca" placeholder="Buscar por nome, função, setor..." oninput="filtrarQuemEQuemColab()">
+        <select id="cqeq-role-filtro" onchange="filtrarQuemEQuemColab()">
+          <option value="">Todos os papéis</option>
+          <option value="sesmt">🦺 SESMT</option>
+          <option value="cipa">⚠️ CIPA</option>
+          <option value="brigada">🚒 Brigada de Emergência</option>
+          <option value="tecnico_seguranca">🔧 Técnico de Segurança</option>
+          <option value="medico_trabalho">🩺 Médico do Trabalho</option>
+          <option value="ergonomista">🪑 Ergonomista</option>
+        </select>
+      </div>
+      <div id="cqeq-grid" class="qeq-grid"></div>
     </section>
 
     <!-- Perfil -->
