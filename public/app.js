@@ -1199,6 +1199,17 @@ function formColaboradorHtml(c) {
         ${unidades.map(u => `<option value="${esc(u.nome)}" ${c && c.unidade === u.nome ? 'selected' : ''}>${esc(u.nome)}</option>`).join('')}
        </select>`
     : `<input type="text" id="co-unidade" value="${c ? esc(c.unidade || '') : ''}" placeholder="Nome da unidade">`;
+
+  const ROLE_DEFS = [
+    { key: 'sesmt',             emoji: '🦺', label: 'SESMT',               desc: 'Acesso ao Painel de Gestão' },
+    { key: 'cipa',              emoji: '⚠️', label: 'CIPA',                desc: 'Membro da CIPA' },
+    { key: 'brigada',           emoji: '🚒', label: 'Brigada de Emergência', desc: '' },
+    { key: 'tecnico_seguranca', emoji: '🔧', label: 'Técnico de Segurança', desc: '' },
+    { key: 'medico_trabalho',   emoji: '🩺', label: 'Médico do Trabalho',   desc: '' },
+    { key: 'ergonomista',       emoji: '🪑', label: 'Ergonomista',          desc: '' }
+  ];
+  const rolesAtuais = (c && c.roles) ? c.roles : [];
+
   return `
     <div class="linha-2">
       <div><label>Matrícula *</label><input type="text" id="co-matricula" value="${c ? esc(c.matricula) : ''}"></div>
@@ -1216,6 +1227,23 @@ function formColaboradorHtml(c) {
       <div><label>Empresa</label><input type="text" id="co-empresa" value="${esc(EMPRESA_INFO.nome || (c ? c.empresa || '' : ''))}" readonly class="input-readonly"></div>
     </div>
     ${c ? `<label class="check-inline" style="margin-top:12px"><input type="checkbox" id="co-ativo" ${c.ativo !== false ? 'checked' : ''}> colaborador ativo</label>` : ''}
+
+    <hr style="margin:18px 0 14px;border:none;border-top:1px solid var(--cinza-borda)">
+    <label style="font-weight:700;font-size:13px;display:block;margin-bottom:8px">🏅 Perfil de Acesso</label>
+    <p class="hint" style="margin-bottom:10px">Defina o(s) papel(éis) deste colaborador na plataforma. O papel <strong>SESMT</strong> concede acesso ao Painel de Gestão.</p>
+    <div class="roles-check-grid">
+      ${ROLE_DEFS.map(r => `
+        <label class="role-check-item ${rolesAtuais.includes(r.key) ? 'role-check-ativo' : ''}">
+          <input type="checkbox" id="co-role-${r.key}" value="${r.key}" ${rolesAtuais.includes(r.key) ? 'checked' : ''}
+            onchange="this.closest('.role-check-item').classList.toggle('role-check-ativo', this.checked)">
+          <span class="role-check-emoji">${r.emoji}</span>
+          <span class="role-check-label">
+            <strong>${r.label}</strong>
+            ${r.desc ? `<span class="hint" style="display:block;font-size:11px">${r.desc}</span>` : ''}
+          </span>
+        </label>`).join('')}
+    </div>
+
     <div class="modal-rodape">
       <button class="btn" onclick="fecharModal()">Cancelar</button>
       <button class="btn btn-primary" onclick="salvarColaborador(${c ? c.id : 'null'})">Salvar</button>
@@ -1243,8 +1271,34 @@ async function salvarColaborador(id) {
   const chkAtivo = document.getElementById('co-ativo');
   if (chkAtivo) body.ativo = chkAtivo.checked;
   try {
+    let savedId = id;
     if (id) await api('/api/colaboradores/' + id, { method: 'PUT', body });
-    else await api('/api/colaboradores', { method: 'POST', body });
+    else {
+      const novo = await api('/api/colaboradores', { method: 'POST', body });
+      savedId = novo.id;
+    }
+    // Sincronizar papéis se estiver editando um colaborador existente
+    if (savedId) {
+      const ROLE_KEYS = ['sesmt', 'cipa', 'brigada', 'tecnico_seguranca', 'medico_trabalho', 'ergonomista'];
+      const existente = COLABORADORES.find(x => x.id === savedId);
+      const rolesAntes = (existente && existente.roles) ? existente.roles : [];
+      const rolesDepois = ROLE_KEYS.filter(r => {
+        const el = document.getElementById('co-role-' + r);
+        return el && el.checked;
+      });
+      // Adicionar novos
+      for (const r of rolesDepois) {
+        if (!rolesAntes.includes(r)) {
+          await api(`/api/usuarios/${savedId}/roles`, { method: 'POST', body: { role: r } }).catch(() => {});
+        }
+      }
+      // Remover desmarcados
+      for (const r of rolesAntes) {
+        if (!rolesDepois.includes(r)) {
+          await api(`/api/usuarios/${savedId}/roles/${r}`, { method: 'DELETE' }).catch(() => {});
+        }
+      }
+    }
     fecharModal();
     toast('Colaborador salvo.', 'ok');
     await carregarColaboradores();

@@ -696,3 +696,24 @@ hr { border: none; border-top: 1px solid var(--cinza-borda); margin: 16px 0; }
 }
 .org-membro:last-child { border-bottom: none; }
 .org-membro-nome { font-weight: 600; font-size: 13px; }
+
+/* ══════════════════════════════════════════
+   Role checkboxes no modal de colaborador
+   ══════════════════════════════════════════ */
+.roles-check-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.role-check-item {
+  display: flex; align-items: flex-start; gap: 10px;
+  padding: 10px 12px; border-radius: 8px; cursor: pointer;
+  border: 2px solid var(--cinza-borda); background: #fafbfc;
+  transition: border-color .15s, background .15s;
+}
+.role-check-item:hover { border-color: var(--azul); background: #f0f6ff; }
+.role-check-item.role-check-ativo { border-color: var(--azul); background: #e8f0ff; }
+.role-check-item input[type=checkbox] { margin-top: 3px; flex-shrink: 0; accent-color: var(--azul); }
+.role-check-emoji { font-size: 18px; flex-shrink: 0; }
+.role-check-label { flex: 1; }
