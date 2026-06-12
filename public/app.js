@@ -302,6 +302,7 @@ async function navegar(view) {
   if (view === 'pesquisas-gestor') await carregarPesquisasGestor();
   if (view === 'quem-e-quem')    await carregarQuemEQuem();
   if (view === 'roles')          await carregarRoles();
+  if (view === 'estrutura')      await carregarEstrutura();
   if (view === 'config') { renderConfig(); carregarBrandingConfig(); }
 }
 
@@ -316,6 +317,7 @@ async function navegarColab(view) {
   if (view === 'perfil')       await carregarPerfil();
   if (view === 'pesquisas')    await carregarPesquisasColab();
   if (view === 'quem-e-quem') await carregarQuemEQuemColab();
+  if (view === 'estrutura')   await carregarEstruturaColab();
   if (view === 'observar')     await carregarMinhasObservacoes();
   if (view === 'sugerir')      await carregarMinhasSugestoes();
   if (view === 'historico')    await carregarHistoricoCompleto();
@@ -1991,9 +1993,19 @@ function renderFeedPost(p) {
     : p.tipo === 'conquista' ? '<span class="tag tag-ouro">⭐ Conquista</span>'
     : p.tipo === 'comunicado' ? '<span class="tag tag-azul">📢 Comunicado</span>'
     : '';
-  const total = (p.totalLikes || 0) + (p.totalAplausos || 0) + (p.totalEstrelas || 0);
+  const mr = p.minhasReacoes || {};
+  const REACOES = [
+    { key:'like',       emoji:'👍', label:'Curtir',       total: p.totalLikes      || 0 },
+    { key:'aplausos',   emoji:'👏', label:'Palmas',       total: p.totalAplausos   || 0 },
+    { key:'estrela',    emoji:'⭐', label:'Destaque',     total: p.totalEstrelas   || 0 },
+    { key:'seguranca',  emoji:'🛡', label:'Ex. Segurança',total: p.totalSeguranca  || 0 },
+    { key:'inspirador', emoji:'💡', label:'Inspirador',   total: p.totalInspirador || 0 },
+  ];
+  const total = REACOES.reduce((a, r) => a + r.total, 0);
+  const comentarios = p.ultimosComentarios || [];
+  const totalComent = p.totalComentarios || 0;
   return `
-    <div class="feed-card">
+    <div class="feed-card" id="feed-post-${p.id}">
       <div class="feed-header">
         <div class="feed-avatar">${esc((p.autorNome || '?')[0]).toUpperCase()}</div>
         <div class="feed-meta">
@@ -2002,14 +2014,69 @@ function renderFeedPost(p) {
           <span class="feed-ts">${tsDataHora(p.timestamp)}</span>
         </div>
       </div>
-      <div class="feed-body">${esc(p.conteudo || '')}</div>
+      <div class="feed-body">${esc(p.conteudo || '').replace(/\n/g, '<br>')}</div>
       <div class="feed-footer">
-        <button class="btn-reacao ${p.minhasReacoes?.like ? 'ativo' : ''}" onclick="reagirFeed(${p.id},'like')" title="Curtir">👍 ${p.totalLikes || 0}</button>
-        <button class="btn-reacao ${p.minhasReacoes?.aplausos ? 'ativo' : ''}" onclick="reagirFeed(${p.id},'aplausos')" title="Palmas">👏 ${p.totalAplausos || 0}</button>
-        <button class="btn-reacao ${p.minhasReacoes?.estrela ? 'ativo' : ''}" onclick="reagirFeed(${p.id},'estrela')" title="Destaque">⭐ ${p.totalEstrelas || 0}</button>
+        ${REACOES.map(r => `<button class="btn-reacao ${mr[r.key] ? 'ativo' : ''}" onclick="reagirFeed(${p.id},'${r.key}')" title="${r.label}">${r.emoji} ${r.total || ''}</button>`).join('')}
+        <button class="btn-reacao" onclick="toggleComentarios(${p.id})" title="Comentar">💬 ${totalComent || ''}</button>
         ${total ? `<span class="feed-total-reac">${total} reações</span>` : ''}
       </div>
+      <div id="feed-coment-${p.id}" class="feed-comentarios" style="display:none">
+        ${comentarios.map(c => `
+          <div class="feed-comentario">
+            <strong>${esc(c.autorNome)}</strong>
+            <span>${esc(c.texto)}</span>
+            <span class="feed-ts">${tsDataHora(c.timestamp)}</span>
+          </div>`).join('')}
+        ${totalComent > 2 ? `<button class="btn btn-sm" onclick="carregarComentarios(${p.id})">Ver todos (${totalComent})</button>` : ''}
+        <div style="display:flex;gap:8px;margin-top:8px">
+          <input type="text" id="coment-input-${p.id}" placeholder="Escreva um comentário..." style="flex:1;font-size:13px"
+            onkeydown="if(event.key==='Enter')comentarFeed(${p.id})">
+          <button class="btn btn-sm btn-primary" onclick="comentarFeed(${p.id})">Enviar</button>
+        </div>
+      </div>
     </div>`;
+}
+
+function toggleComentarios(id) {
+  const el = document.getElementById('feed-coment-' + id);
+  if (!el) return;
+  el.style.display = el.style.display === 'none' ? 'block' : 'none';
+  if (el.style.display === 'block') {
+    const inp = document.getElementById('coment-input-' + id);
+    if (inp) inp.focus();
+  }
+}
+
+async function carregarComentarios(id) {
+  try {
+    const list = await api(`/api/feed/${id}/comentarios`);
+    const el = document.getElementById('feed-coment-' + id);
+    if (!el) return;
+    const inp = el.querySelector('input');
+    const btns = el.querySelectorAll('button');
+    el.innerHTML = list.map(c => `
+      <div class="feed-comentario">
+        <strong>${esc(c.autorNome)}</strong>
+        <span>${esc(c.texto)}</span>
+        <span class="feed-ts">${tsDataHora(c.timestamp)}</span>
+      </div>`).join('') +
+      `<div style="display:flex;gap:8px;margin-top:8px">
+        <input type="text" id="coment-input-${id}" placeholder="Escreva um comentário..." style="flex:1;font-size:13px"
+          onkeydown="if(event.key==='Enter')comentarFeed(${id})">
+        <button class="btn btn-sm btn-primary" onclick="comentarFeed(${id})">Enviar</button>
+      </div>`;
+  } catch (err) { toast(err.message, 'erro'); }
+}
+
+async function comentarFeed(id) {
+  const inp = document.getElementById('coment-input-' + id);
+  const texto = inp?.value.trim();
+  if (!texto) return;
+  try {
+    await api(`/api/feed/${id}/comentar`, { method: 'POST', body: { texto } });
+    if (inp) inp.value = '';
+    await carregarComentarios(id);
+  } catch (err) { toast(err.message, 'erro'); }
 }
 
 async function publicarFeed() {

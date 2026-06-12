@@ -222,6 +222,22 @@ function loadDb() {
     if (e.dataNascimento  === undefined) e.dataNascimento  = '';
     if (e.termosAceitos   === undefined) e.termosAceitos   = false;
   }
+  // SafePoint 2.4 — cargos, bloqueio, moedas
+  for (const e of db.employees) {
+    if (!e.subRoles)               e.subRoles = [];
+    if (e.bloqueado === undefined)  e.bloqueado = false;
+    if (!e.bloqueadoMotivo)         e.bloqueadoMotivo = '';
+    if (e.moedas === undefined)     e.moedas = 0;
+    if (e.telefone === undefined)   e.telefone = '';
+    if (e.emailCorp === undefined)  e.emailCorp = '';
+  }
+  for (const f of (db.feed || [])) {
+    if (!f.comentarios) f.comentarios = [];
+    if (!f.reacoes) f.reacoes = {};
+    for (const r of ['like','aplausos','estrela','seguranca','inspirador']) {
+      if (!f.reacoes[r]) f.reacoes[r] = [];
+    }
+  }
   // migrar gestores sem companyId
   const defaultComp = db.companies[0];
   for (const m of db.managers) {
@@ -707,6 +723,24 @@ const ROLE_EMOJIS = {
   tecnico_seguranca: '🔧', medico_trabalho: '🩺', ergonomista: '🪑'
 };
 
+/* ── SafePoint 2.4 — Cargos CIPA / Brigada ────────────────── */
+
+const CIPA_CARGOS = [
+  { key:'cipa_presidente',  emoji:'📋', label:'Presidente da CIPA'      },
+  { key:'cipa_vice',        emoji:'🤝', label:'Vice-Presidente da CIPA' },
+  { key:'cipa_secretario',  emoji:'📝', label:'Secretário da CIPA'      },
+  { key:'cipa_titular',     emoji:'👥', label:'Membro Titular'          },
+  { key:'cipa_suplente',    emoji:'📌', label:'Membro Suplente'         },
+];
+const BRIGADA_CARGOS = [
+  { key:'brigada_coordenador', emoji:'🚨', label:'Coordenador Geral da Brigada' },
+  { key:'brigada_lider',       emoji:'🦺', label:'Líder de Brigada'             },
+  { key:'brigada_brigadista',  emoji:'🔥', label:'Brigadista'                   },
+  { key:'brigada_socorrista',  emoji:'🚑', label:'Socorrista'                   },
+];
+const ALL_CARGOS    = [...CIPA_CARGOS, ...BRIGADA_CARGOS];
+const ALL_CARGO_KEYS = ALL_CARGOS.map(c => c.key);
+
 function getGestorUser(s) {
   if (!s || s.role !== 'gestor') return null;
   if (s.isEmployee) return db.employees.find(e => e.id === s.userId) || null;
@@ -774,6 +808,7 @@ route('POST', /^\/api\/login$/, { public: true }, async (req, res, m, body) => {
     const mat = normalizeMatricula(body.matricula);
     const emp = db.employees.find(e => e.matricula === mat && e.ativo !== false);
     if (!emp) return sendJson(res, 401, { error: 'Matrícula não encontrada. Consulte o setor de SST.' });
+    if (emp.bloqueado) return sendJson(res, 403, { error: 'Acesso bloqueado. Entre em contato com o SESMT.' });
     const check = hashPassword(String(body.senha || ''), emp.senhaSalt);
     if (check.hash !== emp.senhaHash) return sendJson(res, 401, { error: 'Senha incorreta.' });
     const comp = db.companies.find(c => c.id === emp.companyId);
@@ -921,11 +956,161 @@ route('GET', /^\/api\/quem-e-quem$/, { role: 'any' }, async (req, res, m, body, 
   const roleFilter = url2.searchParams.get('role') || '';
   let list = db.employees.filter(e => e.companyId === s.companyId && e.ativo !== false).map(e => ({
     id: e.id, nome: e.nome, funcao: e.funcao || '', setor: e.setor || '',
-    equipe: e.equipe || '', unidade: e.unidade || '', roles: e.roles || [], foto: e.foto || null
+    equipe: e.equipe || '', unidade: e.unidade || '', roles: e.roles || [],
+    subRoles: e.subRoles || [], foto: e.foto || null,
+    telefone: e.telefone || '', emailCorp: e.emailCorp || '', matricula: e.matricula || ''
   }));
   if (roleFilter) list = list.filter(e => e.roles.includes(roleFilter));
   list.sort((a, b) => a.nome.localeCompare(b.nome));
   sendJson(res, 200, list);
+});
+
+/* ── SafePoint 2.4 — Estrutura SST, Cargos, Acessos ─────────── */
+
+route('GET', /^\/api\/estrutura$/, { role: 'any' }, async (req, res, m, body, s) => {
+  const emps = db.employees.filter(e => e.companyId === s.companyId && e.ativo !== false && !e.bloqueado);
+  const mapEmp = e => ({
+    id: e.id, nome: e.nome, matricula: e.matricula || '',
+    funcao: e.funcao || '', setor: e.setor || '', unidade: e.unidade || '',
+    roles: e.roles || [], subRoles: e.subRoles || [],
+    telefone: e.telefone || '', emailCorp: e.emailCorp || '', foto: e.foto || null
+  });
+  const byRole = role => emps.filter(e => (e.roles || []).includes(role)).map(mapEmp);
+  const byCargo = cargo => emps.filter(e => (e.subRoles || []).some(s2 => s2.cargo === cargo)).map(e => ({
+    ...mapEmp(e), mandato: (e.subRoles || []).find(s2 => s2.cargo === cargo) || {}
+  }));
+  sendJson(res, 200, {
+    sesmt:   byRole('sesmt'),
+    cipa: {
+      presidente:  byCargo('cipa_presidente'),
+      vice:        byCargo('cipa_vice'),
+      secretario:  byCargo('cipa_secretario'),
+      titulares:   byCargo('cipa_titular'),
+      suplentes:   byCargo('cipa_suplente'),
+      todos:       byRole('cipa'),
+    },
+    brigada: {
+      coordenador: byCargo('brigada_coordenador'),
+      lideres:     byCargo('brigada_lider'),
+      brigadistas: byCargo('brigada_brigadista'),
+      socorristas: byCargo('brigada_socorrista'),
+      todos:       byRole('brigada'),
+    },
+    tecnico_seguranca: byRole('tecnico_seguranca'),
+    medico_trabalho:   byRole('medico_trabalho'),
+    ergonomista:       byRole('ergonomista'),
+  });
+});
+
+route('GET', /^\/api\/colaboradores\/(\d+)\/subroles$/, { role: 'gestor' }, async (req, res, m, body, s) => {
+  const emp = db.employees.find(e => e.id === Number(m[1]) && e.companyId === s.companyId);
+  if (!emp) return sendJson(res, 404, { error: 'Colaborador não encontrado.' });
+  sendJson(res, 200, emp.subRoles || []);
+});
+
+route('POST', /^\/api\/colaboradores\/(\d+)\/subroles$/, { role: 'gestor' }, async (req, res, m, body, s) => {
+  if (!checkSesmtPermission(s)) return sendJson(res, 403, { error: 'Apenas o SESMT pode atribuir cargos.' });
+  const emp = db.employees.find(e => e.id === Number(m[1]) && e.companyId === s.companyId);
+  if (!emp) return sendJson(res, 404, { error: 'Colaborador não encontrado.' });
+  const cargo = String(body.cargo || '');
+  if (!ALL_CARGO_KEYS.includes(cargo)) return sendJson(res, 400, { error: 'Cargo inválido.' });
+  if (!emp.subRoles) emp.subRoles = [];
+  const existing = emp.subRoles.find(sr => sr.cargo === cargo);
+  if (existing) {
+    existing.inicioMandato = body.inicioMandato || existing.inicioMandato;
+    existing.fimMandato    = body.fimMandato    || existing.fimMandato;
+  } else {
+    emp.subRoles.push({ cargo, inicioMandato: body.inicioMandato || '', fimMandato: body.fimMandato || '', criadoEm: Date.now() });
+    // ensure parent role is assigned automatically
+    const parentRole = cargo.startsWith('cipa_') ? 'cipa' : 'brigada';
+    if (!(emp.roles || []).includes(parentRole)) {
+      if (!emp.roles) emp.roles = [];
+      emp.roles.push(parentRole);
+    }
+  }
+  saveDb();
+  logAudit(s.userId, s.role, 'atribuir_cargo', `${cargo} → ${emp.nome}`, s.companyId);
+  sendJson(res, 200, { ok: true, subRoles: emp.subRoles });
+});
+
+route('DELETE', /^\/api\/colaboradores\/(\d+)\/subroles\/([a-z_]+)$/, { role: 'gestor' }, async (req, res, m, body, s) => {
+  if (!checkSesmtPermission(s)) return sendJson(res, 403, { error: 'Apenas o SESMT pode remover cargos.' });
+  const emp = db.employees.find(e => e.id === Number(m[1]) && e.companyId === s.companyId);
+  if (!emp) return sendJson(res, 404, { error: 'Colaborador não encontrado.' });
+  emp.subRoles = (emp.subRoles || []).filter(sr => sr.cargo !== m[2]);
+  saveDb();
+  logAudit(s.userId, s.role, 'remover_cargo', `${m[2]} → ${emp.nome}`, s.companyId);
+  sendJson(res, 200, { ok: true, subRoles: emp.subRoles });
+});
+
+route('POST', /^\/api\/colaboradores\/(\d+)\/bloquear$/, { role: 'gestor' }, async (req, res, m, body, s) => {
+  if (!checkSesmtPermission(s)) return sendJson(res, 403, { error: 'Apenas o SESMT pode bloquear usuários.' });
+  const emp = db.employees.find(e => e.id === Number(m[1]) && e.companyId === s.companyId);
+  if (!emp) return sendJson(res, 404, { error: 'Colaborador não encontrado.' });
+  emp.bloqueado = true;
+  emp.bloqueadoMotivo = String(body.motivo || '');
+  saveDb();
+  logAudit(s.userId, s.role, 'bloquear_usuario', `Bloqueado: ${emp.nome} — ${emp.bloqueadoMotivo}`, s.companyId);
+  sendJson(res, 200, { ok: true });
+});
+
+route('POST', /^\/api\/colaboradores\/(\d+)\/desbloquear$/, { role: 'gestor' }, async (req, res, m, body, s) => {
+  if (!checkSesmtPermission(s)) return sendJson(res, 403, { error: 'Apenas o SESMT pode desbloquear usuários.' });
+  const emp = db.employees.find(e => e.id === Number(m[1]) && e.companyId === s.companyId);
+  if (!emp) return sendJson(res, 404, { error: 'Colaborador não encontrado.' });
+  emp.bloqueado = false;
+  emp.bloqueadoMotivo = '';
+  saveDb();
+  logAudit(s.userId, s.role, 'desbloquear_usuario', `Desbloqueado: ${emp.nome}`, s.companyId);
+  sendJson(res, 200, { ok: true });
+});
+
+route('POST', /^\/api\/colaboradores\/(\d+)\/resetar-senha$/, { role: 'gestor' }, async (req, res, m, body, s) => {
+  if (!checkSesmtPermission(s)) return sendJson(res, 403, { error: 'Apenas o SESMT pode resetar senhas.' });
+  const emp = db.employees.find(e => e.id === Number(m[1]) && e.companyId === s.companyId);
+  if (!emp) return sendJson(res, 404, { error: 'Colaborador não encontrado.' });
+  const nova = hashPassword('SafePoint@2026');
+  emp.senhaSalt = nova.salt; emp.senhaHash = nova.hash;
+  emp.primeiroAcesso = true;
+  saveDb();
+  logAudit(s.userId, s.role, 'resetar_senha', `Senha resetada: ${emp.nome}`, s.companyId);
+  sendJson(res, 200, { ok: true, senhaProvisoria: 'SafePoint@2026' });
+});
+
+route('POST', /^\/api\/colaboradores\/(\d+)\/moedas$/, { role: 'gestor' }, async (req, res, m, body, s) => {
+  if (!checkSesmtPermission(s)) return sendJson(res, 403, { error: 'Apenas o SESMT pode distribuir moedas.' });
+  const emp = db.employees.find(e => e.id === Number(m[1]) && e.companyId === s.companyId);
+  if (!emp) return sendJson(res, 404, { error: 'Colaborador não encontrado.' });
+  const qtd = Math.min(1000, Math.max(1, Number(body.quantidade) || 1));
+  const motivo = String(body.motivo || 'Reconhecimento').slice(0, 200);
+  emp.moedas = (emp.moedas || 0) + qtd;
+  // convert to points (1 moeda = 5 pontos)
+  db.pontosExtras.push({ id: nextId(), empId: emp.id, companyId: emp.companyId,
+    tipo: 'moedas', descricao: `🪙 ${qtd} Moedas SafePoint — ${motivo}`, pontos: qtd * 5, timestamp: Date.now() });
+  saveDb();
+  logAudit(s.userId, s.role, 'distribuir_moedas', `${qtd} moedas → ${emp.nome}: ${motivo}`, s.companyId);
+  sendJson(res, 200, { ok: true, moedasTotal: emp.moedas });
+});
+
+route('GET', /^\/api\/auditlog$/, { role: 'gestor' }, async (req, res, m, body, s) => {
+  if (!checkSesmtPermission(s)) return sendJson(res, 403, { error: 'Apenas o SESMT pode ver o log de auditoria.' });
+  const logs = (db.auditLog || [])
+    .filter(l => l.companyId === s.companyId)
+    .sort((a, b) => b.timestamp - a.timestamp)
+    .slice(0, 200)
+    .map(l => {
+      const autor = db.employees.find(e => e.id === l.userId) || db.managers.find(mg => mg.id === l.userId);
+      return { ...l, autorNome: autor ? (autor.nome || autor.name || '') : 'Sistema' };
+    });
+  sendJson(res, 200, logs);
+});
+
+route('GET', /^\/api\/carteirinha\/(\d+)$/, { role: 'any' }, async (req, res, m, body, s) => {
+  const emp = db.employees.find(e => e.id === Number(m[1]) && e.companyId === s.companyId && e.ativo !== false);
+  if (!emp) return sendJson(res, 404, { error: 'Colaborador não encontrado.' });
+  const comp = db.companies.find(c => c.id === emp.companyId);
+  const { senhaSalt, senhaHash, ...safe } = emp;
+  sendJson(res, 200, { ...safe, empresaNome: comp ? (comp.nomeFantasia || comp.nome) : '' });
 });
 
 /* ── Endpoint público: lista de empresas para o login ─────── */
@@ -1905,21 +2090,35 @@ route('GET', /^\/api\/meu-painel$/, { role: 'colaborador' }, async (req, res, m,
 /* ── Feed / Mural Social ─────────────────────────────────────── */
 
 route('GET', /^\/api\/feed$/, { role: 'any' }, async (req, res, m, body, s) => {
+  const uid = s.employeeId || s.userId;
   const posts = (db.feed || [])
     .filter(f => f.companyId === s.companyId)
     .sort((a, b) => b.timestamp - a.timestamp)
     .slice(0, 50)
-    .map(f => ({
-      ...f,
-      minhasReacoes: {
-        like: (f.reacoes?.like || []).includes(s.employeeId || s.userId),
-        aplausos: (f.reacoes?.aplausos || []).includes(s.employeeId || s.userId),
-        estrela: (f.reacoes?.estrela || []).includes(s.employeeId || s.userId)
-      },
-      totalLikes: (f.reacoes?.like || []).length,
-      totalAplausos: (f.reacoes?.aplausos || []).length,
-      totalEstrelas: (f.reacoes?.estrela || []).length
-    }));
+    .map(f => {
+      const r = f.reacoes || {};
+      return {
+        ...f,
+        reacoes: undefined, // strip raw arrays
+        comentarios: undefined, // strip raw comments
+        minhasReacoes: {
+          like:       (r.like       || []).includes(uid),
+          aplausos:   (r.aplausos   || []).includes(uid),
+          estrela:    (r.estrela    || []).includes(uid),
+          seguranca:  (r.seguranca  || []).includes(uid),
+          inspirador: (r.inspirador || []).includes(uid),
+        },
+        totalLikes:      (r.like       || []).length,
+        totalAplausos:   (r.aplausos   || []).length,
+        totalEstrelas:   (r.estrela    || []).length,
+        totalSeguranca:  (r.seguranca  || []).length,
+        totalInspirador: (r.inspirador || []).length,
+        totalComentarios: (f.comentarios || []).length,
+        ultimosComentarios: (f.comentarios || []).slice(-2).map(c => ({
+          autorNome: c.autorNome, texto: c.texto, timestamp: c.timestamp
+        })),
+      };
+    });
   sendJson(res, 200, posts);
 });
 
@@ -1963,6 +2162,28 @@ route('POST', /^\/api\/feed\/(\d+)\/reagir$/, { role: 'any' }, async (req, res, 
   else post.reacoes[tipo].push(uid);
   saveDb();
   sendJson(res, 200, { ok: true, total: post.reacoes[tipo].length });
+});
+
+route('POST', /^\/api\/feed\/(\d+)\/comentar$/, { role: 'any' }, async (req, res, m, body, s) => {
+  const post = (db.feed || []).find(f => f.id === Number(m[1]) && f.companyId === s.companyId);
+  if (!post) return sendJson(res, 404, { error: 'Post não encontrado.' });
+  const texto = String(body.texto || '').trim();
+  if (!texto) return sendJson(res, 400, { error: 'Comentário não pode ser vazio.' });
+  const uid = s.employeeId || s.userId;
+  const emp = db.employees.find(e => e.id === uid);
+  const mgr = db.managers.find(m2 => m2.id === uid);
+  const autorNome = emp ? emp.nome : (mgr ? mgr.name : 'Usuário');
+  if (!post.comentarios) post.comentarios = [];
+  const comentario = { id: nextId(), autorId: uid, autorNome, texto, timestamp: Date.now() };
+  post.comentarios.push(comentario);
+  saveDb();
+  sendJson(res, 201, comentario);
+});
+
+route('GET', /^\/api\/feed\/(\d+)\/comentarios$/, { role: 'any' }, async (req, res, m, body, s) => {
+  const post = (db.feed || []).find(f => f.id === Number(m[1]) && f.companyId === s.companyId);
+  if (!post) return sendJson(res, 404, { error: 'Post não encontrado.' });
+  sendJson(res, 200, post.comentarios || []);
 });
 
 route('DELETE', /^\/api\/feed\/(\d+)$/, { role: 'any' }, async (req, res, m, body, s) => {
