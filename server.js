@@ -721,16 +721,18 @@ route('GET', /^\/api\/me$/, { public: true }, async (req, res) => {
   }
   if (s.role === 'gestor') {
     const branding = getCompanyBranding(s.companyId);
-    let nome, roles = [];
+    let nome, roles = [], primeiroAcesso = false, termosAceitos = true;
     if (s.isEmployee) {
       const emp = db.employees.find(e => e.id === s.userId);
       nome = emp ? emp.nome : 'Gestor';
       roles = emp ? (emp.roles || []) : [];
+      primeiroAcesso = emp ? !!emp.primeiroAcesso : false;
+      termosAceitos = emp ? !!emp.termosAceitos : true;
     } else {
       const mgr = s.userId ? db.managers.find(u => u.id === s.userId) : null;
       nome = mgr ? mgr.name : (s.adminImpersonating ? '👀 Admin visitando' : 'Gestor');
     }
-    return sendJson(res, 200, { autenticado: true, perfil: 'gestor', nome, branding, adminImpersonando: !!s.adminImpersonating, roles, isEmployee: !!s.isEmployee });
+    return sendJson(res, 200, { autenticado: true, perfil: 'gestor', nome, branding, adminImpersonando: !!s.adminImpersonating, roles, isEmployee: !!s.isEmployee, primeiroAcesso, termosAceitos });
   }
   const emp = db.employees.find(e => e.id === s.employeeId);
   const branding = getCompanyBranding(s.companyId);

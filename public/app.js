@@ -186,31 +186,36 @@ async function loginAdmin(e) {
 
 /* ── Primeiro Acesso ── */
 
+let _paTermosNecessarios = false;
+
 function abrirPrimeiroAcesso(precisaSenha, termosAceitos) {
+  _paTermosNecessarios = !termosAceitos;
   const overlay = document.getElementById('primeiro-acesso-overlay');
   overlay.classList.remove('hidden');
   document.getElementById('pa-step-senha').classList.toggle('hidden', !precisaSenha);
-  document.getElementById('pa-step-termos').classList.toggle('hidden', precisaSenha || termosAceitos);
-  document.getElementById('pa-titulo').textContent = precisaSenha
-    ? 'Crie sua senha pessoal'
-    : 'Termos de Uso';
+  document.getElementById('pa-step-termos').classList.toggle('hidden', precisaSenha || !!termosAceitos);
+  document.getElementById('pa-titulo').textContent = precisaSenha ? 'Crie sua senha pessoal' : 'Termos de Uso';
 }
 
 async function confirmarNovaSenha() {
-  const atual  = document.getElementById('pa-senha-atual').value;
-  const nova   = document.getElementById('pa-senha-nova').value;
-  const conf   = document.getElementById('pa-senha-confirma').value;
-  const erro   = document.getElementById('pa-senha-erro');
+  const atual = document.getElementById('pa-senha-atual').value;
+  const nova  = document.getElementById('pa-senha-nova').value;
+  const conf  = document.getElementById('pa-senha-confirma').value;
+  const erro  = document.getElementById('pa-senha-erro');
   erro.classList.add('hidden');
   if (!atual || !nova || !conf) { erro.textContent = 'Preencha todos os campos.'; erro.classList.remove('hidden'); return; }
   if (nova.length < 6) { erro.textContent = 'A nova senha precisa ter no mínimo 6 caracteres.'; erro.classList.remove('hidden'); return; }
   if (nova !== conf) { erro.textContent = 'As senhas não coincidem.'; erro.classList.remove('hidden'); return; }
   try {
     await api('/api/alterar-senha-emp', { method: 'POST', body: { senhaAtual: atual, novaSenha: nova } });
-    // show terms step
-    document.getElementById('pa-step-senha').classList.add('hidden');
-    document.getElementById('pa-step-termos').classList.remove('hidden');
-    document.getElementById('pa-titulo').textContent = 'Termos de Uso';
+    if (_paTermosNecessarios) {
+      document.getElementById('pa-step-senha').classList.add('hidden');
+      document.getElementById('pa-step-termos').classList.remove('hidden');
+      document.getElementById('pa-titulo').textContent = 'Termos de Uso';
+    } else {
+      document.getElementById('primeiro-acesso-overlay').classList.add('hidden');
+      toast('Senha criada com sucesso! Bem-vindo ao SafePoint 🚀', 'ok');
+    }
   } catch (err) { erro.textContent = err.message; erro.classList.remove('hidden'); }
 }
 
@@ -254,7 +259,6 @@ async function iniciar() {
   if (me.perfil === 'gestor') {
     document.getElementById('gestor-nome').textContent = me.nome;
     document.getElementById('app-gestor').classList.remove('hidden');
-    // banner de impersonação
     const banner = document.getElementById('impersonation-banner');
     if (banner) banner.classList.toggle('hidden', !me.adminImpersonando);
     preencherFiltroTipos();
@@ -262,6 +266,9 @@ async function iniciar() {
     try { EMPRESA_INFO = await api('/api/empresa/branding'); } catch {}
     navegar('dashboard');
     carregarBrandingConfig();
+    if (me.primeiroAcesso || !me.termosAceitos) {
+      abrirPrimeiroAcesso(me.primeiroAcesso, me.termosAceitos);
+    }
   } else {
     document.getElementById('colab-nome').textContent = me.nome;
     // show role badges in topbar
