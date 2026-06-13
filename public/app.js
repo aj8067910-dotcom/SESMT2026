@@ -444,6 +444,7 @@ function renderEmpresas() {
         <button class="btn btn-sm btn-primary" onclick="abrirEditarEmpresa(${e.id})">Editar</button>
         <button class="btn btn-sm" onclick="abrirBrandingEmpresa(${e.id})">🎨 Visual</button>
         <button class="btn btn-sm" onclick="abrirAdicionarGestor(${e.id}, '${esc(e.nome)}')">+ Gestor</button>
+        <button class="btn btn-sm" onclick="abrirModulosEmpresa(${e.id}, '${esc(e.nomeFantasia || e.nome)}')">⚙️ Módulos</button>
         <button class="btn btn-sm btn-destaque" onclick="entrarComoEmpresa(${e.id})">👁 Entrar</button>
         <button class="btn btn-sm btn-perigo" onclick="inativarEmpresa(${e.id})">${e.ativo === false ? 'Reativar' : 'Inativar'}</button>
       </div>
@@ -458,6 +459,51 @@ function abrirNovaEmpresa() {
 function abrirEditarEmpresa(id) {
   const e = EMPRESAS.find(x => x.id === id);
   if (e) abrirModal('Editar empresa', formEmpresaHtml(e));
+}
+
+async function abrirModulosEmpresa(id, nome) {
+  abrirModal(`⚙️ Módulos — ${nome}`, '<p class="hint">Carregando...</p>');
+  try {
+    const resp = await api(`/api/admin/empresas/${id}/submodulos`);
+    const data = resp.submodulos || resp;
+    let html = '';
+    for (const [mod, subs] of Object.entries(SUBMODULO_LABELS)) {
+      const modSubs = data[mod] || {};
+      html += `<div class="submod-section" style="margin-bottom:14px;padding-bottom:12px;border-bottom:1px solid var(--cinza-borda)">
+        <div class="submod-section-header"><strong>${MODULO_NOMES[mod] || mod}</strong></div>
+        <div class="submod-grid">`;
+      for (const [key, label] of Object.entries(subs)) {
+        const checked = modSubs[key] ? 'checked' : '';
+        html += `<label class="submod-item">
+          <input type="checkbox" data-mod="${mod}" data-sub="${key}" ${checked}>
+          <span>${label}</span>
+        </label>`;
+      }
+      html += `</div></div>`;
+    }
+    html += `<div class="modal-rodape">
+      <button class="btn" onclick="fecharModal()">Cancelar</button>
+      <button class="btn btn-primary" onclick="salvarModulosAdmin(${id})">Salvar módulos</button>
+    </div>`;
+    document.getElementById('modal-corpo').innerHTML = html;
+  } catch (err) {
+    document.getElementById('modal-corpo').innerHTML = `<p class="hint">Erro: ${esc(err.message)}</p>`;
+  }
+}
+
+async function salvarModulosAdmin(id) {
+  const checks = document.querySelectorAll('#modal-corpo input[type=checkbox]');
+  const submodulos = {};
+  checks.forEach(cb => {
+    const mod = cb.dataset.mod, sub = cb.dataset.sub;
+    if (!submodulos[mod]) submodulos[mod] = {};
+    submodulos[mod][sub] = cb.checked;
+  });
+  try {
+    await api(`/api/admin/empresas/${id}/submodulos`, { method: 'POST', body: { submodulos } });
+    fecharModal();
+    toast('Módulos da empresa atualizados!', 'ok');
+  } catch (err) { toast(err.message, 'erro'); }
 }
 
 function formEmpresaHtml(e) {
@@ -1234,57 +1280,136 @@ function formColaboradorHtml(c) {
     : `<input type="text" id="co-unidade" value="${c ? esc(c.unidade || '') : ''}" placeholder="Nome da unidade">`;
 
   const ROLE_DEFS = [
-    { key: 'sesmt',             emoji: '🦺', label: 'SESMT',               desc: 'Acesso ao Painel de Gestão', master: true },
-    { key: 'cipa',              emoji: '⚠️', label: 'CIPA',                desc: 'Membro da CIPA',             master: false },
-    { key: 'brigada',           emoji: '🚒', label: 'Brigada de Emergência', desc: '',                          master: false },
-    { key: 'tecnico_seguranca', emoji: '🔧', label: 'Técnico de Segurança', desc: '',                          master: false },
-    { key: 'medico_trabalho',   emoji: '🩺', label: 'Médico do Trabalho',   desc: '',                          master: false },
-    { key: 'ergonomista',       emoji: '🪑', label: 'Ergonomista',          desc: '',                          master: false }
+    { key: 'lideranca',         emoji: '👔', label: 'Liderança',             desc: 'Gestores e supervisores' },
+    { key: 'sesmt',             emoji: '🦺', label: 'SESMT',                 desc: 'Acesso ao Painel de Gestão', master: true },
+    { key: 'cipa',              emoji: '⚠️', label: 'CIPA',                  desc: 'Membro da CIPA' },
+    { key: 'brigada',           emoji: '🚒', label: 'Brigada de Emergência',  desc: 'Membro da Brigada' },
+    { key: 'tecnico_seguranca', emoji: '🔧', label: 'Técnico de Segurança',  desc: '' },
+    { key: 'medico_trabalho',   emoji: '🩺', label: 'Médico do Trabalho',    desc: '' },
+    { key: 'ergonomista',       emoji: '🪑', label: 'Ergonomista',           desc: '' },
   ];
-  const rolesAtuais = (c && c.roles) ? c.roles : [];
+  const CIPA_CARGOS   = [
+    { key: 'cipa_presidente', label: 'Presidente' },
+    { key: 'cipa_vice',       label: 'Vice-Presidente' },
+    { key: 'cipa_secretario', label: 'Secretário' },
+    { key: 'cipa_titular',    label: 'Titular' },
+    { key: 'cipa_suplente',   label: 'Suplente' },
+  ];
+  const BRIGADA_CARGOS = [
+    { key: 'brigada_coordenador', label: 'Coordenador' },
+    { key: 'brigada_lider',       label: 'Líder' },
+    { key: 'brigada_brigadista',  label: 'Brigadista' },
+    { key: 'brigada_socorrista',  label: 'Socorrista' },
+  ];
+  const rolesAtuais    = (c && c.roles)    ? c.roles    : [];
+  const subRolesAtuais = (c && c.subRoles) ? c.subRoles.map(sr => sr.cargo) : [];
 
   return `
-    <div class="linha-2">
-      <div><label>Matrícula *</label><input type="text" id="co-matricula" value="${c ? esc(c.matricula) : ''}"></div>
-      <div><label>CPF</label><input type="text" id="co-cpf" value="${c ? esc(c.cpf || '') : ''}" placeholder="000.000.000-00"></div>
+    <div class="emp-form-section">
+      <div class="emp-form-section-title">👤 Dados Pessoais</div>
+      <div class="linha-2">
+        <div><label>Nome completo *</label><input type="text" id="co-nome" value="${c ? esc(c.nome) : ''}"></div>
+        <div><label>CPF</label><input type="text" id="co-cpf" value="${c ? esc(c.cpf || '') : ''}" placeholder="000.000.000-00"></div>
+      </div>
+      <div class="linha-3">
+        <div><label>Matrícula *</label><input type="text" id="co-matricula" value="${c ? esc(c.matricula) : ''}"></div>
+        <div><label>Data de Nascimento</label><input type="date" id="co-dataNascimento" value="${c ? esc(c.dataNascimento || '') : ''}"></div>
+        <div><label>Telefone</label><input type="text" id="co-telefone" value="${c ? esc(c.telefone || '') : ''}" placeholder="(11) 99999-9999"></div>
+      </div>
+      <div class="linha-2">
+        <div><label>E-mail pessoal</label><input type="email" id="co-email" value="${c ? esc(c.email || '') : ''}"></div>
+        <div><label>E-mail corporativo</label><input type="email" id="co-emailCorp" value="${c ? esc(c.emailCorp || '') : ''}"></div>
+      </div>
     </div>
-    <label>Nome completo *</label>
-    <input type="text" id="co-nome" value="${c ? esc(c.nome) : ''}">
-    <div class="linha-2">
-      <div><label>Setor</label><input type="text" id="co-setor" value="${c ? esc(c.setor || '') : ''}"></div>
-      <div><label>Equipe</label><input type="text" id="co-equipe" value="${c ? esc(c.equipe || '') : ''}"></div>
-    </div>
-    <div class="linha-3">
-      <div><label>Função</label><input type="text" id="co-funcao" value="${c ? esc(c.funcao || '') : ''}"></div>
-      <div><label>Unidade</label>${unidadeSelect}</div>
-      <div><label>Empresa</label><input type="text" id="co-empresa" value="${esc(EMPRESA_INFO.nome || (c ? c.empresa || '' : ''))}" readonly class="input-readonly"></div>
-    </div>
-    ${c ? `<label class="check-inline" style="margin-top:12px"><input type="checkbox" id="co-ativo" ${c.ativo !== false ? 'checked' : ''}> colaborador ativo</label>` : ''}
 
-    <hr style="margin:18px 0 14px;border:none;border-top:1px solid var(--cinza-borda)">
-    <label style="font-weight:700;font-size:13px;display:block;margin-bottom:4px">🏅 Perfil de Acesso</label>
-    <p class="hint" style="margin-bottom:10px">
-      <strong>SESMT</strong> é o acesso mais alto — libera o Painel de Gestão completo.
-      Os demais papéis são crachás informativos (acesso colaborador normal).
-      Somente o SESMT pode alterar perfis de acesso.
-    </p>
-    <div class="roles-check-grid">
-      ${ROLE_DEFS.map(r => `
-        <label class="role-check-item ${r.master ? 'role-check-master' : ''} ${rolesAtuais.includes(r.key) ? 'role-check-ativo' : ''}">
-          <input type="checkbox" id="co-role-${r.key}" value="${r.key}" ${rolesAtuais.includes(r.key) ? 'checked' : ''}
-            onchange="this.closest('.role-check-item').classList.toggle('role-check-ativo', this.checked)">
-          <span class="role-check-emoji">${r.emoji}</span>
-          <span class="role-check-label">
-            <strong>${r.label}</strong>${r.master ? ' <span class="role-master-tag">gestor</span>' : ''}
-            ${r.desc ? `<span class="hint" style="display:block;font-size:11px">${r.desc}</span>` : ''}
-          </span>
-        </label>`).join('')}
+    <div class="emp-form-section">
+      <div class="emp-form-section-title">🏢 Dados Organizacionais</div>
+      <div class="linha-2">
+        <div><label>Empresa</label><input type="text" id="co-empresa" value="${esc(EMPRESA_INFO.nome || (c ? c.empresa || '' : ''))}" readonly class="input-readonly"></div>
+        <div><label>Contrato</label><input type="text" id="co-contrato" value="${c ? esc(c.contrato || '') : ''}" placeholder="Ex.: CLT, PJ, Estágio..."></div>
+      </div>
+      <div class="linha-2">
+        <div><label>Unidade</label>${unidadeSelect}</div>
+        <div><label>Setor</label><input type="text" id="co-setor" value="${c ? esc(c.setor || '') : ''}"></div>
+      </div>
+      <div class="linha-3">
+        <div><label>Equipe</label><input type="text" id="co-equipe" value="${c ? esc(c.equipe || '') : ''}"></div>
+        <div><label>Cargo / Função</label><input type="text" id="co-funcao" value="${c ? esc(c.funcao || '') : ''}"></div>
+        <div><label>Gestor Direto</label><input type="text" id="co-gestorDireto" value="${c ? esc(c.gestorDireto || '') : ''}" placeholder="Nome do gestor"></div>
+      </div>
+    </div>
+
+    <div class="emp-form-section">
+      <div class="emp-form-section-title">⚙️ Dados de Sistema</div>
+      <div class="linha-${c ? '2' : '3'}">
+        <div><label>Data de Admissão</label><input type="date" id="co-dataAdmissao" value="${c ? esc(c.dataAdmissao || '') : ''}"></div>
+        <div><label>Status</label>
+          <select id="co-status">
+            <option value="ativo"    ${(!c || c.status === 'ativo')    ? 'selected' : ''}>Ativo</option>
+            <option value="inativo"  ${c && c.status === 'inativo'     ? 'selected' : ''}>Inativo</option>
+            <option value="afastado" ${c && c.status === 'afastado'    ? 'selected' : ''}>Afastado</option>
+            <option value="desligado"${c && c.status === 'desligado'   ? 'selected' : ''}>Desligado</option>
+          </select>
+        </div>
+        ${!c ? `<div><label>Senha temporária</label><input type="text" id="co-senha" placeholder="Padrão: mesma que a matrícula"></div>` : ''}
+      </div>
+      ${c ? `<label class="check-inline" style="margin-top:8px"><input type="checkbox" id="co-ativo" ${c.ativo !== false ? 'checked' : ''}> Conta ativa no sistema</label>` : ''}
+    </div>
+
+    <div class="emp-form-section">
+      <div class="emp-form-section-title">🏅 Papéis de Acesso</div>
+      <p class="hint" style="margin-bottom:10px">SESMT libera acesso completo ao Painel de Gestão. Os demais papéis são perfis informativos.</p>
+      <div class="roles-check-grid">
+        ${ROLE_DEFS.map(r => `
+          <label class="role-check-item ${r.master ? 'role-check-master' : ''} ${rolesAtuais.includes(r.key) ? 'role-check-ativo' : ''}">
+            <input type="checkbox" id="co-role-${r.key}" value="${r.key}" ${rolesAtuais.includes(r.key) ? 'checked' : ''}
+              onchange="this.closest('.role-check-item').classList.toggle('role-check-ativo',this.checked)${r.key==='cipa'?';toggleCipaCargos(this.checked)':''}${r.key==='brigada'?';toggleBrigadaCargos(this.checked)':''}">
+            <span class="role-check-emoji">${r.emoji}</span>
+            <span class="role-check-label">
+              <strong>${r.label}</strong>${r.master ? ' <span class="role-master-tag">gestor</span>' : ''}
+              ${r.desc ? `<span class="hint" style="display:block;font-size:11px">${r.desc}</span>` : ''}
+            </span>
+          </label>`).join('')}
+      </div>
+    </div>
+
+    <div class="emp-form-section" id="cipa-cargos-section" ${rolesAtuais.includes('cipa') ? '' : 'style="display:none"'}>
+      <div class="emp-form-section-title">⚠️ Função na CIPA</div>
+      <div class="roles-check-grid">
+        ${CIPA_CARGOS.map(cargo => `
+          <label class="role-check-item ${subRolesAtuais.includes(cargo.key) ? 'role-check-ativo' : ''}">
+            <input type="checkbox" id="co-cargo-${cargo.key}" value="${cargo.key}" ${subRolesAtuais.includes(cargo.key) ? 'checked' : ''}
+              onchange="this.closest('.role-check-item').classList.toggle('role-check-ativo',this.checked)">
+            <span class="role-check-label"><strong>${cargo.label}</strong></span>
+          </label>`).join('')}
+      </div>
+    </div>
+
+    <div class="emp-form-section" id="brigada-cargos-section" ${rolesAtuais.includes('brigada') ? '' : 'style="display:none"'}>
+      <div class="emp-form-section-title">🚒 Função na Brigada de Emergência</div>
+      <div class="roles-check-grid">
+        ${BRIGADA_CARGOS.map(cargo => `
+          <label class="role-check-item ${subRolesAtuais.includes(cargo.key) ? 'role-check-ativo' : ''}">
+            <input type="checkbox" id="co-cargo-${cargo.key}" value="${cargo.key}" ${subRolesAtuais.includes(cargo.key) ? 'checked' : ''}
+              onchange="this.closest('.role-check-item').classList.toggle('role-check-ativo',this.checked)">
+            <span class="role-check-label"><strong>${cargo.label}</strong></span>
+          </label>`).join('')}
+      </div>
     </div>
 
     <div class="modal-rodape">
       <button class="btn" onclick="fecharModal()">Cancelar</button>
       <button class="btn btn-primary" onclick="salvarColaborador(${c ? c.id : 'null'})">Salvar</button>
     </div>`;
+}
+
+function toggleCipaCargos(show) {
+  const el = document.getElementById('cipa-cargos-section');
+  if (el) el.style.display = show ? '' : 'none';
+}
+function toggleBrigadaCargos(show) {
+  const el = document.getElementById('brigada-cargos-section');
+  if (el) el.style.display = show ? '' : 'none';
 }
 
 function abrirNovoColaborador() { abrirModal('Novo colaborador', formColaboradorHtml(null)); }
@@ -1295,18 +1420,31 @@ function abrirEditarColaborador(id) {
 }
 
 async function salvarColaborador(id) {
+  const g = v => { const el = document.getElementById(v); return el ? el.value : ''; };
   const body = {
-    matricula: document.getElementById('co-matricula').value,
-    cpf: document.getElementById('co-cpf').value,
-    nome: document.getElementById('co-nome').value,
-    setor: document.getElementById('co-setor').value,
-    equipe: document.getElementById('co-equipe').value,
-    funcao: document.getElementById('co-funcao').value,
-    unidade: document.getElementById('co-unidade').value,
-    empresa: document.getElementById('co-empresa').value
+    matricula:       g('co-matricula'),
+    cpf:             g('co-cpf'),
+    nome:            g('co-nome'),
+    setor:           g('co-setor'),
+    equipe:          g('co-equipe'),
+    funcao:          g('co-funcao'),
+    unidade:         g('co-unidade'),
+    empresa:         g('co-empresa'),
+    telefone:        g('co-telefone'),
+    email:           g('co-email'),
+    emailCorp:       g('co-emailCorp'),
+    dataNascimento:  g('co-dataNascimento'),
+    dataAdmissao:    g('co-dataAdmissao'),
+    gestorDireto:    g('co-gestorDireto'),
+    contrato:        g('co-contrato'),
+    status:          g('co-status') || 'ativo',
   };
   const chkAtivo = document.getElementById('co-ativo');
   if (chkAtivo) body.ativo = chkAtivo.checked;
+  if (!id) {
+    const senha = g('co-senha');
+    if (senha) body.senha = senha;
+  }
   try {
     let savedId = id;
     if (id) await api('/api/colaboradores/' + id, { method: 'PUT', body });
@@ -1314,26 +1452,26 @@ async function salvarColaborador(id) {
       const novo = await api('/api/colaboradores', { method: 'POST', body });
       savedId = novo.id;
     }
-    // Sincronizar papéis se estiver editando um colaborador existente
     if (savedId) {
-      const ROLE_KEYS = ['sesmt', 'cipa', 'brigada', 'tecnico_seguranca', 'medico_trabalho', 'ergonomista'];
+      const ROLE_KEYS = ['lideranca', 'sesmt', 'cipa', 'brigada', 'tecnico_seguranca', 'medico_trabalho', 'ergonomista'];
+      const CARGO_KEYS = ['cipa_presidente','cipa_vice','cipa_secretario','cipa_titular','cipa_suplente',
+                          'brigada_coordenador','brigada_lider','brigada_brigadista','brigada_socorrista'];
       const existente = COLABORADORES.find(x => x.id === savedId);
       const rolesAntes = (existente && existente.roles) ? existente.roles : [];
-      const rolesDepois = ROLE_KEYS.filter(r => {
-        const el = document.getElementById('co-role-' + r);
-        return el && el.checked;
-      });
-      // Adicionar novos
+      const rolesDepois = ROLE_KEYS.filter(r => { const el = document.getElementById('co-role-' + r); return el && el.checked; });
       for (const r of rolesDepois) {
-        if (!rolesAntes.includes(r)) {
-          await api(`/api/usuarios/${savedId}/roles`, { method: 'POST', body: { role: r } }).catch(() => {});
-        }
+        if (!rolesAntes.includes(r)) await api(`/api/usuarios/${savedId}/roles`, { method: 'POST', body: { role: r } }).catch(() => {});
       }
-      // Remover desmarcados
       for (const r of rolesAntes) {
-        if (!rolesDepois.includes(r)) {
-          await api(`/api/usuarios/${savedId}/roles/${r}`, { method: 'DELETE' }).catch(() => {});
-        }
+        if (!rolesDepois.includes(r)) await api(`/api/usuarios/${savedId}/roles/${r}`, { method: 'DELETE' }).catch(() => {});
+      }
+      const subRolesAntes = existente && existente.subRoles ? existente.subRoles.map(sr => sr.cargo) : [];
+      const subRolesDepois = CARGO_KEYS.filter(k => { const el = document.getElementById('co-cargo-' + k); return el && el.checked; });
+      for (const k of subRolesDepois) {
+        if (!subRolesAntes.includes(k)) await api(`/api/colaboradores/${savedId}/subroles`, { method: 'POST', body: { cargo: k } }).catch(() => {});
+      }
+      for (const k of subRolesAntes) {
+        if (!subRolesDepois.includes(k)) await api(`/api/colaboradores/${savedId}/subroles/${k}`, { method: 'DELETE' }).catch(() => {});
       }
     }
     fecharModal();
