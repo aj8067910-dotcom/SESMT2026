@@ -177,6 +177,9 @@
         <div class="sidebar-item" data-view="quem-e-quem"    onclick="navegar('quem-e-quem')">Quem é Quem</div>
         <div class="sidebar-item" data-view="roles"          onclick="navegar('roles')">Papéis</div>
         <div class="sidebar-item" data-view="estrutura"      onclick="navegar('estrutura')">Estrutura Org.</div>
+        <div class="sidebar-item" data-view="safety-score-ind"   onclick="navegar('safety-score-ind')">Safety Score Individual</div>
+        <div class="sidebar-item" data-view="historico-evolucao" onclick="navegar('historico-evolucao')">Histórico de Evolução</div>
+        <div class="sidebar-item" data-view="evidencias-colab"   onclick="navegar('evidencias-colab')">Evidências do Colaborador</div>
       </div>
     </div>
     <div class="sidebar-module" id="sbmod-aprendizagem">
@@ -185,6 +188,9 @@
         <div class="sidebar-item" data-view="eventos"     onclick="navegar('eventos')">DDS / Atividades</div>
         <div class="sidebar-item" data-view="quiz-gestor" onclick="navegar('quiz-gestor')">Central do Conhecimento</div>
         <div class="sidebar-item" data-view="academia"    onclick="navegar('academia')">Academia SST</div>
+        <div class="sidebar-item" data-view="trilhas"              onclick="navegar('trilhas')">Trilhas Inteligentes</div>
+        <div class="sidebar-item" data-view="biblioteca-inteligente" onclick="navegar('biblioteca-inteligente')">Biblioteca Inteligente</div>
+        <div class="sidebar-item" data-view="microlearning"        onclick="navegar('microlearning')">Microlearning</div>
       </div>
     </div>
     <div class="sidebar-module" id="sbmod-cultura">
@@ -192,6 +198,10 @@
       <div class="sidebar-items">
         <div class="sidebar-item" data-view="ranking"     onclick="navegar('ranking')">Ranking</div>
         <div class="sidebar-item" data-view="engajamento" onclick="navegar('engajamento')">Engajamento</div>
+        <div class="sidebar-item" data-view="comunidades"     onclick="navegar('comunidades')">Comunidades</div>
+        <div class="sidebar-item" data-view="desafios-seg"    onclick="navegar('desafios-seg')">Desafios de Segurança</div>
+        <div class="sidebar-item" data-view="reconhec-pares"  onclick="navegar('reconhec-pares')">Reconhecimento entre Pares</div>
+        <div class="sidebar-item" data-view="hall-seguranca"  onclick="navegar('hall-seguranca')">Hall da Segurança</div>
       </div>
     </div>
     <div class="sidebar-module" id="sbmod-seguranca-op">
@@ -199,6 +209,10 @@
       <div class="sidebar-items">
         <div class="sidebar-item" data-view="observacoes" onclick="navegar('observacoes')">Observações</div>
         <div class="sidebar-item" data-view="sugestoes"   onclick="navegar('sugestoes')">Sugestões</div>
+        <div class="sidebar-item" data-view="heatmap-seg"         onclick="navegar('heatmap-seg')">Heatmap de Segurança</div>
+        <div class="sidebar-item" data-view="tendencias-desvios"  onclick="navegar('tendencias-desvios')">Tendências de Desvios</div>
+        <div class="sidebar-item" data-view="evidencias-op"       onclick="navegar('evidencias-op')">Evidências Operacionais</div>
+        <div class="sidebar-item" data-view="quase-acidentes"     onclick="navegar('quase-acidentes')">Quase Acidentes</div>
       </div>
     </div>
     <div class="sidebar-module" id="sbmod-comunicacao">
@@ -206,6 +220,36 @@
       <div class="sidebar-items">
         <div class="sidebar-item" data-view="comunicados"       onclick="navegar('comunicados')">Comunicados</div>
         <div class="sidebar-item" data-view="pesquisas-gestor"  onclick="navegar('pesquisas-gestor')">Pesquisas</div>
+        <div class="sidebar-item" data-view="canal-sesmt"      onclick="navegar('canal-sesmt')">Canal Pergunte ao SESMT</div>
+        <div class="sidebar-item" data-view="tv-corporativa"   onclick="navegar('tv-corporativa')">TV Corporativa</div>
+      </div>
+    </div>
+    <div class="sidebar-module" id="sbmod-cipa">
+      <div class="sidebar-module-header" onclick="toggleSbMod('cipa')"><span class="sm-icon">🛡️</span><span class="sm-label">CIPA</span><span class="sm-arrow">▶</span></div>
+      <div class="sidebar-items">
+        <div class="sidebar-item" data-view="cipa-estrutura"   onclick="navegar('cipa-estrutura')">Estrutura / Integrantes</div>
+        <div class="sidebar-item" data-view="portal-cipa"      onclick="navegar('portal-cipa')">Portal da CIPA</div>
+        <div class="sidebar-item" data-view="indicadores-cipa" onclick="navegar('indicadores-cipa')">Indicadores da CIPA</div>
+        <div class="sidebar-item" data-view="banco-ideias"     onclick="navegar('banco-ideias')">Banco de Ideias</div>
+      </div>
+    </div>
+    <div class="sidebar-module" id="sbmod-brigada">
+      <div class="sidebar-module-header" onclick="toggleSbMod('brigada')"><span class="sm-icon">🚒</span><span class="sm-label">Brigada</span><span class="sm-arrow">▶</span></div>
+      <div class="sidebar-items">
+        <div class="sidebar-item" data-view="brigada-estrutura"   onclick="navegar('brigada-estrutura')">Estrutura / Brigadistas</div>
+        <div class="sidebar-item" data-view="gestao-simulados"    onclick="navegar('gestao-simulados')">Gestão de Simulados</div>
+        <div class="sidebar-item" data-view="cert-reciclagens"    onclick="navegar('cert-reciclagens')">Certificações e Reciclagens</div>
+        <div class="sidebar-item" data-view="prontidao-op"        onclick="navegar('prontidao-op')">Prontidão Operacional</div>
+      </div>
+    </div>
+    <div class="sidebar-module" id="sbmod-relatorios">
+      <div class="sidebar-module-header" onclick="toggleSbMod('relatorios')"><span class="sm-icon">📊</span><span class="sm-label">Relatórios</span><span class="sm-arrow">▶</span></div>
+      <div class="sidebar-items">
+        <div class="sidebar-item" data-view="relatorios"          onclick="navegar('relatorios')">Visão Geral</div>
+        <div class="sidebar-item" data-view="relat-exec"          onclick="navegar('relat-exec')">Relatórios Executivos</div>
+        <div class="sidebar-item" data-view="relat-comp"          onclick="navegar('relat-comp')">Relatórios Comparativos</div>
+        <div class="sidebar-item" data-view="relat-cultura"       onclick="navegar('relat-cultura')">Relatórios de Cultura</div>
+        <div class="sidebar-item" data-view="central-evidencias"  onclick="navegar('central-evidencias')">Central de Evidências</div>
       </div>
     </div>
     <div class="sidebar-module" id="sbmod-ia-insights">

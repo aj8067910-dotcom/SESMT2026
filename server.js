@@ -84,29 +84,31 @@ const DEFAULT_MODULOS = {
 /* ── SafePoint 3.2 — Submódulos granulares ────────────────────── */
 
 const SUBMODULO_LABELS = {
-  dashboard:    { visao_geral:'Visão Geral', indicadores:'Indicadores', alertas:'Alertas', score:'Score da Empresa', insights_ia:'Insights IA' },
-  pessoas:      { cadastro:'Cadastro Individual', importacao:'Importação em Massa', estrutura:'Estrutura Org.', setores:'Setores', equipes:'Equipes', senhas:'Gestão de Senhas', acesso:'Controle de Acesso' },
-  aprendizagem: { dds:'DDS', dds_battle:'DDS Battle', treinamentos:'Treinamentos', flashcards:'Flashcards', certificados:'Certificados', simulador:'Simulador de Cenários', academia:'Academia SST', trilhas:'Trilhas de Aprendizagem' },
-  cultura:      { feed:'Feed Social', reconhecimentos:'Reconhecimentos', ranking:'Ranking', loja:'Loja', missoes:'Missões', campanhas:'Campanhas', moedas:'Moedas SafePoint' },
-  seguranca_op: { observacoes:'Observações', ato_inseguro:'Ato Inseguro', condicao_insegura:'Condição Insegura', quase_acidente:'Quase Acidente', boa_pratica:'Boa Prática', melhoria:'Oportunidade de Melhoria', plano_acao:'Plano de Ação', workflow:'Workflow' },
-  comunicacao:  { comunicados:'Comunicados', pesquisas:'Pesquisas', podcast:'Podcast', mensagens:'Mensagens Diretas' },
-  cipa:         { estrutura:'Estrutura', integrantes:'Integrantes', mandatos:'Mandatos', reunioes:'Reuniões', eleicao:'Eleição Digital', inspecoes:'Inspeções' },
-  brigada:      { estrutura:'Estrutura', brigadistas:'Brigadistas', simulados:'Simulados', certificacoes:'Certificações', plano_emergencia:'Plano de Emergência', mapa:'Mapa de Emergência' },
-  relatorios:   { dds:'Relatório DDS', treinamentos:'Relatório Treinamentos', quiz:'Relatório Quiz', engajamento:'Relatório Engajamento', exportacoes:'Exportações' },
-  ia_insights:  { assistente:'Assistente SST', insights:'SafePoint Insights', mapa_calor:'Mapa de Calor', predicoes:'Predições e Recomendações' },
+  dashboard:    { visao_geral:'Visão Geral', indicadores:'Indicadores', alertas:'Alertas', score:'Score da Empresa', insights_ia:'Insights IA', safety_score_corp:'Safety Score Corporativo', radar_atencao:'Radar de Atenção', tendencias_seg:'Tendências de Segurança' },
+  pessoas:      { cadastro:'Cadastro Individual', importacao:'Importação em Massa', estrutura:'Estrutura Org.', setores:'Setores', equipes:'Equipes', senhas:'Gestão de Senhas', acesso:'Controle de Acesso', safety_score_ind:'Safety Score Individual', historico_evolucao:'Histórico de Evolução', evidencias_colab:'Evidências do Colaborador' },
+  aprendizagem: { dds:'DDS', dds_battle:'DDS Battle', treinamentos:'Treinamentos', flashcards:'Flashcards', certificados:'Certificados', simulador:'Simulador de Cenários', academia:'Academia SST', trilhas:'Trilhas Inteligentes', biblioteca_inteligente:'Biblioteca Inteligente', microlearning:'Microlearning' },
+  cultura:      { feed:'Feed Social', reconhecimentos:'Reconhecimentos', ranking:'Ranking', loja:'Loja', missoes:'Missões', campanhas:'Campanhas', moedas:'Moedas SafePoint', comunidades:'Comunidades', desafios_seg:'Desafios de Segurança', reconhec_pares:'Reconhecimento entre Pares', hall_seguranca:'Hall da Segurança' },
+  seguranca_op: { observacoes:'Observações', ato_inseguro:'Ato Inseguro', condicao_insegura:'Condição Insegura', quase_acidente:'Quase Acidente', boa_pratica:'Boa Prática', melhoria:'Oportunidade de Melhoria', plano_acao:'Plano de Ação', workflow:'Workflow', heatmap_seg:'Heatmap de Segurança', tendencias_desvios:'Tendências de Desvios', evidencias_op:'Evidências Operacionais' },
+  comunicacao:  { comunicados:'Comunicados', pesquisas:'Pesquisas', podcast:'Podcast', mensagens:'Mensagens Diretas', canal_sesmt:'Canal Pergunte ao SESMT', comunicados_intel:'Comunicados Inteligentes', tv_corporativa:'TV Corporativa' },
+  cipa:         { estrutura:'Estrutura', integrantes:'Integrantes', mandatos:'Mandatos', reunioes:'Reuniões', eleicao:'Eleição Digital', inspecoes:'Inspeções', portal_cipa:'Portal da CIPA', indicadores_cipa:'Indicadores da CIPA', banco_ideias:'Banco de Ideias' },
+  brigada:      { estrutura:'Estrutura', brigadistas:'Brigadistas', simulados:'Simulados', certificacoes:'Certificações', plano_emergencia:'Plano de Emergência', mapa:'Mapa de Emergência', gestao_simulados:'Gestão de Simulados', cert_reciclagens:'Certificações e Reciclagens', prontidao_op:'Prontidão Operacional' },
+  relatorios:   { dds:'Relatório DDS', treinamentos:'Relatório Treinamentos', quiz:'Relatório Quiz', engajamento:'Relatório Engajamento', exportacoes:'Exportações', relat_exec:'Relatórios Executivos', relat_comp:'Relatórios Comparativos', relat_cultura:'Relatórios de Cultura', central_evidencias:'Central de Evidências' },
+  ia_insights:  { assistente:'Assistente SST', insights:'SafePoint Insights', mapa_calor:'Mapa de Calor', predicoes:'Predições e Recomendações', risk_engine:'Risk Engine', safety_score_ia:'Safety Score IA', recomendacoes:'Recomendações Automáticas', assistente_exec:'Assistente Executivo', predicao_tend:'Predição de Tendências', indice_maturidade:'Índice de Maturidade' },
+  config:       { geral:'Geral', modulos:'Módulos / Submódulos', permissoes:'Permissões', governanca:'Governança', auditoria:'Auditoria', biblioteca_global:'Biblioteca Global', marketplace:'Marketplace SafePoint', gov_digital:'Governança Digital', gestao_conteudo:'Gestão de Conteúdo' },
 };
 
 const DEFAULT_SUBMODULOS = {
-  dashboard:    { visao_geral:true, indicadores:true, alertas:true, score:false, insights_ia:false },
-  pessoas:      { cadastro:true, importacao:true, estrutura:true, setores:true, equipes:true, senhas:true, acesso:true },
-  aprendizagem: { dds:true, dds_battle:true, treinamentos:true, flashcards:true, certificados:false, simulador:false, academia:false, trilhas:false },
-  cultura:      { feed:true, reconhecimentos:true, ranking:true, loja:true, missoes:true, campanhas:true, moedas:false },
-  seguranca_op: { observacoes:true, ato_inseguro:true, condicao_insegura:true, quase_acidente:false, boa_pratica:false, melhoria:false, plano_acao:false, workflow:false },
-  comunicacao:  { comunicados:true, pesquisas:true, podcast:false, mensagens:false },
-  cipa:         { estrutura:true, integrantes:true, mandatos:true, reunioes:false, eleicao:false, inspecoes:false },
-  brigada:      { estrutura:true, brigadistas:true, simulados:false, certificacoes:false, plano_emergencia:false, mapa:false },
-  relatorios:   { dds:true, treinamentos:true, quiz:true, engajamento:true, exportacoes:true },
-  ia_insights:  { assistente:false, insights:true, mapa_calor:true, predicoes:false },
+  dashboard:    { visao_geral:true, indicadores:true, alertas:true, score:false, insights_ia:false, safety_score_corp:false, radar_atencao:false, tendencias_seg:false },
+  pessoas:      { cadastro:true, importacao:true, estrutura:true, setores:true, equipes:true, senhas:true, acesso:true, safety_score_ind:false, historico_evolucao:false, evidencias_colab:false },
+  aprendizagem: { dds:true, dds_battle:true, treinamentos:true, flashcards:true, certificados:false, simulador:false, academia:false, trilhas:false, biblioteca_inteligente:false, microlearning:false },
+  cultura:      { feed:true, reconhecimentos:true, ranking:true, loja:true, missoes:true, campanhas:true, moedas:false, comunidades:false, desafios_seg:false, reconhec_pares:false, hall_seguranca:false },
+  seguranca_op: { observacoes:true, ato_inseguro:true, condicao_insegura:true, quase_acidente:false, boa_pratica:false, melhoria:false, plano_acao:false, workflow:false, heatmap_seg:false, tendencias_desvios:false, evidencias_op:false },
+  comunicacao:  { comunicados:true, pesquisas:true, podcast:false, mensagens:false, canal_sesmt:false, comunicados_intel:false, tv_corporativa:false },
+  cipa:         { estrutura:true, integrantes:true, mandatos:true, reunioes:false, eleicao:false, inspecoes:false, portal_cipa:false, indicadores_cipa:false, banco_ideias:false },
+  brigada:      { estrutura:true, brigadistas:true, simulados:false, certificacoes:false, plano_emergencia:false, mapa:false, gestao_simulados:false, cert_reciclagens:false, prontidao_op:false },
+  relatorios:   { dds:true, treinamentos:true, quiz:true, engajamento:true, exportacoes:true, relat_exec:false, relat_comp:false, relat_cultura:false, central_evidencias:false },
+  ia_insights:  { assistente:false, insights:true, mapa_calor:true, predicoes:false, risk_engine:false, safety_score_ia:false, recomendacoes:false, assistente_exec:false, predicao_tend:false, indice_maturidade:false },
+  config:       { geral:true, modulos:true, permissoes:true, governanca:true, auditoria:true, biblioteca_global:false, marketplace:false, gov_digital:false, gestao_conteudo:false },
 };
 
 /* ── SafePoint 3.2 — Matriz de permissões ────────────────────── */
