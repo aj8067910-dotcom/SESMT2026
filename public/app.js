@@ -6023,8 +6023,8 @@ async function carregarFeedbackPlataformaGestor() {
             <div class="hint">${tsDataHora(p.criadaEm)}</div>
           </div>
           <div style="display:flex;gap:6px">
-            <button class="btn-sm" onclick="abrirRespostasFbp('${p.id}')">📊 Ver respostas</button>
-            <button class="btn-sm btn-danger" onclick="excluirPerguntaFbp('${p.id}')">🗑</button>
+            <button class="btn-sm" onclick="abrirRespostasFbp(${Number(p.id)})">📊 Ver respostas</button>
+            <button class="btn-sm btn-danger" onclick="excluirPerguntaFbp(${Number(p.id)})">🗑</button>
           </div>
         </div>
       </div>`).join('');
@@ -6103,19 +6103,20 @@ async function carregarFeedbackPlataformaColab() {
     const TIPO_ICON = { nota:'⭐', texto:'💬', opcao:'🔘' };
     el.innerHTML = list.map(p => {
       let inputHtml = '';
+      const pid = Number(p.id);
       if (p.tipo === 'nota') {
         inputHtml = `<div class="nota-stars" style="display:flex;gap:8px;margin:12px 0">
-          ${[1,2,3,4,5].map(n => `<button class="btn-star" onclick="responderFeedbackPlataforma('${p.id}', ${n})" style="font-size:24px;background:none;border:none;cursor:pointer;padding:4px" title="${n} estrela${n>1?'s':''}">☆</button>`).join('')}
+          ${[1,2,3,4,5].map(n => `<button class="btn-star" onclick="responderFeedbackPlataforma(${pid}, ${n})" title="${n} estrela${n>1?'s':''}">☆</button>`).join('')}
         </div>`;
       } else if (p.tipo === 'texto') {
-        inputHtml = `<textarea id="fbp-resp-${p.id}" class="input" rows="3" placeholder="Sua resposta…" style="width:100%;margin:10px 0;resize:vertical"></textarea>
-          <button class="btn btn-primary btn-sm" onclick="responderFeedbackPlataforma('${p.id}', document.getElementById('fbp-resp-${p.id}').value)">Enviar</button>`;
+        inputHtml = `<textarea id="fbp-resp-${pid}" class="input" rows="3" placeholder="Sua resposta…" style="width:100%;margin:10px 0;resize:vertical"></textarea>
+          <button class="btn btn-primary btn-sm" onclick="responderFeedbackPlataforma(${pid}, document.getElementById('fbp-resp-${pid}').value)">Enviar</button>`;
       } else if (p.tipo === 'opcao' && p.opcoes?.length) {
         inputHtml = `<div style="display:flex;flex-direction:column;gap:6px;margin:10px 0">
-          ${p.opcoes.map(o => `<button class="btn btn-outline btn-sm" onclick="responderFeedbackPlataforma('${p.id}', '${o.replace(/'/g,"&#39;")}')" style="text-align:left">${esc(o)}</button>`).join('')}
+          ${p.opcoes.map(o => `<button class="btn btn-outline btn-sm" onclick="responderFeedbackPlataforma(${pid}, ${JSON.stringify(o)})" style="text-align:left">${esc(o)}</button>`).join('')}
         </div>`;
       }
-      return `<div class="fbp-colab-card" style="background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:16px;margin-bottom:12px" id="fbp-colab-${p.id}">
+      return `<div class="fbp-colab-card" style="background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:16px;margin-bottom:12px" id="fbp-colab-${pid}">
         <div class="chip" style="background:#eff6ff;color:#3b82f6;margin-bottom:8px">${TIPO_ICON[p.tipo]||'❓'} ${p.tipo}</div>
         <div style="font-weight:600;margin-bottom:4px">${esc(p.texto)}</div>
         ${inputHtml}

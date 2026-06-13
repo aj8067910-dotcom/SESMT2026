@@ -204,6 +204,7 @@ function loadDb() {
   if (!db.feedbackPlataforma)  db.feedbackPlataforma = { perguntas: [], respostas: [] };
   if (!db.admins)       db.admins = [];
   if (!db.companies)    db.companies = [];
+  if (!db.settings)     db.settings = { points: { ...DEFAULT_POINTS }, codigoValidade: 60, recompensas: [] };
   if (!db.settings.recompensas)    db.settings.recompensas = [];
   if (!db.settings.codigoValidade) db.settings.codigoValidade = 60;
   for (const t of ACTIVITY_TYPES) {
@@ -832,7 +833,7 @@ function calcGovernanceScore(companyId) {
   const totalEmps = emps.length || 1;
   const mesAtras = agora - 30 * 24 * 3600000;
   const empIds = new Set(emps.map(e => e.id));
-  const ativos = new Set(db.checkins.filter(c => empIds.has(c.employeeId) && c.timestamp > mesAtras).map(c => c.employeeId)).size;
+  const ativos = new Set((db.checkins || []).filter(c => empIds.has(c.employeeId) && c.timestamp > mesAtras).map(c => c.employeeId)).size;
   const engScore = Math.min(100, Math.round((ativos / totalEmps) * 100));
   const score = Math.round(permScore * 0.25 + configScore * 0.25 + eventoScore * 0.25 + engScore * 0.25);
   const grade = score >= 80 ? 'Excelente Governança' : score >= 60 ? 'Atenção' : 'Risco Administrativo';
@@ -1344,17 +1345,17 @@ route('GET', /^\/api\/admin\/empresas$/, { role: 'admin' }, async (req, res) => 
 });
 
 const DEFAULT_SUBMODULOS_ENGAJAMENTO = {
-  dashboard:    { visao_geral:true, indicadores:true, alertas:true, score:false, insights_ia:false },
-  pessoas:      { cadastro:true, importacao:true, estrutura:true, setores:true, equipes:true, senhas:true, acesso:true },
-  aprendizagem: { dds:false, dds_battle:false, treinamentos:true, flashcards:true, certificados:false, simulador:false, academia:true, trilhas:false },
-  cultura:      { feed:true, reconhecimentos:true, ranking:true, loja:true, missoes:true, campanhas:true, moedas:true, comunidades:true, desafios_seg:true, reconhec_pares:true, hall_seguranca:true },
-  seguranca_op: { observacoes:false, ato_inseguro:false, condicao_insegura:false, quase_acidente:false, boa_pratica:true, melhoria:true, plano_acao:false },
-  comunicacao:  { comunicados:true, pesquisas:true, podcast:false, mensagens:true, canal_sesmt:false, comunicados_intel:true, tv_corporativa:false },
-  cipa:         { estrutura:false, integrantes:false, mandatos:false, reunioes:false, eleicao:false, inspecoes:false },
-  brigada:      { estrutura:false, brigadistas:false, simulados:false, certificacoes:false, plano_emergencia:false, mapa:false },
-  relatorios:   { dds:false, treinamentos:true, quiz:true, engajamento:true, exportacoes:true },
-  ia_insights:  { assistente:true, insights:true, mapa_calor:false, predicoes:false },
-  config:       { geral:true, modulos:true, permissoes:true, governanca:true, auditoria:true },
+  dashboard:    { _modulo:true,  visao_geral:true, indicadores:true, alertas:true, score:false, insights_ia:false },
+  pessoas:      { _modulo:true,  cadastro:true, importacao:true, estrutura:true, setores:true, equipes:true, senhas:true, acesso:true },
+  aprendizagem: { _modulo:true,  dds:false, dds_battle:false, treinamentos:true, flashcards:true, certificados:false, simulador:false, academia:true, trilhas:false },
+  cultura:      { _modulo:true,  feed:true, reconhecimentos:true, ranking:true, loja:true, missoes:true, campanhas:true, moedas:true, comunidades:true, desafios_seg:true, reconhec_pares:true, hall_seguranca:true },
+  seguranca_op: { _modulo:false, observacoes:false, ato_inseguro:false, condicao_insegura:false, quase_acidente:false, boa_pratica:true, melhoria:true, plano_acao:false },
+  comunicacao:  { _modulo:true,  comunicados:true, pesquisas:true, podcast:false, mensagens:true, canal_sesmt:false, comunicados_intel:true, tv_corporativa:false },
+  cipa:         { _modulo:false, estrutura:false, integrantes:false, mandatos:false, reunioes:false, eleicao:false, inspecoes:false },
+  brigada:      { _modulo:false, estrutura:false, brigadistas:false, simulados:false, certificacoes:false, plano_emergencia:false, mapa:false },
+  relatorios:   { _modulo:true,  dds:false, treinamentos:true, quiz:true, engajamento:true, exportacoes:true },
+  ia_insights:  { _modulo:true,  assistente:true, insights:true, mapa_calor:false, predicoes:false },
+  config:       { _modulo:true,  geral:true, modulos:true, permissoes:true, governanca:true, auditoria:true },
 };
 
 route('POST', /^\/api\/admin\/empresas$/, { role: 'admin' }, async (req, res, m, body, s) => {
@@ -3365,7 +3366,7 @@ route('POST', /^\/api\/empresa\/submodulos$/, { role: 'gestor' }, async (req, re
   logAudit(s.userId, s.role, 'alterar_submodulo', 'Submódulos atualizados', s.companyId,
     { modulo: 'configuracoes', valorAntes: antes, valorDepois: JSON.stringify(comp.submodulos),
       ip: getClientIP(req), dispositivo: getDeviceInfo(req) });
-  sendJson(res, 200, { ok: true, submodulos: comp.submodulos });
+  sendJson(res, 200, { ok: true, submodulos: comp.submodulos, moduleNames: comp.moduleNames || {} });
 });
 
 /* ── SafePoint 3.2 — Permissões ─────────────────────────────── */
