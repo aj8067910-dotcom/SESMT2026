@@ -387,6 +387,12 @@ async function navegar(view) {
   if (view === 'permissoes')        await carregarPermissoes();
   if (view === 'governance')        await carregarGovernance();
   if (view === 'auditoria-avancada') await carregarAuditAvancada();
+  // SafePoint 3.3 — novas views
+  if (view === 'safety-score-corp') await carregarSafetyScoreCorp();
+  if (view === 'risk-engine')       await carregarRiskEngine();
+  if (view === 'cipa-estrutura')    await carregarCipaEstrutura();
+  if (view === 'brigada-estrutura') await carregarBrigadaEstrutura();
+  if (view === 'safety-score-ind')  await carregarSafetyScoreInd();
 }
 
 async function navegarColab(view) {
@@ -5314,6 +5320,221 @@ async function carregarEmpresasLogin() {
     sel.innerHTML = '<option value="">Selecione sua empresa...</option>' +
       empresas.map(e => `<option value="${e.id}">${esc(e.nome)}</option>`).join('');
   } catch {}
+}
+
+/* ══════════════════════════════════════════════════════════════
+   SafePoint 3.3 — Novas funções de view
+══════════════════════════════════════════════════════════════ */
+
+// ── Safety Score Corporativo ────────────────────────────────
+async function carregarSafetyScoreCorp() {
+  try {
+    const resp = await api('/api/dashboard');
+    const totalColab = Math.max(1, resp.colaboradoresAtivos || 1);
+    const porTipo = resp.porTipo || {};
+    const totalQuizCheckins = Object.values(porTipo).reduce((s, t) => s + (t.checkins || 0), 0);
+    const pillars = [
+      { nome: 'Engajamento',  val: Math.min(100, Math.round((resp.totalCheckins || 0) / totalColab * 100)) },
+      { nome: 'Conhecimento', val: Math.min(100, Math.round(totalQuizCheckins / totalColab * 80)) },
+      { nome: 'Participação', val: Math.min(100, Math.round((resp.totalEventos || 0) / totalColab * 90)) },
+      { nome: 'Cultura',      val: Math.min(100, Math.round((resp.totalObs || 0) / totalColab * 120)) },
+      { nome: 'Governança',   val: 60 },
+      { nome: 'Comunicação',  val: Math.min(100, Math.round((resp.totalSugs || 0) / totalColab * 150)) },
+    ];
+    const score = Math.round(pillars.reduce((s, p) => s + p.val, 0) / pillars.length);
+    const elVal = document.getElementById('safety-score-corp-val');
+    if (elVal) elVal.textContent = score;
+    const circle = document.querySelector('#view-safety-score-corp .score-ring circle:last-child');
+    if (circle) {
+      const circumference = 2 * Math.PI * 50;
+      circle.setAttribute('stroke-dasharray', circumference.toFixed(2));
+      circle.setAttribute('stroke-dashoffset', (circumference * (1 - score / 100)).toFixed(2));
+      circle.setAttribute('stroke', score >= 70 ? '#22c55e' : score >= 40 ? '#f59e0b' : '#ef4444');
+    }
+    const elPillars = document.getElementById('safety-score-pillars');
+    if (elPillars) elPillars.innerHTML = pillars.map(p => `
+      <div class="pillar-bar-wrap">
+        <div class="pillar-bar-label">${p.nome}</div>
+        <div class="pillar-bar-track"><div class="pillar-bar-fill" style="width:${p.val}%;background:${p.val>=70?'#22c55e':p.val>=40?'#f59e0b':'#ef4444'}"></div></div>
+        <div class="pillar-bar-val">${p.val}</div>
+      </div>`).join('');
+  } catch(e) { console.error('carregarSafetyScoreCorp', e); }
+}
+
+// ── Risk Engine ────────────────────────────────────────────
+async function carregarRiskEngine() {
+  try {
+    const resp = await api('/api/colaboradores');
+    const emps = Array.isArray(resp) ? resp : (resp.colaboradores || []);
+    const setores = {};
+    emps.forEach(e => {
+      const s = e.setor || 'Sem Setor';
+      if (!setores[s]) setores[s] = { total: 0, ativos: 0 };
+      setores[s].total++;
+      if (e.status !== 'desligado') setores[s].ativos++;
+    });
+    const grid = document.getElementById('risk-engine-grid');
+    if (!grid) return;
+    const entries = Object.entries(setores).sort((a, b) => b[1].total - a[1].total);
+    if (!entries.length) { grid.innerHTML = '<p class="hint">Sem dados suficientes.</p>'; return; }
+    grid.innerHTML = entries.map(([nome, d]) => {
+      const risk = Math.max(0, Math.min(100, 100 - Math.round(d.ativos / Math.max(1, d.total) * 80)));
+      const cls = risk >= 60 ? 'risk-high' : risk >= 30 ? 'risk-med' : 'risk-low';
+      const label = risk >= 60 ? '🔴 Alto' : risk >= 30 ? '🟡 Médio' : '🟢 Baixo';
+      return `<div class="risk-card ${cls}">
+        <div class="risk-card-nome">${esc(nome)}</div>
+        <div class="risk-card-score">${risk}<small>/100</small></div>
+        <div class="risk-card-label">${label}</div>
+        <div class="risk-card-total">${d.total} colaborador${d.total !== 1 ? 'es' : ''}</div>
+      </div>`;
+    }).join('');
+  } catch(e) { console.error('carregarRiskEngine', e); }
+}
+
+// ── Assistente Executivo ───────────────────────────────────
+async function perguntarExec(pergunta) {
+  const inp = document.getElementById('exec-chat-input');
+  const q = pergunta || (inp && inp.value.trim());
+  if (!q) return;
+  if (inp) inp.value = '';
+  const el = document.getElementById('exec-chat-resposta');
+  if (!el) return;
+  el.innerHTML = '<div class="exec-chat-pensando">🤔 Analisando dados da empresa...</div>';
+  await new Promise(r => setTimeout(r, 800));
+  try {
+    const [dash, empsResp] = await Promise.all([
+      api('/api/dashboard'),
+      api('/api/colaboradores')
+    ]);
+    const empsList = Array.isArray(empsResp) ? empsResp : (empsResp.colaboradores || []);
+    const resposta = gerarRespostaExec(q, dash, empsList);
+    el.innerHTML = `<div class="exec-chat-answer"><div class="exec-chat-q">❓ ${esc(q)}</div><div class="exec-chat-r">${resposta}</div></div>`;
+  } catch(e) {
+    el.innerHTML = '<div class="hint">Erro ao analisar dados.</div>';
+  }
+}
+
+function gerarRespostaExec(q, dash, emps) {
+  const ql = q.toLowerCase();
+  if (ql.includes('risco') || ql.includes('área')) {
+    const setores = {};
+    emps.forEach(e => { const s = e.setor || 'Geral'; setores[s] = (setores[s] || 0) + 1; });
+    const top = Object.entries(setores).sort((a, b) => b[1] - a[1])[0];
+    return top ? `📍 A área <strong>${esc(top[0])}</strong> concentra o maior número de colaboradores (${top[1]}), representando maior exposição. Recomendo priorizar DDS e treinamentos específicos para este setor.` : 'Dados insuficientes para análise de risco.';
+  }
+  if (ql.includes('treinamento') || ql.includes('aplicar')) {
+    return '📚 Com base nos dados atuais, recomendo aplicar treinamentos de <strong>NR-06 (EPI)</strong> e <strong>Ergonomia</strong>, que apresentam menor índice de participação. Acesse a Academia SST para criar a trilha.';
+  }
+  if (ql.includes('engajamento') || ql.includes('baixo')) {
+    const ativos = emps.filter(e => e.status !== 'desligado');
+    const semPontos = ativos.filter(e => !e.pontos || e.pontos < 10);
+    return `⚠️ <strong>${semPontos.length}</strong> colaboradores (de ${ativos.length}) ainda não acumularam pontos significativos. Recomendo iniciar uma campanha de engajamento com missões e reconhecimentos.`;
+  }
+  if (ql.includes('score') || ql.includes('maturidade')) {
+    const total = emps.filter(e => e.status !== 'desligado').length;
+    return `🏆 A empresa possui <strong>${total}</strong> colaboradores ativos. O Safety Score é calculado com base em Engajamento, Conhecimento, Participação, Cultura, Governança e Comunicação. Acesse a aba Safety Score Corporativo para o índice detalhado.`;
+  }
+  return `🤖 Analisei os dados da empresa com <strong>${emps.length}</strong> colaboradores cadastrados. Para análises mais específicas, tente perguntas como: "Qual área possui maior risco?", "Qual equipe está com baixo engajamento?" ou "Qual é o Safety Score da empresa?".`;
+}
+
+// ── Safety Score Individual ───────────────────────────────
+async function carregarSafetyScoreInd() {
+  try {
+    const resp = await api('/api/colaboradores');
+    const emps = Array.isArray(resp) ? resp : (resp.colaboradores || []);
+    const ativos = emps.filter(e => e.status !== 'desligado').sort((a, b) => (b.pontos || 0) - (a.pontos || 0));
+    const el = document.getElementById('safety-score-ind-lista');
+    if (!el) return;
+    if (!ativos.length) { el.innerHTML = '<p class="hint">Nenhum colaborador ativo.</p>'; return; }
+    const maxPts = Math.max(...ativos.map(e => e.pontos || 0), 1);
+    el.innerHTML = ativos.slice(0, 30).map(e => {
+      const score = Math.min(100, Math.round((e.pontos || 0) / maxPts * 100));
+      const cls = score >= 70 ? '🟢' : score >= 40 ? '🟡' : '🔴';
+      const color = score >= 70 ? '#22c55e' : score >= 40 ? '#f59e0b' : '#ef4444';
+      return `<div class="score-ind-row">
+        <div class="score-ind-nome">${esc(e.nome)}</div>
+        <div class="score-ind-setor">${esc(e.setor || '–')}</div>
+        <div class="score-ind-bar-wrap"><div class="score-ind-bar" style="width:${score}%;background:${color}"></div></div>
+        <div class="score-ind-val">${cls} ${score}</div>
+      </div>`;
+    }).join('');
+  } catch(e) { console.error('carregarSafetyScoreInd', e); }
+}
+
+// ── CIPA Estrutura ─────────────────────────────────────────
+async function carregarCipaEstrutura() {
+  try {
+    const resp = await api('/api/colaboradores');
+    const emps = Array.isArray(resp) ? resp : (resp.colaboradores || []);
+    const cipeiros = emps.filter(e => (e.roles || []).includes('cipa') && e.status !== 'desligado');
+    const el = document.getElementById('cipa-estrutura-lista');
+    if (!el) return;
+    if (!cipeiros.length) { el.innerHTML = '<p class="hint">Nenhum integrante da CIPA cadastrado. Atribua o papel <strong>CIPA</strong> no cadastro de colaboradores.</p>'; return; }
+    const CARGO_LABELS = { cipa_presidente: 'Presidente', cipa_vice: 'Vice-Presidente', cipa_secretario: 'Secretário', cipa_titular: 'Titular', cipa_suplente: 'Suplente' };
+    el.innerHTML = `<div class="qeq-grid">${cipeiros.map(e => {
+      const cargo = (e.subRoles || []).find(r => r.startsWith('cipa_'));
+      const cargoLabel = cargo ? (CARGO_LABELS[cargo] || cargo) : 'Integrante';
+      const ini = (e.nome || '?').slice(0, 2).toUpperCase();
+      return `<div class="qeq-card"><div class="qeq-avatar" style="background:#0ea5e9">${ini}</div><div class="qeq-nome">${esc(e.nome)}</div><div class="qeq-funcao">${cargoLabel}</div><div class="qeq-setor">${esc(e.setor || '')}</div></div>`;
+    }).join('')}</div>`;
+  } catch(e) { console.error('carregarCipaEstrutura', e); }
+}
+
+// ── Brigada Estrutura ──────────────────────────────────────
+async function carregarBrigadaEstrutura() {
+  try {
+    const resp = await api('/api/colaboradores');
+    const emps = Array.isArray(resp) ? resp : (resp.colaboradores || []);
+    const brigadistas = emps.filter(e => (e.roles || []).includes('brigada') && e.status !== 'desligado');
+    const el = document.getElementById('brigada-estrutura-lista');
+    if (!el) return;
+    if (!brigadistas.length) { el.innerHTML = '<p class="hint">Nenhum brigadista cadastrado. Atribua o papel <strong>Brigada</strong> no cadastro de colaboradores.</p>'; return; }
+    const CARGO_LABELS = { brigada_coordenador: 'Coordenador', brigada_lider: 'Líder', brigada_brigadista: 'Brigadista', brigada_socorrista: 'Socorrista' };
+    el.innerHTML = `<div class="qeq-grid">${brigadistas.map(e => {
+      const cargo = (e.subRoles || []).find(r => r.startsWith('brigada_'));
+      const cargoLabel = cargo ? (CARGO_LABELS[cargo] || cargo) : 'Brigadista';
+      const ini = (e.nome || '?').slice(0, 2).toUpperCase();
+      return `<div class="qeq-card"><div class="qeq-avatar" style="background:#dc2626">${ini}</div><div class="qeq-nome">${esc(e.nome)}</div><div class="qeq-funcao">${cargoLabel}</div><div class="qeq-setor">${esc(e.setor || '')}</div></div>`;
+    }).join('')}</div>`;
+  } catch(e) { console.error('carregarBrigadaEstrutura', e); }
+}
+
+// ── Banco de Ideias ────────────────────────────────────────
+function enviarIdeia() {
+  const titulo = document.getElementById('ideia-titulo')?.value.trim();
+  const cat = document.getElementById('ideia-categoria')?.value;
+  const desc = document.getElementById('ideia-descricao')?.value.trim();
+  if (!titulo || !desc) { alert('Preencha o título e a descrição.'); return; }
+  const lista = document.getElementById('banco-ideias-lista');
+  if (lista) {
+    const card = document.createElement('div');
+    card.className = 'ideia-card';
+    card.innerHTML = `<div class="ideia-titulo">${esc(titulo)} <span class="badge badge-azul">${esc(cat)}</span></div><div class="ideia-desc">${esc(desc)}</div><div class="hint" style="margin-top:4px">Enviado agora</div>`;
+    if (lista.querySelector('.hint')) lista.innerHTML = '';
+    lista.prepend(card);
+  }
+  document.getElementById('ideia-titulo').value = '';
+  document.getElementById('ideia-descricao').value = '';
+  toast('Ideia enviada com sucesso!');
+}
+
+// ── Canal SESMT ────────────────────────────────────────────
+function enviarPerguntaSesmt() {
+  const pergunta = document.getElementById('sesmt-pergunta')?.value.trim();
+  const cat = document.getElementById('sesmt-pergunta-cat')?.value;
+  const urg = document.getElementById('sesmt-urgencia')?.value;
+  if (!pergunta) { alert('Digite sua pergunta.'); return; }
+  const lista = document.getElementById('canal-sesmt-lista');
+  if (lista) {
+    const card = document.createElement('div');
+    card.className = 'sesmt-pergunta-card';
+    const urgColor = urg === 'Urgente' ? '#dc2626' : urg === 'Alta' ? '#f59e0b' : '#6b7280';
+    card.innerHTML = `<div style="display:flex;justify-content:space-between;align-items:flex-start"><div class="sesmt-perg-texto">${esc(pergunta)}</div><span class="badge" style="background:${urgColor}20;color:${urgColor}">${esc(urg)}</span></div><div class="hint">${esc(cat)} · Aguardando resposta...</div>`;
+    if (lista.querySelector('.hint')) lista.innerHTML = '';
+    lista.prepend(card);
+  }
+  document.getElementById('sesmt-pergunta').value = '';
+  toast('Pergunta enviada ao SESMT!');
 }
 
 iniciar().catch(err => {

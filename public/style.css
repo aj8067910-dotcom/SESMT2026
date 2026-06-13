@@ -1268,3 +1268,87 @@ hr { border: none; border-top: 1px solid var(--cinza-borda); margin: 16px 0; }
 .badge-inativo   { background: #f1f5f9; color: #475569; }
 .status-desligado { opacity: .6; }
 
+/* ═══════════════════════════════════════════════════════════
+   SafePoint 3.3 — Safety Score Corporativo
+═══════════════════════════════════════════════════════════ */
+
+.safety-score-hero { display:flex; flex-direction:column; align-items:center; padding:24px 0 16px; }
+.score-ring-wrap { position:relative; width:140px; height:140px; }
+.score-ring { width:140px; height:140px; }
+.score-ring-label { position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); font-size:32px; font-weight:800; color:var(--texto); }
+.score-ring-sub { margin-top:8px; font-size:13px; color:var(--texto-leve); font-weight:500; }
+.score-pillars { display:flex; flex-direction:column; gap:10px; margin-top:20px; width:100%; max-width:480px; margin-left:auto; margin-right:auto; }
+.pillar-bar-wrap { display:flex; align-items:center; gap:10px; }
+.pillar-bar-label { width:110px; font-size:13px; font-weight:600; color:var(--texto); }
+.pillar-bar-track { flex:1; height:10px; background:var(--cinza-borda); border-radius:5px; overflow:hidden; }
+.pillar-bar-fill { height:100%; border-radius:5px; transition:width .5s; }
+.pillar-bar-val { width:32px; text-align:right; font-size:13px; font-weight:700; }
+
+/* ═══════════════════════════════════════════════════════════
+   SafePoint 3.3 — Risk Engine
+═══════════════════════════════════════════════════════════ */
+
+.risk-engine-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(180px,1fr)); gap:14px; margin-top:16px; }
+.risk-card { border-radius:12px; padding:18px 16px; text-align:center; border:2px solid transparent; }
+.risk-card.risk-high { background:#fee2e2; border-color:#fca5a5; }
+.risk-card.risk-med  { background:#fef3c7; border-color:#fde68a; }
+.risk-card.risk-low  { background:#dcfce7; border-color:#86efac; }
+.risk-card-nome  { font-size:13px; font-weight:700; margin-bottom:6px; }
+.risk-card-score { font-size:28px; font-weight:800; }
+.risk-card-score small { font-size:13px; font-weight:400; }
+.risk-card-label { font-size:12px; font-weight:600; margin:4px 0; }
+.risk-card-total { font-size:11px; color:var(--texto-leve); }
+
+/* ═══════════════════════════════════════════════════════════
+   SafePoint 3.3 — Assistente Executivo
+═══════════════════════════════════════════════════════════ */
+
+.exec-chat-sugestoes { display:flex; flex-wrap:wrap; gap:8px; margin-bottom:16px; }
+.btn-sugestao-exec { background:#f0f9ff; border:1px solid #bae6fd; color:#0369a1; padding:8px 14px; border-radius:20px; font-size:13px; cursor:pointer; transition:background .2s; }
+.btn-sugestao-exec:hover { background:#e0f2fe; }
+.exec-chat-input-wrap { display:flex; gap:8px; margin-bottom:16px; }
+.exec-chat-resposta { margin-top:8px; }
+.exec-chat-pensando { color:var(--texto-leve); font-style:italic; padding:12px; }
+.exec-chat-answer { background:#f8fafc; border-radius:12px; padding:16px; }
+.exec-chat-q { font-weight:600; margin-bottom:10px; color:var(--texto-leve); font-size:13px; }
+.exec-chat-r { font-size:15px; line-height:1.6; }
+
+/* ═══════════════════════════════════════════════════════════
+   SafePoint 3.3 — Safety Score Individual
+═══════════════════════════════════════════════════════════ */
+
+.score-ind-row { display:grid; grid-template-columns:1fr 120px 1fr 60px; gap:10px; align-items:center; padding:8px 0; border-bottom:1px solid var(--cinza-borda); }
+.score-ind-nome { font-weight:600; font-size:14px; }
+.score-ind-setor { font-size:12px; color:var(--texto-leve); }
+.score-ind-bar-wrap { height:8px; background:var(--cinza-borda); border-radius:4px; overflow:hidden; }
+.score-ind-bar { height:100%; border-radius:4px; transition:width .4s; }
+.score-ind-val { font-weight:700; font-size:13px; text-align:right; }
+
+/* ═══════════════════════════════════════════════════════════
+   SafePoint 3.3 — Módulo Em Breve
+═══════════════════════════════════════════════════════════ */
+
+.modulo-em-breve { text-align:center; padding:40px 20px; }
+.modulo-em-breve-icon { font-size:48px; margin-bottom:12px; }
+.modulo-em-breve h3 { font-size:20px; margin-bottom:8px; }
+.modulo-em-breve p { color:var(--texto-leve); max-width:440px; margin:0 auto 16px; }
+.feature-chips { display:flex; flex-wrap:wrap; gap:8px; justify-content:center; }
+.chip { padding:5px 14px; border-radius:16px; font-size:13px; font-weight:500; }
+.chip-blue   { background:#dbeafe; color:#1e40af; }
+.chip-green  { background:#dcfce7; color:#166534; }
+.chip-orange { background:#ffedd5; color:#c2410c; }
+.chip-purple { background:#f3e8ff; color:#6b21a8; }
+
+/* ═══════════════════════════════════════════════════════════
+   SafePoint 3.3 — Banco de Ideias & Canal SESMT
+═══════════════════════════════════════════════════════════ */
+
+.ideia-card { background:#f8fafc; border-radius:10px; padding:14px; margin-bottom:10px; border-left:4px solid var(--azul); }
+.ideia-titulo { font-weight:700; margin-bottom:4px; }
+.ideia-desc { font-size:13px; color:var(--texto-leve); }
+
+.sesmt-pergunta-card { background:#f8fafc; border-radius:10px; padding:14px; margin-bottom:10px; border-left:4px solid #f59e0b; }
+.sesmt-perg-texto { font-weight:600; }
+
+.badge-azul { background:#dbeafe; color:#1e40af; padding:2px 8px; border-radius:10px; font-size:11px; font-weight:600; }
+

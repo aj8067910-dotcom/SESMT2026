@@ -167,7 +167,7 @@
   <nav class="sidebar" id="sidebar-gestor">
     <div class="sidebar-header">
       <button class="sidebar-toggle" onclick="toggleSidebar('gestor')">☰</button>
-      <span class="sidebar-brand">SAFEPOINT 3.2</span>
+      <span class="sidebar-brand">SAFEPOINT 3.3</span>
     </div>
     <div class="sidebar-module-single active" data-view="dashboard" id="sb-g-dashboard" onclick="navegar('dashboard')"><span class="sm-icon">🏠</span><span>Dashboard</span></div>
     <div class="sidebar-module" id="sbmod-pessoas">
@@ -257,6 +257,12 @@
       <div class="sidebar-items">
         <div class="sidebar-item" data-view="insights" onclick="navegar('insights')">SafePoint Insights</div>
         <div class="sidebar-item" data-view="ia"       onclick="navegar('ia')">Assistente IA</div>
+        <div class="sidebar-item" data-view="risk-engine"       onclick="navegar('risk-engine')">Risk Engine</div>
+        <div class="sidebar-item" data-view="safety-score-corp" onclick="navegar('safety-score-corp')">Safety Score</div>
+        <div class="sidebar-item" data-view="recomendacoes-ia"  onclick="navegar('recomendacoes-ia')">Recomendações Automáticas</div>
+        <div class="sidebar-item" data-view="assistente-exec"   onclick="navegar('assistente-exec')">Assistente Executivo</div>
+        <div class="sidebar-item" data-view="predicao-tend"     onclick="navegar('predicao-tend')">Predição de Tendências</div>
+        <div class="sidebar-item" data-view="indice-maturidade" onclick="navegar('indice-maturidade')">Índice de Maturidade</div>
       </div>
     </div>
     <div class="sidebar-module" id="sbmod-config">
@@ -267,6 +273,10 @@
         <div class="sidebar-item" data-view="permissoes" onclick="navegar('permissoes')">Permissões</div>
         <div class="sidebar-item" data-view="governance" onclick="navegar('governance')">Governança</div>
         <div class="sidebar-item" data-view="auditoria-avancada" onclick="navegar('auditoria-avancada')">Auditoria Avançada</div>
+        <div class="sidebar-item" data-view="biblioteca-global" onclick="navegar('biblioteca-global')">Biblioteca Global</div>
+        <div class="sidebar-item" data-view="marketplace"       onclick="navegar('marketplace')">Marketplace SafePoint</div>
+        <div class="sidebar-item" data-view="gov-digital"       onclick="navegar('gov-digital')">Governança Digital</div>
+        <div class="sidebar-item" data-view="gestao-conteudo"   onclick="navegar('gestao-conteudo')">Gestão de Conteúdo</div>
       </div>
     </div>
   </nav>
@@ -868,6 +878,729 @@
         <button class="btn btn-primary" onclick="carregarAuditAvancada()">Filtrar</button>
       </div>
       <div id="audit-avancada-lista"></div>
+    </section>
+
+    <!-- ═══ SafePoint 3.3 — Novas Views ═══ -->
+
+    <!-- Safety Score Corporativo -->
+    <section id="view-safety-score-corp" class="view hidden">
+      <h2>Safety Score Corporativo</h2>
+      <div class="panel">
+        <div class="safety-score-hero">
+          <div class="score-ring-wrap">
+            <svg class="score-ring" viewBox="0 0 120 120">
+              <circle cx="60" cy="60" r="50" fill="none" stroke="#e5e7eb" stroke-width="12"/>
+              <circle cx="60" cy="60" r="50" fill="none" stroke="#22c55e" stroke-width="12"
+                stroke-dasharray="314.16" stroke-dashoffset="94.25" stroke-linecap="round" transform="rotate(-90 60 60)"/>
+            </svg>
+            <div class="score-ring-label" id="safety-score-corp-val">–</div>
+          </div>
+          <div class="score-ring-sub">Score Geral de Maturidade em Segurança</div>
+        </div>
+        <div class="score-pillars" id="safety-score-pillars">
+          <!-- renderizado por JS -->
+        </div>
+      </div>
+    </section>
+
+    <!-- Radar de Atenção -->
+    <section id="view-radar-atencao" class="view hidden">
+      <h2>Radar de Atenção</h2>
+      <div class="panel">
+        <div class="modulo-em-breve">
+          <div class="modulo-em-breve-icon">🔔</div>
+          <h3>Radar de Atenção</h3>
+          <p>Identifica automaticamente áreas críticas que precisam de intervenção imediata, com base em múltiplos indicadores de risco e engajamento.</p>
+          <div class="feature-chips">
+            <span class="chip chip-orange">Equipes Críticas</span>
+            <span class="chip chip-orange">Setores Críticos</span>
+            <span class="chip chip-orange">Contratos Críticos</span>
+            <span class="chip chip-orange">Unidades Críticas</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Tendências de Segurança -->
+    <section id="view-tendencias-seg" class="view hidden">
+      <h2>Tendências de Segurança</h2>
+      <div class="panel">
+        <div class="modulo-em-breve">
+          <div class="modulo-em-breve-icon">📈</div>
+          <h3>Tendências de Segurança</h3>
+          <p>Visualize a evolução dos principais indicadores de segurança ao longo do tempo, identificando padrões e tendências para tomada de decisão.</p>
+          <div class="feature-chips">
+            <span class="chip chip-green">Crescimento do Engajamento</span>
+            <span class="chip chip-orange">Queda de Participação</span>
+            <span class="chip chip-blue">Evolução do Conhecimento</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Safety Score Individual -->
+    <section id="view-safety-score-ind" class="view hidden">
+      <h2>Safety Score Individual</h2>
+      <div class="panel">
+        <p class="hint">Pontuação dinâmica por colaborador calculada com base em participação, conhecimento e comportamento em segurança.</p>
+        <div id="safety-score-ind-lista"></div>
+      </div>
+    </section>
+
+    <!-- Histórico de Evolução -->
+    <section id="view-historico-evolucao" class="view hidden">
+      <h2>Histórico de Evolução</h2>
+      <div class="panel">
+        <div class="modulo-em-breve">
+          <div class="modulo-em-breve-icon">📋</div>
+          <h3>Histórico de Evolução</h3>
+          <p>Linha do tempo completa de cada colaborador mostrando toda a evolução em conhecimento, participação e engajamento com segurança.</p>
+          <div class="feature-chips">
+            <span class="chip chip-blue">Treinamentos</span>
+            <span class="chip chip-green">Certificações</span>
+            <span class="chip chip-purple">Reconhecimentos</span>
+            <span class="chip chip-orange">Níveis</span>
+            <span class="chip chip-blue">Campanhas</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Evidências do Colaborador -->
+    <section id="view-evidencias-colab" class="view hidden">
+      <h2>Evidências do Colaborador</h2>
+      <div class="panel">
+        <div class="modulo-em-breve">
+          <div class="modulo-em-breve-icon">📁</div>
+          <h3>Evidências do Colaborador</h3>
+          <p>Central de comprovações individuais para auditorias e conformidade. Consolida todas as evidências de participação e aprendizagem.</p>
+          <div class="feature-chips">
+            <span class="chip chip-blue">DDS Realizados</span>
+            <span class="chip chip-green">Treinamentos</span>
+            <span class="chip chip-purple">Certificados</span>
+            <span class="chip chip-orange">Presenças</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Trilhas Inteligentes -->
+    <section id="view-trilhas" class="view hidden">
+      <h2>Trilhas Inteligentes</h2>
+      <div class="panel">
+        <div class="modulo-em-breve">
+          <div class="modulo-em-breve-icon">🗺️</div>
+          <h3>Trilhas Inteligentes</h3>
+          <p>Trilhas de capacitação criadas automaticamente com base na função, histórico e perfil de risco de cada colaborador.</p>
+          <div class="feature-chips">
+            <span class="chip chip-blue">Baseado em Função</span>
+            <span class="chip chip-green">Baseado em Histórico</span>
+            <span class="chip chip-purple">Personalizada</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Biblioteca Inteligente -->
+    <section id="view-biblioteca-inteligente" class="view hidden">
+      <h2>Biblioteca Inteligente</h2>
+      <div class="panel">
+        <div class="modulo-em-breve">
+          <div class="modulo-em-breve-icon">🤖</div>
+          <h3>Biblioteca Inteligente</h3>
+          <p>Conteúdos sugeridos automaticamente pela IA com base no perfil de cada colaborador, setor e resultado dos quizzes.</p>
+          <div class="feature-chips">
+            <span class="chip chip-blue">Por Função</span>
+            <span class="chip chip-green">Por Setor</span>
+            <span class="chip chip-purple">Por Resultado Quiz</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Microlearning -->
+    <section id="view-microlearning" class="view hidden">
+      <h2>Microlearning</h2>
+      <div class="panel">
+        <div class="modulo-em-breve">
+          <div class="modulo-em-breve-icon">⚡</div>
+          <h3>Microlearning</h3>
+          <p>Treinamentos de 1 a 5 minutos projetados para máximo impacto em mínimo tempo. Ideal para operações com pouca disponibilidade.</p>
+          <div class="feature-chips">
+            <span class="chip chip-blue">Vídeos Curtos</span>
+            <span class="chip chip-green">Flashcards</span>
+            <span class="chip chip-purple">Quizzes Rápidos</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Comunidades -->
+    <section id="view-comunidades" class="view hidden">
+      <h2>Comunidades</h2>
+      <div class="panel">
+        <div class="modulo-em-breve">
+          <div class="modulo-em-breve-icon">👥</div>
+          <h3>Comunidades</h3>
+          <p>Espaços colaborativos internos para grupos específicos compartilharem conhecimento, boas práticas e experiências em segurança.</p>
+          <div class="feature-chips">
+            <span class="chip chip-blue">CIPA</span>
+            <span class="chip chip-orange">Brigada</span>
+            <span class="chip chip-green">SESMT</span>
+            <span class="chip chip-purple">Por Contrato</span>
+            <span class="chip chip-blue">Por Unidade</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Desafios de Segurança -->
+    <section id="view-desafios-seg" class="view hidden">
+      <h2>Desafios de Segurança</h2>
+      <div class="panel">
+        <div class="modulo-em-breve">
+          <div class="modulo-em-breve-icon">🎯</div>
+          <h3>Desafios de Segurança</h3>
+          <p>Campanhas gamificadas que engajam os colaboradores em desafios coletivos de segurança com premiações e reconhecimentos.</p>
+          <div class="feature-chips">
+            <span class="chip chip-green">Semana sem Desvios</span>
+            <span class="chip chip-orange">Caça aos Riscos</span>
+            <span class="chip chip-blue">Quiz do Mês</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Reconhecimento entre Pares -->
+    <section id="view-reconhec-pares" class="view hidden">
+      <h2>Reconhecimento entre Pares</h2>
+      <div class="panel">
+        <div class="modulo-em-breve">
+          <div class="modulo-em-breve-icon">🤝</div>
+          <h3>Reconhecimento entre Pares</h3>
+          <p>Colaboradores reconhecem colegas que se destacaram em segurança, fortalecendo a cultura de cuidado mútuo.</p>
+          <div class="feature-chips">
+            <span class="chip chip-blue">Com Aprovação SESMT</span>
+            <span class="chip chip-green">Instantâneo</span>
+            <span class="chip chip-purple">Público</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Hall da Segurança -->
+    <section id="view-hall-seguranca" class="view hidden">
+      <h2>Hall da Segurança</h2>
+      <div class="panel">
+        <div class="modulo-em-breve">
+          <div class="modulo-em-breve-icon">🏅</div>
+          <h3>Hall da Segurança</h3>
+          <p>Mural permanente de destaques em segurança. Reconhece os colaboradores e equipes que mais contribuíram para a cultura de segurança.</p>
+          <div class="feature-chips">
+            <span class="chip chip-blue">Colaborador Destaque</span>
+            <span class="chip chip-orange">Brigadista Destaque</span>
+            <span class="chip chip-green">Cipeiro Destaque</span>
+            <span class="chip chip-purple">Equipe Destaque</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Heatmap de Segurança -->
+    <section id="view-heatmap-seg" class="view hidden">
+      <h2>Heatmap de Segurança</h2>
+      <div class="panel">
+        <div class="modulo-em-breve">
+          <div class="modulo-em-breve-icon">🗺️</div>
+          <h3>Heatmap de Segurança</h3>
+          <p>Mapa de calor dos riscos operacionais identificados por setor, equipe, contrato e unidade. Visualize onde concentrar os esforços preventivos.</p>
+          <div class="feature-chips">
+            <span class="chip chip-orange">Por Setor</span>
+            <span class="chip chip-blue">Por Equipe</span>
+            <span class="chip chip-green">Por Contrato</span>
+            <span class="chip chip-purple">Por Unidade</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Tendências de Desvios -->
+    <section id="view-tendencias-desvios" class="view hidden">
+      <h2>Tendências de Desvios</h2>
+      <div class="panel">
+        <div class="modulo-em-breve">
+          <div class="modulo-em-breve-icon">📉</div>
+          <h3>Tendências de Desvios</h3>
+          <p>Análise automática dos desvios recorrentes, identificando padrões e comportamentos que aumentam o risco operacional ao longo do tempo.</p>
+          <div class="feature-chips">
+            <span class="chip chip-orange">Desvios Recorrentes</span>
+            <span class="chip chip-blue">Análise Temporal</span>
+            <span class="chip chip-green">Alertas Preventivos</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Evidências Operacionais -->
+    <section id="view-evidencias-op" class="view hidden">
+      <h2>Evidências Operacionais</h2>
+      <div class="panel">
+        <div class="modulo-em-breve">
+          <div class="modulo-em-breve-icon">📷</div>
+          <h3>Evidências Operacionais</h3>
+          <p>Repositório centralizado de todas as evidências coletadas em campo durante inspeções, observações e registros de segurança.</p>
+          <div class="feature-chips">
+            <span class="chip chip-blue">Fotos</span>
+            <span class="chip chip-green">Vídeos</span>
+            <span class="chip chip-purple">Documentos</span>
+            <span class="chip chip-orange">Check-ins</span>
+            <span class="chip chip-blue">Registros de Campo</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Quase Acidentes -->
+    <section id="view-quase-acidentes" class="view hidden">
+      <h2>Gestão de Quase Acidentes</h2>
+      <div class="panel">
+        <div class="modulo-em-breve">
+          <div class="modulo-em-breve-icon">⚠️</div>
+          <h3>Gestão de Quase Acidentes</h3>
+          <p>Fluxo completo de registro, investigação e acompanhamento de quase acidentes para aprendizado organizacional e prevenção proativa.</p>
+          <div class="feature-chips">
+            <span class="chip chip-orange">Registro Rápido</span>
+            <span class="chip chip-blue">Investigação</span>
+            <span class="chip chip-green">Plano de Ação</span>
+            <span class="chip chip-purple">Lições Aprendidas</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Canal Pergunte ao SESMT -->
+    <section id="view-canal-sesmt" class="view hidden">
+      <h2>Canal Pergunte ao SESMT</h2>
+      <div class="panel" style="margin-bottom:16px">
+        <h3>Nova Pergunta</h3>
+        <div><label>Sua dúvida</label><textarea id="sesmt-pergunta" class="input" rows="3" placeholder="Digite sua dúvida ou orientação necessária..."></textarea></div>
+        <div class="form-grid">
+          <div><label>Categoria</label>
+            <select id="sesmt-pergunta-cat" class="input">
+              <option>EPI</option><option>NR aplicável</option><option>Processo seguro</option>
+              <option>Acidente</option><option>Dúvida geral</option>
+            </select>
+          </div>
+          <div><label>Urgência</label>
+            <select id="sesmt-urgencia" class="input">
+              <option>Normal</option><option>Alta</option><option>Urgente</option>
+            </select>
+          </div>
+        </div>
+        <button class="btn" onclick="enviarPerguntaSesmt()">Enviar Pergunta</button>
+      </div>
+      <div class="panel">
+        <h3>Minhas Perguntas</h3>
+        <div id="canal-sesmt-lista"><p class="hint">Nenhuma pergunta enviada ainda.</p></div>
+      </div>
+    </section>
+
+    <!-- TV Corporativa -->
+    <section id="view-tv-corporativa" class="view hidden">
+      <h2>TV Corporativa</h2>
+      <div class="panel">
+        <div class="modulo-em-breve">
+          <div class="modulo-em-breve-icon">📺</div>
+          <h3>TV Corporativa</h3>
+          <p>Painel digital para exibição em TVs corporativas com informações em tempo real sobre segurança, rankings e comunicados.</p>
+          <div class="feature-chips">
+            <span class="chip chip-blue">Campanhas</span>
+            <span class="chip chip-green">Rankings</span>
+            <span class="chip chip-orange">Comunicados</span>
+            <span class="chip chip-purple">Indicadores</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- CIPA Estrutura -->
+    <section id="view-cipa-estrutura" class="view hidden">
+      <h2>Estrutura e Integrantes da CIPA</h2>
+      <div class="panel">
+        <p class="hint">Lista de cipeiros com filtro por cargo e setor. Colaboradores com papel <strong>CIPA</strong> atribuído no cadastro.</p>
+        <div id="cipa-estrutura-lista"><p class="hint">Carregando...</p></div>
+      </div>
+    </section>
+
+    <!-- Portal da CIPA -->
+    <section id="view-portal-cipa" class="view hidden">
+      <h2>Portal da CIPA</h2>
+      <div class="panel">
+        <div class="modulo-em-breve">
+          <div class="modulo-em-breve-icon">📋</div>
+          <h3>Portal da CIPA</h3>
+          <p>Central de gestão da CIPA com planejamento anual, calendário de reuniões, registro de atas e acompanhamento de ações.</p>
+          <div class="feature-chips">
+            <span class="chip chip-blue">Planejamento</span>
+            <span class="chip chip-green">Calendário</span>
+            <span class="chip chip-orange">Atas</span>
+            <span class="chip chip-purple">Ações</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Indicadores da CIPA -->
+    <section id="view-indicadores-cipa" class="view hidden">
+      <h2>Indicadores da CIPA</h2>
+      <div class="panel">
+        <div class="modulo-em-breve">
+          <div class="modulo-em-breve-icon">📊</div>
+          <h3>Indicadores da CIPA</h3>
+          <p>Painel com os principais indicadores de desempenho da CIPA, incluindo participação em reuniões, inspeções realizadas e ações concluídas.</p>
+          <div class="feature-chips">
+            <span class="chip chip-blue">Participação</span>
+            <span class="chip chip-green">Inspeções</span>
+            <span class="chip chip-orange">Ações</span>
+            <span class="chip chip-purple">Pendências</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Banco de Ideias -->
+    <section id="view-banco-ideias" class="view hidden">
+      <h2>Banco de Ideias</h2>
+      <div class="panel" style="margin-bottom:16px">
+        <h3>Enviar Nova Sugestão à CIPA</h3>
+        <div class="form-grid">
+          <div><label>Título</label><input type="text" id="ideia-titulo" class="input" placeholder="Resumo da sua ideia"></div>
+          <div><label>Categoria</label>
+            <select id="ideia-categoria" class="input">
+              <option>EPI / EPC</option><option>Sinalização</option><option>Processo de Trabalho</option>
+              <option>Ambiente</option><option>Treinamento</option><option>Outra</option>
+            </select>
+          </div>
+        </div>
+        <div><label>Descrição</label><textarea id="ideia-descricao" class="input" rows="3" placeholder="Descreva sua sugestão com detalhes..."></textarea></div>
+        <button class="btn" onclick="enviarIdeia()">Enviar Ideia</button>
+      </div>
+      <div class="panel">
+        <h3>Ideias Recentes</h3>
+        <div id="banco-ideias-lista"><p class="hint">Nenhuma ideia registrada ainda.</p></div>
+      </div>
+    </section>
+
+    <!-- Brigada Estrutura -->
+    <section id="view-brigada-estrutura" class="view hidden">
+      <h2>Estrutura e Brigadistas</h2>
+      <div class="panel">
+        <p class="hint">Lista de brigadistas com cargos e setores. Colaboradores com papel <strong>Brigada</strong> atribuído no cadastro.</p>
+        <div id="brigada-estrutura-lista"><p class="hint">Carregando...</p></div>
+      </div>
+    </section>
+
+    <!-- Gestão de Simulados -->
+    <section id="view-gestao-simulados" class="view hidden">
+      <h2>Gestão de Simulados</h2>
+      <div class="panel">
+        <div class="modulo-em-breve">
+          <div class="modulo-em-breve-icon">🚨</div>
+          <h3>Gestão de Simulados</h3>
+          <p>Planejamento e registro de simulados de emergência com controle de participantes, tempos de resposta, evidências e avaliações.</p>
+          <div class="feature-chips">
+            <span class="chip chip-blue">Participantes</span>
+            <span class="chip chip-orange">Tempos</span>
+            <span class="chip chip-green">Evidências</span>
+            <span class="chip chip-purple">Avaliações</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Certificações e Reciclagens -->
+    <section id="view-cert-reciclagens" class="view hidden">
+      <h2>Certificações e Reciclagens</h2>
+      <div class="panel">
+        <div class="modulo-em-breve">
+          <div class="modulo-em-breve-icon">🎓</div>
+          <h3>Certificações e Reciclagens</h3>
+          <p>Controle automático dos vencimentos de certificações dos brigadistas, com alertas preventivos e histórico de reciclagens realizadas.</p>
+          <div class="feature-chips">
+            <span class="chip chip-orange">Vencimentos Próximos</span>
+            <span class="chip chip-green">Histórico</span>
+            <span class="chip chip-blue">Alertas Automáticos</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Prontidão Operacional -->
+    <section id="view-prontidao-op" class="view hidden">
+      <h2>Prontidão Operacional</h2>
+      <div class="panel">
+        <div class="modulo-em-breve">
+          <div class="modulo-em-breve-icon">✅</div>
+          <h3>Prontidão Operacional</h3>
+          <p>Indicador em tempo real da disponibilidade da brigada de emergência, com status por turno, setor e unidade operacional.</p>
+          <div class="feature-chips">
+            <span class="chip chip-green">Disponíveis</span>
+            <span class="chip chip-orange">Afastados</span>
+            <span class="chip chip-blue">Por Turno</span>
+            <span class="chip chip-purple">Por Unidade</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Relatórios Visão Geral -->
+    <section id="view-relatorios" class="view hidden">
+      <h2>Relatórios</h2>
+      <div class="panel">
+        <div class="modulo-em-breve">
+          <div class="modulo-em-breve-icon">📊</div>
+          <h3>Central de Relatórios</h3>
+          <p>Visão geral de todos os relatórios disponíveis na plataforma. Acesse dados consolidados de DDS, treinamentos, quizzes, engajamento e exportações.</p>
+          <div class="feature-chips">
+            <span class="chip chip-blue">DDS</span>
+            <span class="chip chip-green">Treinamentos</span>
+            <span class="chip chip-orange">Quiz</span>
+            <span class="chip chip-purple">Engajamento</span>
+            <span class="chip chip-blue">Exportações</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Relatórios Executivos -->
+    <section id="view-relat-exec" class="view hidden">
+      <h2>Relatórios Executivos</h2>
+      <div class="panel">
+        <div class="modulo-em-breve">
+          <div class="modulo-em-breve-icon">👔</div>
+          <h3>Relatórios Executivos</h3>
+          <p>Relatórios voltados para diretoria e alta gestão, com visão consolidada dos indicadores estratégicos de segurança da organização.</p>
+          <div class="feature-chips">
+            <span class="chip chip-blue">Safety Score</span>
+            <span class="chip chip-green">Conformidade</span>
+            <span class="chip chip-orange">Riscos Críticos</span>
+            <span class="chip chip-purple">Evolução Mensal</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Relatórios Comparativos -->
+    <section id="view-relat-comp" class="view hidden">
+      <h2>Relatórios Comparativos</h2>
+      <div class="panel">
+        <div class="modulo-em-breve">
+          <div class="modulo-em-breve-icon">⚖️</div>
+          <h3>Relatórios Comparativos</h3>
+          <p>Compare o desempenho em segurança entre equipes, contratos e unidades para identificar destaques e áreas que precisam de atenção.</p>
+          <div class="feature-chips">
+            <span class="chip chip-blue">Entre Equipes</span>
+            <span class="chip chip-green">Entre Contratos</span>
+            <span class="chip chip-orange">Entre Unidades</span>
+            <span class="chip chip-purple">Evolução Temporal</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Relatórios de Cultura -->
+    <section id="view-relat-cultura" class="view hidden">
+      <h2>Relatórios de Cultura</h2>
+      <div class="panel">
+        <div class="modulo-em-breve">
+          <div class="modulo-em-breve-icon">🎯</div>
+          <h3>Relatórios de Cultura</h3>
+          <p>Indicadores específicos de cultura de segurança: engajamento, reconhecimentos, participação voluntária e evolução comportamental.</p>
+          <div class="feature-chips">
+            <span class="chip chip-blue">Engajamento</span>
+            <span class="chip chip-green">Reconhecimentos</span>
+            <span class="chip chip-orange">Participação Voluntária</span>
+            <span class="chip chip-purple">Índice Cultural</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Central de Evidências -->
+    <section id="view-central-evidencias" class="view hidden">
+      <h2>Central de Evidências</h2>
+      <div class="panel">
+        <div class="modulo-em-breve">
+          <div class="modulo-em-breve-icon">🗄️</div>
+          <h3>Central de Evidências</h3>
+          <p>Exportação consolidada de todas as evidências da plataforma para auditorias, inspeções do trabalho e conformidade regulatória.</p>
+          <div class="feature-chips">
+            <span class="chip chip-blue">DDS com Assinatura</span>
+            <span class="chip chip-green">Certificados</span>
+            <span class="chip chip-orange">Listas de Presença</span>
+            <span class="chip chip-purple">Registros de Inspeção</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Risk Engine -->
+    <section id="view-risk-engine" class="view hidden">
+      <h2>Risk Engine</h2>
+      <div class="panel">
+        <p class="hint">Motor de análise preditiva que calcula o risco de cada área com base em múltiplos indicadores de engajamento e participação.</p>
+        <div class="risk-engine-grid" id="risk-engine-grid">
+          <!-- renderizado por JS -->
+        </div>
+      </div>
+    </section>
+
+    <!-- Recomendações Automáticas -->
+    <section id="view-recomendacoes-ia" class="view hidden">
+      <h2>Recomendações Automáticas</h2>
+      <div class="panel">
+        <div class="modulo-em-breve">
+          <div class="modulo-em-breve-icon">🤖</div>
+          <h3>Recomendações Automáticas</h3>
+          <p>A IA analisa os dados da empresa e sugere automaticamente DDS, treinamentos, campanhas e ações preventivas personalizadas.</p>
+          <div class="feature-chips">
+            <span class="chip chip-blue">DDS Sugeridos</span>
+            <span class="chip chip-green">Treinamentos</span>
+            <span class="chip chip-orange">Campanhas</span>
+            <span class="chip chip-purple">Ações Preventivas</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Assistente Executivo -->
+    <section id="view-assistente-exec" class="view hidden">
+      <h2>Assistente Executivo</h2>
+      <div class="panel">
+        <p class="hint">Faça perguntas sobre segurança da sua empresa em linguagem natural e receba respostas baseadas em dados reais.</p>
+        <div class="exec-chat-sugestoes">
+          <button class="btn-sugestao-exec" onclick="perguntarExec('Qual área possui maior risco?')">Qual área possui maior risco?</button>
+          <button class="btn-sugestao-exec" onclick="perguntarExec('Qual treinamento devo aplicar agora?')">Qual treinamento devo aplicar agora?</button>
+          <button class="btn-sugestao-exec" onclick="perguntarExec('Qual equipe está com baixo engajamento?')">Qual equipe está com baixo engajamento?</button>
+          <button class="btn-sugestao-exec" onclick="perguntarExec('Qual é o Safety Score da empresa?')">Qual é o Safety Score da empresa?</button>
+        </div>
+        <div class="exec-chat-input-wrap">
+          <input type="text" id="exec-chat-input" class="input" placeholder="Digite sua pergunta..." onkeydown="if(event.key==='Enter')perguntarExec()">
+          <button class="btn" onclick="perguntarExec()">Perguntar</button>
+        </div>
+        <div id="exec-chat-resposta" class="exec-chat-resposta"></div>
+      </div>
+    </section>
+
+    <!-- Predição de Tendências -->
+    <section id="view-predicao-tend" class="view hidden">
+      <h2>Predição de Tendências</h2>
+      <div class="panel">
+        <div class="modulo-em-breve">
+          <div class="modulo-em-breve-icon">🔮</div>
+          <h3>Predição de Tendências</h3>
+          <p>Identifica possíveis riscos futuros e tendências de queda no engajamento antes que se tornem problemas, permitindo ação preventiva.</p>
+          <div class="feature-chips">
+            <span class="chip chip-orange">Riscos Emergentes</span>
+            <span class="chip chip-blue">Queda de Engajamento</span>
+            <span class="chip chip-purple">Alertas Preditivos</span>
+            <span class="chip chip-green">Recomendações</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Índice de Maturidade -->
+    <section id="view-indice-maturidade" class="view hidden">
+      <h2>Índice de Maturidade em Segurança</h2>
+      <div class="panel">
+        <div class="modulo-em-breve">
+          <div class="modulo-em-breve-icon">🏆</div>
+          <h3>Índice de Maturidade em Segurança</h3>
+          <p>Avaliação multidimensional da maturidade em segurança da organização, com benchmarks e planos de evolução por dimensão.</p>
+          <div class="feature-chips">
+            <span class="chip chip-blue">Cultura</span>
+            <span class="chip chip-green">Conhecimento</span>
+            <span class="chip chip-orange">Participação</span>
+            <span class="chip chip-purple">Engajamento</span>
+            <span class="chip chip-blue">Governança</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Biblioteca Global -->
+    <section id="view-biblioteca-global" class="view hidden">
+      <h2>Biblioteca Global</h2>
+      <div class="panel">
+        <div class="modulo-em-breve">
+          <div class="modulo-em-breve-icon">📚</div>
+          <h3>Biblioteca Global</h3>
+          <p>Banco corporativo de conteúdos de segurança compartilhados entre todas as unidades. DDS, treinamentos, normas e materiais de referência.</p>
+          <div class="feature-chips">
+            <span class="chip chip-blue">DDS</span>
+            <span class="chip chip-green">Treinamentos</span>
+            <span class="chip chip-orange">Normas</span>
+            <span class="chip chip-purple">Materiais SIPAT</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Marketplace SafePoint -->
+    <section id="view-marketplace" class="view hidden">
+      <h2>Marketplace SafePoint</h2>
+      <div class="panel">
+        <div class="modulo-em-breve">
+          <div class="modulo-em-breve-icon">🛒</div>
+          <h3>Marketplace SafePoint</h3>
+          <p>Loja de conteúdos prontos criados por especialistas em segurança do trabalho. Adquira DDS, campanhas, quizzes e flashcards profissionais.</p>
+          <div class="feature-chips">
+            <span class="chip chip-blue">DDS</span>
+            <span class="chip chip-green">Campanhas</span>
+            <span class="chip chip-orange">Quizzes</span>
+            <span class="chip chip-purple">Flashcards</span>
+            <span class="chip chip-blue">Treinamentos</span>
+            <span class="chip chip-orange">Materiais SIPAT</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Governança Digital -->
+    <section id="view-gov-digital" class="view hidden">
+      <h2>Governança Digital</h2>
+      <div class="panel">
+        <div class="modulo-em-breve">
+          <div class="modulo-em-breve-icon">🏛️</div>
+          <h3>Governança Digital</h3>
+          <p>Controle avançado das regras da plataforma, políticas de uso, aprovações hierárquicas e trilhas de auditoria completas.</p>
+          <div class="feature-chips">
+            <span class="chip chip-blue">Políticas</span>
+            <span class="chip chip-green">Aprovações</span>
+            <span class="chip chip-orange">Auditoria</span>
+            <span class="chip chip-purple">Conformidade</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Gestão de Conteúdo Corporativo -->
+    <section id="view-gestao-conteudo" class="view hidden">
+      <h2>Gestão de Conteúdo Corporativo</h2>
+      <div class="panel">
+        <div class="modulo-em-breve">
+          <div class="modulo-em-breve-icon">📝</div>
+          <h3>Gestão de Conteúdo Corporativo</h3>
+          <p>Controle centralizado de todos os materiais de comunicação, treinamento e segurança produzidos internamente pela empresa.</p>
+          <div class="feature-chips">
+            <span class="chip chip-blue">Aprovação Editorial</span>
+            <span class="chip chip-green">Controle de Versão</span>
+            <span class="chip chip-orange">Publicação Agendada</span>
+            <span class="chip chip-purple">Arquivo Histórico</span>
+          </div>
+        </div>
+      </div>
     </section>
 
   </main>
