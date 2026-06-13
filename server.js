@@ -75,7 +75,58 @@ const DEFAULT_CORES = {
 
 const DEFAULT_MODULOS = {
   dds: true, treinamentos: true, ranking: true, loja: true,
-  dashboardAvancado: false, ia: false, certificados: false
+  dashboardAvancado: false, ia: false, certificados: false,
+  quiz: true, gamificacao: true, feed: true, cipa: true, brigada: true,
+  pesquisas: true, observacoes: true, insights: true, academia: false,
+  ia_assistant: false, cipa_eleicao: false
+};
+
+/* ── SafePoint 3.2 — Submódulos granulares ────────────────────── */
+
+const SUBMODULO_LABELS = {
+  dashboard:    { visao_geral:'Visão Geral', indicadores:'Indicadores', alertas:'Alertas', score:'Score da Empresa', insights_ia:'Insights IA' },
+  pessoas:      { cadastro:'Cadastro Individual', importacao:'Importação em Massa', estrutura:'Estrutura Org.', setores:'Setores', equipes:'Equipes', senhas:'Gestão de Senhas', acesso:'Controle de Acesso' },
+  aprendizagem: { dds:'DDS', dds_battle:'DDS Battle', treinamentos:'Treinamentos', flashcards:'Flashcards', certificados:'Certificados', simulador:'Simulador de Cenários', academia:'Academia SST', trilhas:'Trilhas de Aprendizagem' },
+  cultura:      { feed:'Feed Social', reconhecimentos:'Reconhecimentos', ranking:'Ranking', loja:'Loja', missoes:'Missões', campanhas:'Campanhas', moedas:'Moedas SafePoint' },
+  seguranca_op: { observacoes:'Observações', ato_inseguro:'Ato Inseguro', condicao_insegura:'Condição Insegura', quase_acidente:'Quase Acidente', boa_pratica:'Boa Prática', melhoria:'Oportunidade de Melhoria', plano_acao:'Plano de Ação', workflow:'Workflow' },
+  comunicacao:  { comunicados:'Comunicados', pesquisas:'Pesquisas', podcast:'Podcast', mensagens:'Mensagens Diretas' },
+  cipa:         { estrutura:'Estrutura', integrantes:'Integrantes', mandatos:'Mandatos', reunioes:'Reuniões', eleicao:'Eleição Digital', inspecoes:'Inspeções' },
+  brigada:      { estrutura:'Estrutura', brigadistas:'Brigadistas', simulados:'Simulados', certificacoes:'Certificações', plano_emergencia:'Plano de Emergência', mapa:'Mapa de Emergência' },
+  relatorios:   { dds:'Relatório DDS', treinamentos:'Relatório Treinamentos', quiz:'Relatório Quiz', engajamento:'Relatório Engajamento', exportacoes:'Exportações' },
+  ia_insights:  { assistente:'Assistente SST', insights:'SafePoint Insights', mapa_calor:'Mapa de Calor', predicoes:'Predições e Recomendações' },
+};
+
+const DEFAULT_SUBMODULOS = {
+  dashboard:    { visao_geral:true, indicadores:true, alertas:true, score:false, insights_ia:false },
+  pessoas:      { cadastro:true, importacao:true, estrutura:true, setores:true, equipes:true, senhas:true, acesso:true },
+  aprendizagem: { dds:true, dds_battle:true, treinamentos:true, flashcards:true, certificados:false, simulador:false, academia:false, trilhas:false },
+  cultura:      { feed:true, reconhecimentos:true, ranking:true, loja:true, missoes:true, campanhas:true, moedas:false },
+  seguranca_op: { observacoes:true, ato_inseguro:true, condicao_insegura:true, quase_acidente:false, boa_pratica:false, melhoria:false, plano_acao:false, workflow:false },
+  comunicacao:  { comunicados:true, pesquisas:true, podcast:false, mensagens:false },
+  cipa:         { estrutura:true, integrantes:true, mandatos:true, reunioes:false, eleicao:false, inspecoes:false },
+  brigada:      { estrutura:true, brigadistas:true, simulados:false, certificacoes:false, plano_emergencia:false, mapa:false },
+  relatorios:   { dds:true, treinamentos:true, quiz:true, engajamento:true, exportacoes:true },
+  ia_insights:  { assistente:false, insights:true, mapa_calor:true, predicoes:false },
+};
+
+/* ── SafePoint 3.2 — Matriz de permissões ────────────────────── */
+
+const PERMISSION_LABELS = {
+  criar_dds:'Criar DDS', editar_dds:'Editar DDS', excluir_dds:'Excluir DDS',
+  criar_quiz:'Criar Quiz', gerenciar_pontos:'Gerenciar Pontos',
+  gerenciar_reconhecimentos:'Gerenciar Reconhecimentos', criar_campanhas:'Criar Campanhas',
+  gerenciar_usuarios:'Gerenciar Usuários', alterar_senhas:'Alterar Senhas',
+  gerenciar_cipa:'Gerenciar CIPA', gerenciar_brigada:'Gerenciar Brigada',
+  visualizar_auditoria:'Visualizar Auditoria', exportar_relatorios:'Exportar Relatórios',
+  gerenciar_modulos:'Gerenciar Módulos'
+};
+
+const DEFAULT_PERMISSIONS = {
+  sesmt:       { criar_dds:true,  editar_dds:true,  excluir_dds:true,  criar_quiz:true,  gerenciar_pontos:true,  gerenciar_reconhecimentos:true,  criar_campanhas:true,  gerenciar_usuarios:true,  alterar_senhas:true,  gerenciar_cipa:true,  gerenciar_brigada:true,  visualizar_auditoria:true,  exportar_relatorios:true,  gerenciar_modulos:false },
+  cipa:        { criar_dds:true,  editar_dds:false, excluir_dds:false, criar_quiz:false, gerenciar_pontos:false, gerenciar_reconhecimentos:true,  criar_campanhas:false, gerenciar_usuarios:false, alterar_senhas:false, gerenciar_cipa:true,  gerenciar_brigada:false, visualizar_auditoria:false, exportar_relatorios:false, gerenciar_modulos:false },
+  brigada:     { criar_dds:true,  editar_dds:false, excluir_dds:false, criar_quiz:false, gerenciar_pontos:false, gerenciar_reconhecimentos:true,  criar_campanhas:false, gerenciar_usuarios:false, alterar_senhas:false, gerenciar_cipa:false, gerenciar_brigada:true,  visualizar_auditoria:false, exportar_relatorios:false, gerenciar_modulos:false },
+  lideranca:   { criar_dds:true,  editar_dds:false, excluir_dds:false, criar_quiz:false, gerenciar_pontos:false, gerenciar_reconhecimentos:true,  criar_campanhas:false, gerenciar_usuarios:false, alterar_senhas:false, gerenciar_cipa:false, gerenciar_brigada:false, visualizar_auditoria:false, exportar_relatorios:false, gerenciar_modulos:false },
+  colaborador: { criar_dds:false, editar_dds:false, excluir_dds:false, criar_quiz:false, gerenciar_pontos:false, gerenciar_reconhecimentos:false, criar_campanhas:false, gerenciar_usuarios:false, alterar_senhas:false, gerenciar_cipa:false, gerenciar_brigada:false, visualizar_auditoria:false, exportar_relatorios:false, gerenciar_modulos:false },
 };
 
 const STATUS_EMPRESA = ['ativa', 'em_implantacao', 'suspensa', 'bloqueada', 'cancelada'];
@@ -182,6 +233,31 @@ function loadDb() {
     if (c.dataAtivacao   === undefined)      c.dataAtivacao = '';
     if (c.dataVencimento === undefined)      c.dataVencimento = '';
   }
+  // SafePoint 3.2 — submodulos + permissoes
+  for (const c of db.companies) {
+    if (!c.submodulos) c.submodulos = JSON.parse(JSON.stringify(DEFAULT_SUBMODULOS));
+    if (!c.permissoes) c.permissoes = JSON.parse(JSON.stringify(DEFAULT_PERMISSIONS));
+    for (const [mod, defaults] of Object.entries(DEFAULT_SUBMODULOS)) {
+      if (!c.submodulos[mod]) c.submodulos[mod] = {};
+      for (const [sub, val] of Object.entries(defaults)) {
+        if (c.submodulos[mod][sub] === undefined) c.submodulos[mod][sub] = val;
+      }
+    }
+    for (const [profile, defaults] of Object.entries(DEFAULT_PERMISSIONS)) {
+      if (!c.permissoes[profile]) c.permissoes[profile] = {};
+      for (const [perm, val] of Object.entries(defaults)) {
+        if (c.permissoes[profile][perm] === undefined) c.permissoes[profile][perm] = val;
+      }
+    }
+  }
+  // SafePoint 3.2 — employee new fields
+  for (const e of db.employees) {
+    if (e.dataAdmissao  === undefined) e.dataAdmissao  = '';
+    if (e.gestorDireto  === undefined) e.gestorDireto  = '';
+    if (e.foto          === undefined) e.foto          = null;
+    if (e.contrato      === undefined) e.contrato      = '';
+    if (e.status        === undefined) e.status        = 'ativo';
+  }
   if (!db.auditLog)           db.auditLog = [];
   if (!db.pontosExtras)       db.pontosExtras = [];
   if (!db.feed)               db.feed = [];
@@ -197,6 +273,8 @@ function loadDb() {
   if (!db.battleSessions)    db.battleSessions = [];
   if (!db.flashcards)        db.flashcards = [];
   if (!db.flashcardProgress) db.flashcardProgress = [];
+  if (!db.academia)          db.academia = [];
+  if (!db.cipaEleicao)       db.cipaEleicao = [];
   for (const e of db.employees) {
     if (e.totalQuestoesRespondidas === undefined) e.totalQuestoesRespondidas = 0;
     if (!e.expertBadges)   e.expertBadges = [];
@@ -625,10 +703,33 @@ function getCompanyBranding(companyId) {
   return { id: c.id, nome: c.nome, logo: c.logo || null, cores: c.cores || DEFAULT_CORES, unidades: c.unidades || [] };
 }
 
-function logAudit(userId, role, acao, detalhes, companyId) {
+function logAudit(userId, role, acao, detalhes, companyId, opts = {}) {
   if (!db.auditLog) db.auditLog = [];
-  db.auditLog.push({ id: nextId(), timestamp: Date.now(), userId, role, acao, detalhes: detalhes || '', companyId: companyId || null });
+  const CRITICOS = new Set(['bloquear_usuario','excluir_usuario','alterar_modulo','alterar_submodulo','alterar_permissao','distribuir_moedas','resetar_senha','bloquear_empresa']);
+  db.auditLog.push({
+    id: nextId(), timestamp: Date.now(), userId, role, acao,
+    detalhes: detalhes || '', companyId: companyId || null,
+    modulo:    opts.modulo    || '',
+    submodulo: opts.submodulo || '',
+    valorAntes:  opts.valorAntes  !== undefined ? opts.valorAntes  : null,
+    valorDepois: opts.valorDepois !== undefined ? opts.valorDepois : null,
+    ip:          opts.ip          || '',
+    dispositivo: opts.dispositivo || '',
+    critico: CRITICOS.has(acao)
+  });
   saveDb();
+}
+
+function getClientIP(req) {
+  return (req.headers['x-forwarded-for'] || '').split(',')[0].trim() ||
+         (req.socket && req.socket.remoteAddress) || '';
+}
+
+function getDeviceInfo(req) {
+  const ua = req.headers['user-agent'] || '';
+  if (/Mobile|Android/i.test(ua)) return 'Mobile';
+  if (/Tablet|iPad/i.test(ua)) return 'Tablet';
+  return 'Desktop';
 }
 
 /* ── SafePoint 2.3 helpers ──────────────────────────────────── */
@@ -702,6 +803,39 @@ function calcKnowledgeScore(companyId) {
   return { score, nivel, txAcerto, txPartic };
 }
 
+/* ── SafePoint 3.2 — Governança ─────────────────────────────── */
+
+function calcGovernanceScore(companyId) {
+  const comp = db.companies.find(c => c.id === companyId);
+  if (!comp) return { score: 0, grade: 'Risco Administrativo', gradeEmoji: '🔴', components: {} };
+  // Controle de permissões (25%): customizado além do padrão?
+  const permScore = comp.permissoes ? 80 : 40;
+  // Configuração da empresa (25%)
+  const configFields = ['cnpj', 'responsavel', 'email', 'dataVencimento'];
+  const configScore = Math.round((configFields.filter(f => comp[f]).length / configFields.length) * 100);
+  // Eventos críticos nas últimas 48h (25%)
+  const agora = Date.now();
+  const critLogs = (db.auditLog || []).filter(l =>
+    l.companyId === companyId && l.critico && (agora - l.timestamp) < 48 * 3600000
+  ).length;
+  const eventoScore = critLogs === 0 ? 100 : critLogs <= 3 ? 70 : 40;
+  // Engajamento mês (25%)
+  const emps = db.employees.filter(e => e.companyId === companyId && e.ativo !== false);
+  const totalEmps = emps.length || 1;
+  const mesAtras = agora - 30 * 24 * 3600000;
+  const empIds = new Set(emps.map(e => e.id));
+  const ativos = new Set(db.checkins.filter(c => empIds.has(c.employeeId) && c.timestamp > mesAtras).map(c => c.employeeId)).size;
+  const engScore = Math.min(100, Math.round((ativos / totalEmps) * 100));
+  const score = Math.round(permScore * 0.25 + configScore * 0.25 + eventoScore * 0.25 + engScore * 0.25);
+  const grade = score >= 80 ? 'Excelente Governança' : score >= 60 ? 'Atenção' : 'Risco Administrativo';
+  const gradeEmoji = score >= 80 ? '🟢' : score >= 60 ? '🟡' : '🔴';
+  return {
+    score, grade, gradeEmoji,
+    components: { permissoes: permScore, configuracao: configScore, eventos_criticos: eventoScore, engajamento: engScore },
+    totalCriticos: critLogs, totalAtivos: ativos, totalEmps
+  };
+}
+
 /* ── Roteamento ──────────────────────────────────────────────── */
 
 const routes = [];
@@ -709,7 +843,7 @@ function route(method, pattern, opts, handler) { routes.push({ method, pattern, 
 
 /* ── Papéis de usuário (SafePoint 2.1) ──────────────────────── */
 
-const VALID_ROLES = ['sesmt', 'cipa', 'brigada', 'tecnico_seguranca', 'medico_trabalho', 'ergonomista'];
+const VALID_ROLES = ['sesmt', 'cipa', 'brigada', 'tecnico_seguranca', 'medico_trabalho', 'ergonomista', 'lideranca'];
 const ROLE_LABELS = {
   sesmt:              'SESMT',
   cipa:               'CIPA',
@@ -825,10 +959,11 @@ route('POST', /^\/api\/login$/, { public: true }, async (req, res, m, body) => {
       logAudit(emp.id, 'gestor', 'login', `SESMT ${emp.nome} entrou`, emp.companyId);
       return sendJson(res, 200, { ok: true, perfil: 'gestor', nome: emp.nome, branding, primeiroAcesso: !!emp.primeiroAcesso, termosAceitos: !!emp.termosAceitos, roles: emp.roles || [] });
     }
-    const token = createSession({ role: 'colaborador', employeeId: emp.id, companyId: emp.companyId });
+    const isLideranca = (emp.roles || []).includes('lideranca');
+    const token = createSession({ role: 'colaborador', employeeId: emp.id, companyId: emp.companyId, isLideranca });
     res.setHeader('Set-Cookie', `sesmt_token=${token}; Path=/; HttpOnly; SameSite=Lax`);
     logAudit(emp.id, 'colaborador', 'login', `Colaborador ${emp.nome} entrou`, emp.companyId);
-    return sendJson(res, 200, { ok: true, perfil: 'colaborador', nome: emp.nome, branding, primeiroAcesso: !!emp.primeiroAcesso, termosAceitos: !!emp.termosAceitos, roles: emp.roles || [] });
+    return sendJson(res, 200, { ok: true, perfil: 'colaborador', nome: emp.nome, branding, primeiroAcesso: !!emp.primeiroAcesso, termosAceitos: !!emp.termosAceitos, roles: emp.roles || [], isLideranca });
   }
   return sendJson(res, 400, { error: 'Perfil inválido.' });
 });
@@ -1344,9 +1479,17 @@ route('POST', /^\/api\/colaboradores$/, { role: 'gestor' }, async (req, res, m, 
     empresa: String(body.empresa || '').trim(), ativo: true, companyId: s.companyId,
     senhaSalt: defaultPwd.salt, senhaHash: defaultPwd.hash,
     primeiroAcesso: true, roles: [], termosAceitos: false,
-    email: '', telefone: '', dataNascimento: '',
+    email: String(body.email || '').trim(), telefone: String(body.telefone || '').trim(),
+    emailCorp: String(body.emailCorp || '').trim(),
+    dataNascimento: String(body.dataNascimento || '').trim(),
+    dataAdmissao: String(body.dataAdmissao || '').trim(),
+    gestorDireto: String(body.gestorDireto || '').trim(),
+    foto: null, contrato: String(body.contrato || '').trim(), status: 'ativo',
     streakAtual: 0, maiorStreak: 0, ultimoAcessoDia: '', nivelAtual: 1
   };
+  if (Array.isArray(body.roles)) {
+    emp.roles = body.roles.filter(r => VALID_ROLES.includes(r));
+  }
   db.employees.push(emp);
   saveDb();
   const { senhaSalt, senhaHash, ...safeEmp } = emp;
@@ -1381,8 +1524,11 @@ route('PUT', /^\/api\/colaboradores\/(\d+)$/, { role: 'gestor' }, async (req, re
     if (db.employees.some(e => e.matricula === mat && e.id !== emp.id && e.companyId === s.companyId)) return sendJson(res, 409, { error: `Matrícula ${mat} já existe.` });
     emp.matricula = mat;
   }
-  ['nome', 'cpf', 'setor', 'funcao', 'equipe', 'unidade', 'empresa'].forEach(f => { if (body[f] !== undefined) emp[f] = String(body[f]).trim(); });
+  ['nome','cpf','setor','funcao','equipe','unidade','empresa','email','telefone','emailCorp','dataNascimento','dataAdmissao','gestorDireto','contrato'].forEach(f => {
+    if (body[f] !== undefined) emp[f] = String(body[f]).trim();
+  });
   if (body.ativo !== undefined) emp.ativo = !!body.ativo;
+  if (Array.isArray(body.roles)) emp.roles = body.roles.filter(r => VALID_ROLES.includes(r));
   saveDb();
   sendJson(res, 200, emp);
 });
@@ -2583,6 +2729,373 @@ route('GET', /^\/api\/analytics\/comparativo$/, { role: 'gestor' }, async (req, 
     status: !e.total ? 'sem_dados' : (e.acertos / e.total >= 0.8 ? 'verde' : e.acertos / e.total >= 0.6 ? 'amarelo' : 'vermelho')
   })).sort((a, b) => b.mediaAcerto - a.mediaAcerto);
   sendJson(res, 200, lista);
+});
+
+/* ── SafePoint 3.0 — Insights ───────────────────────────────── */
+
+route('GET', /^\/api\/insights$/, { role: 'gestor' }, async (req, res, m, body, s) => {
+  const cid = s.companyId;
+  const emps = db.employees.filter(e => e.companyId === cid && e.ativo !== false);
+  const n = emps.length;
+  const empIds = new Set(emps.map(e => e.id));
+
+  // ICS
+  const ics = calcICS(cid);
+
+  // Knowledge Score
+  const ks = calcKnowledgeScore(cid);
+
+  // Taxa de participação geral (eventos últimos 30 dias)
+  const agora = Date.now();
+  const d30 = agora - 30 * 86400000;
+  const eventosRecentes = db.events.filter(ev => ev.companyId === cid && new Date(ev.data + 'T00:00:00').getTime() >= d30);
+  const checkins30 = db.checkins.filter(c => empIds.has(c.employeeId) && c.timestamp && new Date(c.timestamp).getTime() >= d30);
+  const txParticipacao = eventosRecentes.length > 0 ? Math.min(100, Math.round((new Set(checkins30.map(c => c.employeeId)).size / n) * 100)) : 0;
+
+  // Observações abertas
+  const obsAbertas = db.observations.filter(o => o.companyId === cid && o.status === 'aberta').length;
+  const obsTotais = db.observations.filter(o => o.companyId === cid).length;
+  const txObsResolvidas = obsTotais > 0 ? Math.round(((obsTotais - obsAbertas) / obsTotais) * 100) : 100;
+
+  // Streak médio
+  const streakMedio = n > 0 ? Math.round(emps.reduce((s2, e) => s2 + (e.streakAtual || 0), 0) / n) : 0;
+
+  // Heat map: participação por dia da semana (últimos 60 dias)
+  const d60 = agora - 60 * 86400000;
+  const checkins60 = db.checkins.filter(c => empIds.has(c.employeeId) && c.timestamp && new Date(c.timestamp).getTime() >= d60);
+  const heatDia = [0, 0, 0, 0, 0, 0, 0]; // dom=0..sab=6
+  for (const c of checkins60) {
+    const d = new Date(c.timestamp).getDay();
+    heatDia[d]++;
+  }
+
+  // Setor com mais observações críticas
+  const obsCrit = db.observations.filter(o => o.companyId === cid && o.criticidade === 'critica');
+  const setorMap = {};
+  for (const o of obsCrit) {
+    const emp = db.employees.find(e => e.id === o.employeeId);
+    const setor = emp?.setor || o.setor || 'Desconhecido';
+    setorMap[setor] = (setorMap[setor] || 0) + 1;
+  }
+  const setorCritico = Object.entries(setorMap).sort((a, b) => b[1] - a[1])[0] || null;
+
+  // Top 5 colaboradores por engajamento
+  const top5 = emps.map(e => {
+    const pts = employeePoints(e.id);
+    return { id: e.id, nome: e.nome, setor: e.setor || '', pontos: pts.total, ies: calcIES(e.id) };
+  }).sort((a, b) => b.ies - a.ies || b.pontos - a.pontos).slice(0, 5);
+
+  sendJson(res, 200, {
+    ics,
+    knowledgeScore: ks,
+    txParticipacao30d: txParticipacao,
+    txObsResolvidas,
+    streakMedio,
+    heatMapDiaSemana: heatDia,
+    setorCritico,
+    top5Engajamento: top5,
+    totais: {
+      colaboradores: n,
+      eventos: db.events.filter(ev => ev.companyId === cid).length,
+      observacoes: obsTotais,
+      sugestoes: db.suggestions.filter(sg => sg.companyId === cid).length,
+      moedas: emps.reduce((s2, e) => s2 + (e.moedas || 0), 0)
+    }
+  });
+});
+
+/* ── SafePoint 3.0 — IA SST ─────────────────────────────────── */
+
+route('POST', /^\/api\/ia\/chat$/, { role: 'any' }, async (req, res, m, body, s) => {
+  const comp = db.companies.find(c => c.id === s.companyId);
+  const iaKey = (comp && comp.iaApiKey) || process.env.ANTHROPIC_API_KEY || '';
+  if (!iaKey) return sendJson(res, 503, { error: 'IA não configurada. Adicione a chave da API nas configurações da empresa.' });
+
+  const msg = String(body.message || '').trim().slice(0, 2000);
+  if (!msg) return sendJson(res, 400, { error: 'Mensagem obrigatória.' });
+
+  const history = Array.isArray(body.history) ? body.history.slice(-8) : [];
+
+  const systemPrompt = `Você é o assistente de SST (Saúde e Segurança do Trabalho) do SafePoint. Responda sempre em português brasileiro. Você é especialista em normas regulamentadoras brasileiras (NRs), prevenção de acidentes, CIPA, Brigada de Emergência, PPR, PCMSO, PGR, APR, LTCAT e gestão de segurança do trabalho. Seja objetivo, prático e cite normas quando relevante. Limite respostas a 400 palavras. Nunca forneça aconselhamento jurídico ou médico específico — apenas orientações gerais de SST.`;
+
+  const messages = [
+    ...history.map(h => ({ role: h.role === 'user' ? 'user' : 'assistant', content: String(h.content || '').slice(0, 1000) })),
+    { role: 'user', content: msg }
+  ];
+
+  const payload = JSON.stringify({
+    model: 'claude-3-haiku-20240307',
+    max_tokens: 1024,
+    system: systemPrompt,
+    messages
+  });
+
+  const opts = {
+    hostname: 'api.anthropic.com',
+    port: 443,
+    path: '/v1/messages',
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': iaKey,
+      'anthropic-version': '2023-06-01',
+      'Content-Length': Buffer.byteLength(payload)
+    }
+  };
+
+  try {
+    const respText = await new Promise((resolve, reject) => {
+      const req2 = https.request(opts, r => {
+        let d = '';
+        r.on('data', c => d += c);
+        r.on('end', () => resolve(d));
+      });
+      req2.on('error', reject);
+      req2.setTimeout(30000, () => { req2.destroy(); reject(new Error('Timeout')); });
+      req2.write(payload);
+      req2.end();
+    });
+    const data = JSON.parse(respText);
+    if (data.error) return sendJson(res, 502, { error: data.error.message || 'Erro na IA.' });
+    const text = data.content && data.content[0] ? data.content[0].text : '';
+    sendJson(res, 200, { resposta: text, model: data.model || '' });
+  } catch (e) {
+    sendJson(res, 502, { error: 'Erro ao chamar IA: ' + e.message });
+  }
+});
+
+/* ── SafePoint 3.0 — Academia SST ──────────────────────────── */
+
+route('GET', /^\/api\/academia$/, { role: 'any' }, async (req, res, m, body, s) => {
+  const url2 = new URL('http://x' + req.url);
+  const cat = url2.searchParams.get('categoria') || '';
+  let list = (db.academia || []).filter(a => a.companyId === s.companyId && a.ativo !== false);
+  if (cat) list = list.filter(a => a.categoria === cat);
+  list = list.sort((a, b) => b.criadoEm - a.criadoEm);
+  sendJson(res, 200, list);
+});
+
+route('POST', /^\/api\/academia$/, { role: 'gestor' }, async (req, res, m, body, s) => {
+  const titulo = String(body.titulo || '').trim();
+  const conteudo = String(body.conteudo || '').trim();
+  if (!titulo || !conteudo) return sendJson(res, 400, { error: 'Título e conteúdo são obrigatórios.' });
+  const CATEGORIAS_ACADEMIA = ['NR Geral','EPI','Ergonomia','Primeiros Socorros','Incêndio','Procedimentos','CIPA','Brigada','Legislação','Outros'];
+  const cat = CATEGORIAS_ACADEMIA.includes(body.categoria) ? body.categoria : 'Outros';
+  const item = {
+    id: nextId(), companyId: s.companyId,
+    titulo, conteudo,
+    categoria: cat,
+    tipo: ['artigo','video','pdf','infografico'].includes(body.tipo) ? body.tipo : 'artigo',
+    url: String(body.url || '').trim(),
+    autor: String(body.autor || '').trim(),
+    ativo: true, criadoEm: Date.now()
+  };
+  if (!db.academia) db.academia = [];
+  db.academia.push(item);
+  saveDb();
+  sendJson(res, 201, item);
+});
+
+route('DELETE', /^\/api\/academia\/(\d+)$/, { role: 'gestor' }, async (req, res, m, body, s) => {
+  const idx = (db.academia || []).findIndex(a => a.id === Number(m[1]) && a.companyId === s.companyId);
+  if (idx === -1) return sendJson(res, 404, { error: 'Conteúdo não encontrado.' });
+  db.academia.splice(idx, 1);
+  saveDb();
+  sendJson(res, 200, { ok: true });
+});
+
+/* ── SafePoint 3.0 — Eleição CIPA ───────────────────────────── */
+
+route('GET', /^\/api\/cipa\/eleicao$/, { role: 'any' }, async (req, res, m, body, s) => {
+  const eleicao = (db.cipaEleicao || []).find(e => e.companyId === s.companyId && e.status !== 'encerrada');
+  if (!eleicao) return sendJson(res, 200, { eleicao: null });
+  const uid = s.employeeId || s.userId;
+  const jaVotou = (eleicao.votos || []).some(v => v.votanteId === uid);
+  const resultados = eleicao.status === 'encerrada' ? contarVotos(eleicao) : null;
+  sendJson(res, 200, { eleicao: { ...eleicao, jaVotou, resultados, votos: undefined } });
+});
+
+route('POST', /^\/api\/cipa\/eleicao$/, { role: 'gestor' }, async (req, res, m, body, s) => {
+  const titulo = String(body.titulo || '').trim();
+  if (!titulo) return sendJson(res, 400, { error: 'Título obrigatório.' });
+  if (!Array.isArray(body.candidatos) || body.candidatos.length < 2) return sendJson(res, 400, { error: 'Mínimo 2 candidatos.' });
+  const existente = (db.cipaEleicao || []).find(e => e.companyId === s.companyId && e.status !== 'encerrada');
+  if (existente) return sendJson(res, 409, { error: 'Já existe uma eleição ativa.' });
+  const eleicao = {
+    id: nextId(), companyId: s.companyId, titulo,
+    descricao: String(body.descricao || ''),
+    candidatos: body.candidatos.map((c, i) => {
+      const emp = db.employees.find(e => e.id === Number(c.empId) && e.companyId === s.companyId);
+      return { id: i + 1, empId: Number(c.empId), nome: emp ? emp.nome : String(c.nome || ''), funcao: emp ? (emp.funcao || '') : '' };
+    }),
+    vagas: Number(body.vagas) || 1,
+    dataInicio: body.dataInicio || todayStr(),
+    dataFim: body.dataFim || '',
+    status: 'ativa', votos: [], criadaEm: Date.now()
+  };
+  if (!db.cipaEleicao) db.cipaEleicao = [];
+  db.cipaEleicao.push(eleicao);
+  saveDb();
+  sendJson(res, 201, eleicao);
+});
+
+route('POST', /^\/api\/cipa\/eleicao\/votar$/, { role: 'colaborador' }, async (req, res, m, body, s) => {
+  const eleicao = (db.cipaEleicao || []).find(e => e.companyId === s.companyId && e.status === 'ativa');
+  if (!eleicao) return sendJson(res, 404, { error: 'Nenhuma eleição ativa.' });
+  if ((eleicao.votos || []).some(v => v.votanteId === s.employeeId)) {
+    return sendJson(res, 409, { error: 'Você já votou nesta eleição.' });
+  }
+  const candidatoId = Number(body.candidatoId);
+  const candidato = eleicao.candidatos.find(c => c.id === candidatoId);
+  if (!candidato) return sendJson(res, 400, { error: 'Candidato inválido.' });
+  if (!eleicao.votos) eleicao.votos = [];
+  eleicao.votos.push({ votanteId: s.employeeId, candidatoId, timestamp: Date.now() });
+  db.pontosExtras.push({ id: nextId(), empId: s.employeeId, companyId: s.companyId,
+    tipo: 'eleicao_cipa', descricao: '🗳 Participou da Eleição CIPA', pontos: 10, timestamp: Date.now() });
+  saveDb();
+  sendJson(res, 200, { ok: true, pontos: 10 });
+});
+
+route('POST', /^\/api\/cipa\/eleicao\/encerrar$/, { role: 'gestor' }, async (req, res, m, body, s) => {
+  const eleicao = (db.cipaEleicao || []).find(e => e.companyId === s.companyId && e.status === 'ativa');
+  if (!eleicao) return sendJson(res, 404, { error: 'Nenhuma eleição ativa.' });
+  eleicao.status = 'encerrada';
+  eleicao.encerradaEm = Date.now();
+  const resultado = contarVotos(eleicao);
+  saveDb();
+  logAudit(s.userId, s.role, 'encerrar_eleicao_cipa', `Eleição encerrada: ${eleicao.titulo}`, s.companyId);
+  sendJson(res, 200, { ok: true, resultado });
+});
+
+function contarVotos(eleicao) {
+  const map = {};
+  for (const c of eleicao.candidatos) map[c.id] = { ...c, votos: 0 };
+  for (const v of (eleicao.votos || [])) {
+    if (map[v.candidatoId]) map[v.candidatoId].votos++;
+  }
+  return Object.values(map).sort((a, b) => b.votos - a.votos);
+}
+
+/* ── SafePoint 3.2 — Submódulos ─────────────────────────────── */
+
+route('GET', /^\/api\/empresa\/submodulos$/, { role: 'gestor' }, async (req, res, m, body, s) => {
+  const comp = db.companies.find(c => c.id === s.companyId);
+  if (!comp) return sendJson(res, 404, { error: 'Empresa não encontrada.' });
+  sendJson(res, 200, { submodulos: comp.submodulos || DEFAULT_SUBMODULOS, labels: SUBMODULO_LABELS });
+});
+
+route('POST', /^\/api\/empresa\/submodulos$/, { role: 'gestor' }, async (req, res, m, body, s) => {
+  if (!checkSesmtPermission(s)) return sendJson(res, 403, { error: 'Apenas o SESMT pode gerenciar submódulos.' });
+  const comp = db.companies.find(c => c.id === s.companyId);
+  if (!comp) return sendJson(res, 404, { error: 'Empresa não encontrada.' });
+  const antes = JSON.stringify(comp.submodulos || {});
+  if (!comp.submodulos) comp.submodulos = JSON.parse(JSON.stringify(DEFAULT_SUBMODULOS));
+  for (const [mod, subs] of Object.entries(body.submodulos || {})) {
+    if (!comp.submodulos[mod]) comp.submodulos[mod] = {};
+    for (const [sub, val] of Object.entries(subs)) comp.submodulos[mod][sub] = !!val;
+  }
+  saveDb();
+  logAudit(s.userId, s.role, 'alterar_submodulo', 'Submódulos atualizados', s.companyId,
+    { modulo: 'configuracoes', valorAntes: antes, valorDepois: JSON.stringify(comp.submodulos),
+      ip: getClientIP(req), dispositivo: getDeviceInfo(req) });
+  sendJson(res, 200, { ok: true, submodulos: comp.submodulos });
+});
+
+/* ── SafePoint 3.2 — Permissões ─────────────────────────────── */
+
+route('GET', /^\/api\/empresa\/permissoes$/, { role: 'gestor' }, async (req, res, m, body, s) => {
+  const comp = db.companies.find(c => c.id === s.companyId);
+  if (!comp) return sendJson(res, 404, { error: 'Empresa não encontrada.' });
+  sendJson(res, 200, { permissoes: comp.permissoes || DEFAULT_PERMISSIONS, labels: PERMISSION_LABELS });
+});
+
+route('POST', /^\/api\/empresa\/permissoes$/, { role: 'gestor' }, async (req, res, m, body, s) => {
+  if (!checkSesmtPermission(s)) return sendJson(res, 403, { error: 'Apenas o SESMT pode gerenciar permissões.' });
+  const comp = db.companies.find(c => c.id === s.companyId);
+  if (!comp) return sendJson(res, 404, { error: 'Empresa não encontrada.' });
+  const antes = JSON.stringify(comp.permissoes || {});
+  if (!comp.permissoes) comp.permissoes = JSON.parse(JSON.stringify(DEFAULT_PERMISSIONS));
+  for (const [profile, perms] of Object.entries(body.permissoes || {})) {
+    if (!comp.permissoes[profile]) comp.permissoes[profile] = {};
+    for (const [perm, val] of Object.entries(perms)) comp.permissoes[profile][perm] = !!val;
+  }
+  saveDb();
+  logAudit(s.userId, s.role, 'alterar_permissao', 'Matriz de permissões atualizada', s.companyId,
+    { modulo: 'permissoes', valorAntes: antes, valorDepois: JSON.stringify(comp.permissoes),
+      ip: getClientIP(req), dispositivo: getDeviceInfo(req) });
+  sendJson(res, 200, { ok: true, permissoes: comp.permissoes });
+});
+
+/* ── SafePoint 3.2 — Governança ─────────────────────────────── */
+
+route('GET', /^\/api\/governance$/, { role: 'gestor' }, async (req, res, m, body, s) => {
+  sendJson(res, 200, calcGovernanceScore(s.companyId));
+});
+
+/* ── SafePoint 3.2 — Auditoria Avançada ─────────────────────── */
+
+route('GET', /^\/api\/auditlog\/avancado$/, { role: 'gestor' }, async (req, res, m, body, s) => {
+  if (!checkSesmtPermission(s)) return sendJson(res, 403, { error: 'Apenas o SESMT pode visualizar a auditoria.' });
+  const url2 = new URL('http://x' + req.url);
+  const acao    = url2.searchParams.get('acao')    || '';
+  const userId  = url2.searchParams.get('userId')  || '';
+  const modulo  = url2.searchParams.get('modulo')  || '';
+  const critico = url2.searchParams.get('critico') || '';
+  const de  = url2.searchParams.get('de')  || '';
+  const ate = url2.searchParams.get('ate') || '';
+  let logs = (db.auditLog || []).filter(l => l.companyId === s.companyId);
+  if (acao)   logs = logs.filter(l => l.acao.includes(acao));
+  if (userId) logs = logs.filter(l => String(l.userId) === userId);
+  if (modulo) logs = logs.filter(l => (l.modulo || '').includes(modulo) || l.acao.includes(modulo));
+  if (critico === '1') logs = logs.filter(l => l.critico);
+  if (de)  { const ts = new Date(de).getTime(); if (!isNaN(ts)) logs = logs.filter(l => l.timestamp >= ts); }
+  if (ate) { const ts = new Date(ate).getTime() + 86399999; if (!isNaN(ts)) logs = logs.filter(l => l.timestamp <= ts); }
+  const sorted = logs.sort((a, b) => b.timestamp - a.timestamp).slice(0, 500);
+  const enriched = sorted.map(log => {
+    const emp = db.employees.find(e => e.id === log.userId);
+    const mgr = db.managers.find(mg => mg.id === log.userId);
+    return { ...log, nomeUsuario: emp ? emp.nome : (mgr ? mgr.name : 'Sistema') };
+  });
+  sendJson(res, 200, enriched);
+});
+
+/* ── SafePoint 3.2 — Admin: submodulos por empresa ──────────── */
+
+route('POST', /^\/api\/admin\/empresas\/(\d+)\/submodulos$/, { role: 'admin' }, async (req, res, m, body, s) => {
+  const comp = db.companies.find(c => c.id === Number(m[1]));
+  if (!comp) return sendJson(res, 404, { error: 'Empresa não encontrada.' });
+  if (!comp.submodulos) comp.submodulos = JSON.parse(JSON.stringify(DEFAULT_SUBMODULOS));
+  for (const [mod, subs] of Object.entries(body.submodulos || {})) {
+    if (!comp.submodulos[mod]) comp.submodulos[mod] = {};
+    for (const [sub, val] of Object.entries(subs)) comp.submodulos[mod][sub] = !!val;
+  }
+  saveDb();
+  logAudit(s.userId, 'admin', 'alterar_submodulo', `Submódulos empresa "${comp.nome}" atualizados`);
+  sendJson(res, 200, { ok: true, submodulos: comp.submodulos });
+});
+
+route('GET', /^\/api\/admin\/empresas\/(\d+)\/submodulos$/, { role: 'admin' }, async (req, res, m) => {
+  const comp = db.companies.find(c => c.id === Number(m[1]));
+  if (!comp) return sendJson(res, 404, { error: 'Empresa não encontrada.' });
+  sendJson(res, 200, { submodulos: comp.submodulos || DEFAULT_SUBMODULOS, labels: SUBMODULO_LABELS });
+});
+
+route('GET', /^\/api\/admin\/auditlog$/, { role: 'admin' }, async (req, res, m, body, s) => {
+  const url2 = new URL('http://x' + req.url);
+  const companyId = url2.searchParams.get('companyId') ? Number(url2.searchParams.get('companyId')) : null;
+  const critico   = url2.searchParams.get('critico')   || '';
+  let logs = db.auditLog || [];
+  if (companyId) logs = logs.filter(l => l.companyId === companyId);
+  if (critico === '1') logs = logs.filter(l => l.critico);
+  const sorted = logs.sort((a, b) => b.timestamp - a.timestamp).slice(0, 1000);
+  const enriched = sorted.map(log => {
+    const emp = db.employees.find(e => e.id === log.userId);
+    const mgr = db.managers.find(mg => mg.id === log.userId);
+    const adm = db.admins.find(a => a.id === log.userId);
+    const comp = db.companies.find(c => c.id === log.companyId);
+    return { ...log, nomeUsuario: emp ? emp.nome : (mgr ? mgr.name : (adm ? adm.name : 'Sistema')), nomeEmpresa: comp ? (comp.nomeFantasia || comp.nome) : '' };
+  });
+  sendJson(res, 200, enriched);
 });
 
 /* ── Exportação ──────────────────────────────────────────────── */

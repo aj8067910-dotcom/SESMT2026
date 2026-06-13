@@ -19,7 +19,11 @@ let EMPRESA_INFO = { nome: '', unidades: [] };
 const MODULOS_LABELS = {
   dds: 'DDS', treinamentos: 'Treinamentos', ranking: 'Ranking',
   loja: 'Loja de Recompensas', dashboardAvancado: 'Dashboard Avançado',
-  ia: 'Inteligência Artificial', certificados: 'Certificados Automáticos'
+  ia: 'Inteligência Artificial', certificados: 'Certificados Automáticos',
+  quiz: 'Quiz & Aprendizado', gamificacao: 'Gamificação', feed: 'Mural Social',
+  cipa: 'CIPA', brigada: 'Brigada', pesquisas: 'Pesquisas', observacoes: 'Observações',
+  insights: 'Insights 3.0', academia: 'Academia SST', ia_assistant: 'Assistente IA',
+  cipa_eleicao: 'Eleição CIPA'
 };
 const STATUS_LABELS = { ativa: 'Ativa', em_implantacao: 'Em implantação', suspensa: 'Suspensa', bloqueada: 'Bloqueada', cancelada: 'Cancelada' };
 const PLANO_LABELS  = { basico: 'Básico', profissional: 'Profissional', enterprise: 'Enterprise' };
@@ -286,30 +290,55 @@ async function iniciar() {
 
 /* ── Navegação ── */
 
+function toggleSidebar(who) {
+  const sb = document.getElementById('sidebar-' + who);
+  if (!sb) return;
+  sb.classList.toggle('collapsed');
+}
+
+function toggleSbMod(mod) {
+  const el = document.getElementById('sbmod-' + mod);
+  if (!el) return;
+  el.classList.toggle('open');
+}
+
 async function navegar(view) {
-  document.querySelectorAll('#app-gestor .nav-btn').forEach(b => b.classList.toggle('active', b.dataset.view === view));
+  document.querySelectorAll('#app-gestor .sidebar-item, #app-gestor .sidebar-module-single').forEach(b => {
+    b.classList.toggle('active', b.dataset.view === view);
+  });
   document.querySelectorAll('#app-gestor .view').forEach(v => v.classList.add('hidden'));
-  document.getElementById('view-' + view).classList.remove('hidden');
-  if (view === 'dashboard')    await carregarDashboard();
-  if (view === 'eventos')      await carregarEventos();
-  if (view === 'colaboradores') await carregarColaboradores();
-  if (view === 'observacoes')  await carregarObservacoes();
-  if (view === 'sugestoes')    await carregarSugestoes();
-  if (view === 'ranking')      await carregarRanking();
-  if (view === 'comunicados')     await carregarComunicadosGestor();
-  if (view === 'quiz-gestor')     await carregarQuizGestor();
-  if (view === 'engajamento')     await carregarEngajamento();
-  if (view === 'pesquisas-gestor') await carregarPesquisasGestor();
-  if (view === 'quem-e-quem')    await carregarQuemEQuem();
-  if (view === 'roles')          await carregarRoles();
-  if (view === 'estrutura')      await carregarEstrutura();
-  if (view === 'config') { renderConfig(); carregarBrandingConfig(); }
+  const target = document.getElementById('view-' + view);
+  if (target) target.classList.remove('hidden');
+  if (view === 'dashboard')         await carregarDashboard();
+  if (view === 'eventos')           await carregarEventos();
+  if (view === 'colaboradores')     await carregarColaboradores();
+  if (view === 'observacoes')       await carregarObservacoes();
+  if (view === 'sugestoes')         await carregarSugestoes();
+  if (view === 'ranking')           await carregarRanking();
+  if (view === 'comunicados')       await carregarComunicadosGestor();
+  if (view === 'quiz-gestor')       await carregarQuizGestor();
+  if (view === 'engajamento')       await carregarEngajamento();
+  if (view === 'pesquisas-gestor')  await carregarPesquisasGestor();
+  if (view === 'quem-e-quem')       await carregarQuemEQuem();
+  if (view === 'roles')             await carregarRoles();
+  if (view === 'estrutura')         await carregarEstrutura();
+  if (view === 'insights')          await carregarInsights();
+  if (view === 'ia')                carregarIAView();
+  if (view === 'academia')          await carregarAcademiaGestor();
+  if (view === 'config')            { renderConfig(); carregarBrandingConfig(); }
+  if (view === 'submodulos')        await carregarSubmodulos();
+  if (view === 'permissoes')        await carregarPermissoes();
+  if (view === 'governance')        await carregarGovernance();
+  if (view === 'auditoria-avancada') await carregarAuditAvancada();
 }
 
 async function navegarColab(view) {
-  document.querySelectorAll('#app-colab .nav-btn').forEach(b => b.classList.toggle('active', b.dataset.cview === view));
+  document.querySelectorAll('#app-colab .sidebar-item').forEach(b => {
+    b.classList.toggle('active', b.dataset.cview === view);
+  });
   document.querySelectorAll('#app-colab .cview').forEach(v => v.classList.add('hidden'));
-  document.getElementById('cview-' + view).classList.remove('hidden');
+  const target = document.getElementById('cview-' + view);
+  if (target) target.classList.remove('hidden');
   if (view === 'painel')       await carregarPainelColaborador();
   if (view === 'mural')        await carregarMural();
   if (view === 'comunicados')  await carregarComunicados();
@@ -318,6 +347,8 @@ async function navegarColab(view) {
   if (view === 'pesquisas')    await carregarPesquisasColab();
   if (view === 'quem-e-quem') await carregarQuemEQuemColab();
   if (view === 'estrutura')   await carregarEstruturaColab();
+  if (view === 'academia')      await carregarAcademiaColab();
+  if (view === 'eleicao')       await carregarEleicaoColab();
   if (view === 'observar')     await carregarMinhasObservacoes();
   if (view === 'sugerir')      await carregarMinhasSugestoes();
   if (view === 'historico')    await carregarHistoricoCompleto();
@@ -3850,6 +3881,1008 @@ async function avaliarFlashcard(id, avaliacao) {
     _fcAtual++;
     renderFlashcardAtual();
   } catch (err) { toast(err.message, 'erro'); }
+}
+
+/* ── SafePoint 2.4 — Estrutura SST (gestor) ── */
+
+let _estruturaData = null;
+let _etabAtiva = 'organograma';
+let _acessosAll = [];
+
+async function carregarEstrutura() {
+  _etabAtiva = 'organograma';
+  document.querySelectorAll('#estrutura-tabs .quiz-tab').forEach(b =>
+    b.classList.toggle('active', b.dataset.etab === 'organograma'));
+  document.querySelectorAll('[id^="etab-"]').forEach(p =>
+    p.classList.toggle('hidden', p.id !== 'etab-organograma'));
+  await carregarEstruturaOrganograma();
+}
+
+function estruturaTab(tab) {
+  _etabAtiva = tab;
+  document.querySelectorAll('#estrutura-tabs .quiz-tab').forEach(b =>
+    b.classList.toggle('active', b.dataset.etab === tab));
+  document.querySelectorAll('[id^="etab-"]').forEach(p =>
+    p.classList.toggle('hidden', p.id !== 'etab-' + tab));
+  if (tab === 'organograma')  carregarEstruturaOrganograma();
+  if (tab === 'cipa')         carregarCipaCargos();
+  if (tab === 'brigada')      carregarBrigadaCargos();
+  if (tab === 'acessos')      carregarAcessos();
+  if (tab === 'auditoria')    carregarAuditoria();
+  if (tab === 'moedas')       carregarMoedasRanking();
+}
+
+async function carregarEstruturaOrganograma() {
+  const el = document.getElementById('estrutura-organograma');
+  if (!el) return;
+  try {
+    _estruturaData = await api('/api/estrutura');
+    const d = _estruturaData;
+    const secaoHtml = (titulo, emoji, lista) => {
+      if (!lista || !lista.length) return '';
+      return `<div class="org-grupo">
+        <div class="org-grupo-header">${emoji} ${titulo} (${lista.length})</div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:8px;padding:10px">
+          ${lista.map(e => {
+            const mandato = e.mandato || {};
+            const mandatoTxt = mandato.inicioMandato ? ` <span class="hint">${mandato.inicioMandato}${mandato.fimMandato ? ' → ' + mandato.fimMandato : ''}</span>` : '';
+            return `<div class="org-membro" style="cursor:pointer" onclick="abrirCarteirinha(${e.id})">
+              <div style="font-weight:600;font-size:13px">${esc(e.nome)}</div>
+              <div class="hint" style="font-size:11px">${esc(e.funcao || '')}${e.setor ? ' — ' + esc(e.setor) : ''}</div>
+              ${mandatoTxt}
+            </div>`;
+          }).join('')}
+        </div>
+      </div>`;
+    };
+    el.innerHTML = `
+      ${secaoHtml('SESMT', '🦺', d.sesmt)}
+      <div class="panel" style="margin-bottom:12px">
+        <h4 style="margin:0 0 8px">⚠️ CIPA — ${(d.cipa?.todos || []).length} membros</h4>
+        ${secaoHtml('Presidente', '📋', d.cipa?.presidente)}
+        ${secaoHtml('Vice-Presidente', '🤝', d.cipa?.vice)}
+        ${secaoHtml('Secretário', '📝', d.cipa?.secretario)}
+        ${secaoHtml('Titulares', '👥', d.cipa?.titulares)}
+        ${secaoHtml('Suplentes', '📌', d.cipa?.suplentes)}
+        ${!(d.cipa?.presidente?.length || d.cipa?.vice?.length || d.cipa?.secretario?.length || d.cipa?.titulares?.length || d.cipa?.suplentes?.length) && (d.cipa?.todos || []).length ? secaoHtml('Membros', '⚠️', d.cipa?.todos) : ''}
+        ${!(d.cipa?.todos || []).length ? '<p class="hint" style="padding:12px">Nenhum membro da CIPA. Atribua o papel CIPA a colaboradores.</p>' : ''}
+      </div>
+      <div class="panel" style="margin-bottom:12px">
+        <h4 style="margin:0 0 8px">🚒 Brigada — ${(d.brigada?.todos || []).length} membros</h4>
+        ${secaoHtml('Coordenador', '🚨', d.brigada?.coordenador)}
+        ${secaoHtml('Líderes', '🦺', d.brigada?.lideres)}
+        ${secaoHtml('Brigadistas', '🔥', d.brigada?.brigadistas)}
+        ${secaoHtml('Socorristas', '🚑', d.brigada?.socorristas)}
+        ${!(d.brigada?.coordenador?.length || d.brigada?.lideres?.length || d.brigada?.brigadistas?.length || d.brigada?.socorristas?.length) && (d.brigada?.todos || []).length ? secaoHtml('Membros', '🚒', d.brigada?.todos) : ''}
+        ${!(d.brigada?.todos || []).length ? '<p class="hint" style="padding:12px">Nenhum membro da Brigada. Atribua o papel Brigada a colaboradores.</p>' : ''}
+      </div>
+      ${secaoHtml('Técnico de Segurança', '🔧', d.tecnico_seguranca)}
+      ${secaoHtml('Médico do Trabalho', '🩺', d.medico_trabalho)}
+      ${secaoHtml('Ergonomista', '🪑', d.ergonomista)}
+    `;
+    carregarEstruturaCardHome(d);
+  } catch (err) { if (el) el.innerHTML = '<p class="hint" style="padding:20px">Erro ao carregar estrutura.</p>'; }
+}
+
+function carregarEstruturaCardHome(d) {
+  const el = document.getElementById('estrutura-card-resumo');
+  if (!el) return;
+  const partes = [];
+  if ((d.sesmt || []).length) partes.push(`🦺 ${d.sesmt.length} SESMT`);
+  if ((d.cipa?.todos || []).length) partes.push(`⚠️ ${d.cipa.todos.length} CIPA`);
+  if ((d.brigada?.todos || []).length) partes.push(`🚒 ${d.brigada.todos.length} Brigada`);
+  el.textContent = partes.length ? partes.join(' · ') : 'Toque para ver a equipe de segurança';
+}
+
+async function carregarCipaCargos() {
+  const el = document.getElementById('cipa-cargos-lista');
+  if (!el) return;
+  try {
+    const d = _estruturaData || await api('/api/estrutura');
+    _estruturaData = d;
+    const cargos = [
+      { label: 'Presidente da CIPA',      emoji: '📋', lista: d.cipa?.presidente || [] },
+      { label: 'Vice-Presidente da CIPA', emoji: '🤝', lista: d.cipa?.vice || [] },
+      { label: 'Secretário da CIPA',      emoji: '📝', lista: d.cipa?.secretario || [] },
+      { label: 'Membro Titular',          emoji: '👥', lista: d.cipa?.titulares || [] },
+      { label: 'Membro Suplente',         emoji: '📌', lista: d.cipa?.suplentes || [] },
+    ];
+    el.innerHTML = cargos.map(c => `
+      <div class="panel" style="margin-bottom:10px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+          <strong>${c.emoji} ${c.label}</strong>
+          <span class="hint">${c.lista.length} ${c.lista.length === 1 ? 'membro' : 'membros'}</span>
+        </div>
+        ${c.lista.length ? c.lista.map(e => `
+          <div class="cargo-membro-row">
+            <div>
+              <div style="font-weight:600;font-size:13px">${esc(e.nome)}</div>
+              ${e.mandato?.inicioMandato ? `<div class="hint" style="font-size:11px">Mandato: ${e.mandato.inicioMandato}${e.mandato.fimMandato ? ' → ' + e.mandato.fimMandato : ''}</div>` : ''}
+            </div>
+            <button class="btn btn-sm" style="color:#dc2626" onclick="removerCargo(${e.id},'${_cargoKeyByCipaLabel(c.label)}')">✕</button>
+          </div>`).join('') : '<p class="hint" style="font-size:12px;padding:4px 0">Nenhum membro atribuído.</p>'}
+      </div>`).join('');
+  } catch (err) { toast(err.message, 'erro'); }
+}
+
+function _cargoKeyByCipaLabel(label) {
+  const map = { 'Presidente da CIPA': 'cipa_presidente', 'Vice-Presidente da CIPA': 'cipa_vice', 'Secretário da CIPA': 'cipa_secretario', 'Membro Titular': 'cipa_titular', 'Membro Suplente': 'cipa_suplente' };
+  return map[label] || '';
+}
+function _cargoKeyByBrigadaLabel(label) {
+  const map = { 'Coordenador Geral da Brigada': 'brigada_coordenador', 'Líder de Brigada': 'brigada_lider', 'Brigadista': 'brigada_brigadista', 'Socorrista': 'brigada_socorrista' };
+  return map[label] || '';
+}
+
+async function carregarBrigadaCargos() {
+  const el = document.getElementById('brigada-cargos-lista');
+  if (!el) return;
+  try {
+    const d = _estruturaData || await api('/api/estrutura');
+    _estruturaData = d;
+    const cargos = [
+      { label: 'Coordenador Geral da Brigada', emoji: '🚨', lista: d.brigada?.coordenador || [] },
+      { label: 'Líder de Brigada',             emoji: '🦺', lista: d.brigada?.lideres || [] },
+      { label: 'Brigadista',                   emoji: '🔥', lista: d.brigada?.brigadistas || [] },
+      { label: 'Socorrista',                   emoji: '🚑', lista: d.brigada?.socorristas || [] },
+    ];
+    el.innerHTML = cargos.map(c => `
+      <div class="panel" style="margin-bottom:10px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+          <strong>${c.emoji} ${c.label}</strong>
+          <span class="hint">${c.lista.length} ${c.lista.length === 1 ? 'membro' : 'membros'}</span>
+        </div>
+        ${c.lista.length ? c.lista.map(e => `
+          <div class="cargo-membro-row">
+            <div>
+              <div style="font-weight:600;font-size:13px">${esc(e.nome)}</div>
+              ${e.mandato?.inicioMandato ? `<div class="hint" style="font-size:11px">Mandato: ${e.mandato.inicioMandato}${e.mandato.fimMandato ? ' → ' + e.mandato.fimMandato : ''}</div>` : ''}
+            </div>
+            <button class="btn btn-sm" style="color:#dc2626" onclick="removerCargo(${e.id},'${_cargoKeyByBrigadaLabel(c.label)}')">✕</button>
+          </div>`).join('') : '<p class="hint" style="font-size:12px;padding:4px 0">Nenhum membro atribuído.</p>'}
+      </div>`).join('');
+  } catch (err) { toast(err.message, 'erro'); }
+}
+
+function abrirAtribuirCargo(tipo) {
+  const cargos = tipo === 'cipa' ? [
+    { value: 'cipa_presidente',  label: 'Presidente da CIPA' },
+    { value: 'cipa_vice',        label: 'Vice-Presidente da CIPA' },
+    { value: 'cipa_secretario',  label: 'Secretário da CIPA' },
+    { value: 'cipa_titular',     label: 'Membro Titular' },
+    { value: 'cipa_suplente',    label: 'Membro Suplente' },
+  ] : [
+    { value: 'brigada_coordenador', label: 'Coordenador Geral da Brigada' },
+    { value: 'brigada_lider',       label: 'Líder de Brigada' },
+    { value: 'brigada_brigadista',  label: 'Brigadista' },
+    { value: 'brigada_socorrista',  label: 'Socorrista' },
+  ];
+  const membros = tipo === 'cipa'
+    ? COLABORADORES.filter(c => (c.roles || []).includes('cipa'))
+    : COLABORADORES.filter(c => (c.roles || []).includes('brigada'));
+  if (!membros.length) {
+    return abrirModal('Atribuir Cargo', `<p class="hint">Nenhum colaborador com papel ${tipo === 'cipa' ? 'CIPA' : 'Brigada'} encontrado. Atribua o papel primeiro na seção Papéis.</p><div class="modal-rodape"><button class="btn" onclick="fecharModal()">Fechar</button></div>`);
+  }
+  abrirModal(`Atribuir Cargo — ${tipo === 'cipa' ? 'CIPA' : 'Brigada'}`, `
+    <label>Colaborador</label>
+    <select id="cargo-emp-sel">
+      ${membros.map(c => `<option value="${c.id}">${esc(c.nome)} (${esc(c.matricula)})</option>`).join('')}
+    </select>
+    <label style="margin-top:10px">Cargo</label>
+    <select id="cargo-tipo-sel">
+      ${cargos.map(c => `<option value="${c.value}">${c.label}</option>`).join('')}
+    </select>
+    <label style="margin-top:10px">Início do mandato</label>
+    <input type="date" id="cargo-inicio">
+    <label style="margin-top:10px">Fim do mandato</label>
+    <input type="date" id="cargo-fim">
+    <div class="modal-rodape">
+      <button class="btn" onclick="fecharModal()">Cancelar</button>
+      <button class="btn btn-primary" onclick="confirmarAtribuirCargo()">Atribuir</button>
+    </div>`);
+}
+
+async function confirmarAtribuirCargo() {
+  const empId = document.getElementById('cargo-emp-sel')?.value;
+  const cargo = document.getElementById('cargo-tipo-sel')?.value;
+  const inicioMandato = document.getElementById('cargo-inicio')?.value || '';
+  const fimMandato = document.getElementById('cargo-fim')?.value || '';
+  if (!empId || !cargo) return toast('Selecione colaborador e cargo.', 'erro');
+  try {
+    await api(`/api/colaboradores/${empId}/subroles`, { method: 'POST', body: { cargo, inicioMandato, fimMandato } });
+    fecharModal();
+    toast('Cargo atribuído com sucesso!', 'ok');
+    _estruturaData = null;
+    if (_etabAtiva === 'cipa') carregarCipaCargos();
+    else if (_etabAtiva === 'brigada') carregarBrigadaCargos();
+    else carregarEstruturaOrganograma();
+  } catch (err) { toast(err.message, 'erro'); }
+}
+
+async function removerCargo(empId, cargo) {
+  if (!confirm('Remover este cargo?')) return;
+  try {
+    await api(`/api/colaboradores/${empId}/subroles/${cargo}`, { method: 'DELETE' });
+    toast('Cargo removido.', 'ok');
+    _estruturaData = null;
+    if (_etabAtiva === 'cipa') carregarCipaCargos();
+    else if (_etabAtiva === 'brigada') carregarBrigadaCargos();
+    else carregarEstruturaOrganograma();
+  } catch (err) { toast(err.message, 'erro'); }
+}
+
+/* Acessos */
+async function carregarAcessos() {
+  const el = document.getElementById('acessos-lista');
+  if (!el) return;
+  try {
+    _acessosAll = await api('/api/colaboradores');
+    filtrarAcessos();
+  } catch (err) { el.innerHTML = '<p class="hint" style="padding:20px">Erro ao carregar acessos.</p>'; }
+}
+
+function filtrarAcessos() {
+  const el = document.getElementById('acessos-lista');
+  if (!el) return;
+  const busca = (document.getElementById('acessos-busca')?.value || '').toLowerCase();
+  const status = document.getElementById('acessos-status')?.value || '';
+  let lista = _acessosAll.filter(c => c.ativo !== false);
+  if (busca) lista = lista.filter(c => c.nome.toLowerCase().includes(busca) || (c.matricula || '').toLowerCase().includes(busca));
+  if (status === 'bloqueado') lista = lista.filter(c => c.bloqueado);
+  else if (status === 'ativo') lista = lista.filter(c => !c.bloqueado);
+  if (!lista.length) { el.innerHTML = '<p class="hint" style="padding:20px;text-align:center">Nenhum colaborador encontrado.</p>'; return; }
+  el.innerHTML = `<table class="tabela">
+    <thead><tr><th>Nome</th><th>Matrícula</th><th>Status</th><th>Primeiro Acesso</th><th>Ações</th></tr></thead>
+    <tbody>${lista.map(c => `
+      <tr>
+        <td>${esc(c.nome)}</td>
+        <td>${esc(c.matricula)}</td>
+        <td>${c.bloqueado ? '<span style="color:#dc2626;font-weight:600">🚫 Bloqueado</span>' : '<span style="color:#1a8a4c">✅ Ativo</span>'}</td>
+        <td>${c.primeiroAcesso ? '<span class="hint">⚠️ Não trocou senha</span>' : '<span style="color:#1a8a4c">✓ OK</span>'}</td>
+        <td style="white-space:nowrap">
+          ${c.bloqueado
+            ? `<button class="btn btn-sm btn-primary" onclick="desbloquearColab(${c.id},'${esc(c.nome)}')">Desbloquear</button>`
+            : `<button class="btn btn-sm btn-perigo" onclick="bloquearColab(${c.id},'${esc(c.nome)}')">Bloquear</button>`}
+          <button class="btn btn-sm" style="margin-left:4px" onclick="resetarSenhaColab(${c.id},'${esc(c.nome)}')">🔑 Resetar Senha</button>
+          <button class="btn btn-sm" style="margin-left:4px" onclick="abrirCarteirinha(${c.id})">🪪 Carteirinha</button>
+        </td>
+      </tr>`).join('')}
+    </tbody>
+  </table>`;
+}
+
+async function bloquearColab(id, nome) {
+  const motivo = prompt(`Motivo do bloqueio de ${nome}:`);
+  if (motivo === null) return;
+  try {
+    await api(`/api/colaboradores/${id}/bloquear`, { method: 'POST', body: { motivo } });
+    toast(`${nome} bloqueado.`, 'ok');
+    _acessosAll = await api('/api/colaboradores').catch(() => _acessosAll);
+    filtrarAcessos();
+  } catch (err) { toast(err.message, 'erro'); }
+}
+
+async function desbloquearColab(id, nome) {
+  if (!confirm(`Desbloquear ${nome}?`)) return;
+  try {
+    await api(`/api/colaboradores/${id}/desbloquear`, { method: 'POST', body: {} });
+    toast(`${nome} desbloqueado.`, 'ok');
+    _acessosAll = await api('/api/colaboradores').catch(() => _acessosAll);
+    filtrarAcessos();
+  } catch (err) { toast(err.message, 'erro'); }
+}
+
+async function resetarSenhaColab(id, nome) {
+  if (!confirm(`Resetar a senha de ${nome} para a senha provisória SafePoint@2026?`)) return;
+  try {
+    const r = await api(`/api/colaboradores/${id}/resetar-senha`, { method: 'POST', body: {} });
+    toast(`Senha de ${nome} resetada. Senha provisória: ${r.senhaProvisoria}`, 'ok');
+  } catch (err) { toast(err.message, 'erro'); }
+}
+
+async function abrirCarteirinha(id) {
+  try {
+    const e = await api(`/api/carteirinha/${id}`);
+    const rolesHtml = (e.roles || []).map(r => `<span class="role-badge role-${r}">${r.toUpperCase()}</span>`).join(' ');
+    const subRolesHtml = (e.subRoles || []).map(sr => `<div class="hint" style="font-size:11px">• ${esc(sr.cargo?.replace(/_/g, ' ') || '')}${sr.inicioMandato ? ' (' + sr.inicioMandato + ')' : ''}</div>`).join('');
+    abrirModal('🪪 Carteirinha SafePoint', `
+      <div style="background:linear-gradient(135deg,var(--azul-escuro),var(--azul));border-radius:12px;padding:24px;color:#fff;text-align:center;margin-bottom:14px">
+        <div style="font-size:48px;margin-bottom:8px">👤</div>
+        <div style="font-size:20px;font-weight:700;margin-bottom:4px">${esc(e.nome)}</div>
+        <div style="font-size:13px;opacity:.85">${esc(e.funcao || '')}${e.setor ? ' — ' + esc(e.setor) : ''}</div>
+        ${e.unidade ? `<div style="font-size:12px;opacity:.75;margin-top:4px">${esc(e.unidade)}</div>` : ''}
+        <div style="margin-top:10px;font-size:12px;opacity:.8">Matrícula: <strong>${esc(e.matricula || '')}</strong></div>
+        ${e.empresaNome ? `<div style="font-size:11px;opacity:.7;margin-top:4px">${esc(e.empresaNome)}</div>` : ''}
+      </div>
+      ${rolesHtml ? `<div style="margin-bottom:8px">${rolesHtml}</div>` : ''}
+      ${subRolesHtml}
+      ${e.telefone ? `<div class="hint" style="margin-top:8px">📞 ${esc(e.telefone)}</div>` : ''}
+      ${e.emailCorp ? `<div class="hint">✉️ ${esc(e.emailCorp)}</div>` : ''}
+      <div class="modal-rodape"><button class="btn" onclick="fecharModal()">Fechar</button></div>`);
+  } catch (err) { toast(err.message, 'erro'); }
+}
+
+/* Auditoria */
+async function carregarAuditoria() {
+  const el = document.getElementById('auditoria-lista');
+  if (!el) return;
+  el.innerHTML = '<p class="hint" style="padding:12px">Carregando...</p>';
+  try {
+    const logs = await api('/api/auditlog');
+    if (!logs.length) { el.innerHTML = '<p class="hint" style="padding:12px">Nenhum registro de auditoria.</p>'; return; }
+    el.innerHTML = `<table class="tabela">
+      <thead><tr><th>Data/Hora</th><th>Usuário</th><th>Ação</th><th>Detalhes</th></tr></thead>
+      <tbody>${logs.map(l => `
+        <tr>
+          <td style="white-space:nowrap;font-size:12px">${tsDataHora(l.timestamp)}</td>
+          <td>${esc(l.autorNome || '')} <span class="hint" style="font-size:11px">[${l.role || ''}]</span></td>
+          <td><code style="font-size:12px">${esc(l.acao || '')}</code></td>
+          <td style="font-size:12px;color:#637080">${esc(l.detalhes || '')}</td>
+        </tr>`).join('')}
+      </tbody>
+    </table>`;
+  } catch (err) { el.innerHTML = `<p class="hint" style="padding:12px">Erro: ${esc(err.message)}</p>`; }
+}
+
+/* Moedas */
+async function carregarMoedasRanking() {
+  const el = document.getElementById('moedas-ranking');
+  if (!el) return;
+  el.innerHTML = '<p class="hint" style="padding:12px">Carregando...</p>';
+  try {
+    const lista = await api('/api/colaboradores');
+    const ativos = lista.filter(c => c.ativo !== false).sort((a, b) => (b.moedas || 0) - (a.moedas || 0));
+    if (!ativos.length) { el.innerHTML = '<p class="hint" style="padding:12px">Nenhum colaborador encontrado.</p>'; return; }
+    el.innerHTML = `<table class="tabela">
+      <thead><tr><th>#</th><th>Nome</th><th>Matrícula</th><th>Setor</th><th>🪙 Moedas</th><th>Pontos Equivalentes</th></tr></thead>
+      <tbody>${ativos.map((c, i) => `
+        <tr>
+          <td>${i + 1}</td>
+          <td>${esc(c.nome)}</td>
+          <td>${esc(c.matricula)}</td>
+          <td>${esc(c.setor || '—')}</td>
+          <td style="font-weight:700;color:var(--laranja)">${c.moedas || 0}</td>
+          <td class="hint">${(c.moedas || 0) * 5} pts</td>
+        </tr>`).join('')}
+      </tbody>
+    </table>`;
+  } catch (err) { el.innerHTML = `<p class="hint" style="padding:12px">Erro: ${esc(err.message)}</p>`; }
+}
+
+function abrirDistribuirMoedas() {
+  const lista = COLABORADORES.filter(c => c.ativo !== false);
+  abrirModal('🪙 Distribuir Moedas SafePoint', `
+    <p class="hint">1 moeda = 5 pontos. Use para reconhecer atitudes exemplares de segurança.</p>
+    <label>Colaborador</label>
+    <select id="moeda-emp-sel">
+      ${lista.map(c => `<option value="${c.id}">${esc(c.nome)} (${esc(c.matricula)})</option>`).join('')}
+    </select>
+    <label style="margin-top:10px">Quantidade de moedas</label>
+    <input type="number" id="moeda-qtd" value="1" min="1" max="100">
+    <label style="margin-top:10px">Motivo</label>
+    <input type="text" id="moeda-motivo" placeholder="Ex.: Identificou risco crítico e reportou imediatamente...">
+    <div class="modal-rodape">
+      <button class="btn" onclick="fecharModal()">Cancelar</button>
+      <button class="btn btn-primary" onclick="confirmarDistribuirMoedas()">🪙 Distribuir</button>
+    </div>`);
+}
+
+async function confirmarDistribuirMoedas() {
+  const empId = document.getElementById('moeda-emp-sel')?.value;
+  const quantidade = Number(document.getElementById('moeda-qtd')?.value) || 1;
+  const motivo = (document.getElementById('moeda-motivo')?.value || '').trim();
+  if (!empId) return toast('Selecione um colaborador.', 'erro');
+  if (!motivo) return toast('Informe o motivo.', 'erro');
+  try {
+    const r = await api(`/api/colaboradores/${empId}/moedas`, { method: 'POST', body: { quantidade, motivo } });
+    fecharModal();
+    toast(`${quantidade} moeda(s) distribuída(s)! Total: ${r.moedasTotal}`, 'ok');
+    carregarMoedasRanking();
+  } catch (err) { toast(err.message, 'erro'); }
+}
+
+/* Estrutura colab */
+let _estruturaColabData = null;
+
+async function carregarEstruturaColab() {
+  const el = document.getElementById('cview-estrutura-conteudo');
+  if (!el) return;
+  el.innerHTML = '<p class="hint" style="padding:20px;text-align:center">Carregando...</p>';
+  try {
+    _estruturaColabData = await api('/api/estrutura');
+    filtrarEstruturaColab();
+    carregarEstruturaCardHome(_estruturaColabData);
+  } catch (err) { el.innerHTML = '<p class="hint" style="padding:20px">Erro ao carregar estrutura.</p>'; }
+}
+
+function filtrarEstruturaColab() {
+  const el = document.getElementById('cview-estrutura-conteudo');
+  if (!el || !_estruturaColabData) return;
+  const busca = (document.getElementById('cestr-busca')?.value || '').toLowerCase();
+  const d = _estruturaColabData;
+
+  const renderGrupo = (titulo, emoji, lista) => {
+    if (!lista || !lista.length) return '';
+    const filtrada = busca ? lista.filter(e => e.nome.toLowerCase().includes(busca) || (e.funcao || '').toLowerCase().includes(busca)) : lista;
+    if (!filtrada.length) return '';
+    return `<div style="margin-bottom:16px">
+      <h4 style="margin:0 0 8px;color:var(--azul)">${emoji} ${titulo}</h4>
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:8px">
+        ${filtrada.map(e => `
+          <div class="qeq-card" style="cursor:pointer" onclick="abrirCarteirinha(${e.id})">
+            <div class="qeq-avatar">${(e.nome || '?')[0].toUpperCase()}</div>
+            <div class="qeq-info">
+              <div class="qeq-nome">${esc(e.nome)}</div>
+              <div class="qeq-funcao">${esc(e.funcao || '')}${e.setor ? ' — ' + esc(e.setor) : ''}</div>
+              ${e.telefone ? `<div class="hint" style="font-size:11px">📞 ${esc(e.telefone)}</div>` : ''}
+            </div>
+          </div>`).join('')}
+      </div>
+    </div>`;
+  };
+
+  const allMembros = [
+    ...(d.sesmt || []).map(e => ({ ...e, grupo: 'SESMT' })),
+    ...(d.cipa?.todos || []).map(e => ({ ...e, grupo: 'CIPA' })),
+    ...(d.brigada?.todos || []).map(e => ({ ...e, grupo: 'Brigada' })),
+    ...(d.tecnico_seguranca || []).map(e => ({ ...e, grupo: 'Técnico de Segurança' })),
+    ...(d.medico_trabalho || []).map(e => ({ ...e, grupo: 'Médico do Trabalho' })),
+    ...(d.ergonomista || []).map(e => ({ ...e, grupo: 'Ergonomista' })),
+  ];
+
+  if (!allMembros.length) {
+    el.innerHTML = '<p class="hint" style="padding:24px;text-align:center">A estrutura de segurança ainda não foi configurada.</p>';
+    return;
+  }
+
+  el.innerHTML = `
+    ${renderGrupo('SESMT', '🦺', d.sesmt)}
+    ${renderGrupo('CIPA', '⚠️', d.cipa?.todos)}
+    ${renderGrupo('Brigada de Emergência', '🚒', d.brigada?.todos)}
+    ${renderGrupo('Técnico de Segurança', '🔧', d.tecnico_seguranca)}
+    ${renderGrupo('Médico do Trabalho', '🩺', d.medico_trabalho)}
+    ${renderGrupo('Ergonomista', '🪑', d.ergonomista)}
+  `;
+}
+
+/* ── SafePoint 3.0 — Insights (gestor) ── */
+
+async function carregarInsights() {
+  const el = document.getElementById('insights-conteudo');
+  if (!el) return;
+  el.innerHTML = '<p class="hint" style="padding:24px;text-align:center">Carregando insights...</p>';
+  try {
+    const d = await api('/api/insights');
+    const DIAS = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sab'];
+    const maxHeat = Math.max(...d.heatMapDiaSemana, 1);
+    el.innerHTML = `
+      <div class="cards" style="margin-bottom:18px">
+        <div class="card-stat" style="border-top:3px solid var(--azul)">
+          <div class="card-stat-n">${d.ics?.ics ?? 0}<span style="font-size:16px">%</span></div>
+          <div class="card-stat-l">ICS — Cultura de Segurança <span style="font-weight:700;color:var(--verde)">${d.ics?.nota ?? 'E'}</span></div>
+        </div>
+        <div class="card-stat" style="border-top:3px solid #7b5ea7">
+          <div class="card-stat-n">${d.knowledgeScore?.score ?? 0}<span style="font-size:16px">%</span></div>
+          <div class="card-stat-l">Score de Conhecimento</div>
+        </div>
+        <div class="card-stat" style="border-top:3px solid var(--laranja)">
+          <div class="card-stat-n">${d.txParticipacao30d ?? 0}<span style="font-size:16px">%</span></div>
+          <div class="card-stat-l">Participação (30 dias)</div>
+        </div>
+        <div class="card-stat" style="border-top:3px solid #10b981">
+          <div class="card-stat-n">${d.txObsResolvidas ?? 0}<span style="font-size:16px">%</span></div>
+          <div class="card-stat-l">Observações Resolvidas</div>
+        </div>
+        <div class="card-stat" style="border-top:3px solid #f59e0b">
+          <div class="card-stat-n">${d.streakMedio ?? 0}</div>
+          <div class="card-stat-l">Streak Médio (dias)</div>
+        </div>
+      </div>
+
+      <div class="grid-2" style="margin-bottom:18px">
+        <div class="panel">
+          <h3>📅 Engajamento por Dia da Semana</h3>
+          <p class="hint" style="margin-bottom:10px">Check-ins dos últimos 60 dias</p>
+          <div style="display:flex;gap:6px;align-items:flex-end;height:80px">
+            ${d.heatMapDiaSemana.map((v, i) => `
+              <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:4px">
+                <div style="width:100%;background:var(--azul);opacity:${0.2 + 0.8 * (v / maxHeat)};border-radius:4px;height:${Math.max(4, Math.round((v / maxHeat) * 60))}px" title="${v} check-ins"></div>
+                <div style="font-size:10px;color:#637080">${DIAS[i]}</div>
+              </div>`).join('')}
+          </div>
+        </div>
+        <div class="panel">
+          <h3>🏆 Top 5 Engajamento</h3>
+          <table class="tabela">
+            <thead><tr><th>#</th><th>Nome</th><th>IES</th><th>Pontos</th></tr></thead>
+            <tbody>${(d.top5Engajamento || []).map((e, i) => `
+              <tr>
+                <td>${i + 1}</td>
+                <td>${esc(e.nome)}<div class="hint" style="font-size:11px">${esc(e.setor || '')}</div></td>
+                <td style="font-weight:700;color:var(--azul)">${e.ies}</td>
+                <td>${(e.pontos || 0).toLocaleString('pt-BR')}</td>
+              </tr>`).join('')}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="grid-2" style="margin-bottom:18px">
+        <div class="panel">
+          <h3>📊 Dimensões do ICS</h3>
+          ${Object.entries(d.ics?.dimensoes || {}).map(([k, v]) => `
+            <div style="margin-bottom:8px">
+              <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:3px">
+                <span>${k.charAt(0).toUpperCase() + k.slice(1)}</span>
+                <span style="font-weight:600">${v}%</span>
+              </div>
+              <div style="background:#e5e7eb;border-radius:4px;height:8px">
+                <div style="background:${v >= 80 ? 'var(--verde)' : v >= 60 ? '#f59e0b' : '#ef4444'};width:${v}%;height:8px;border-radius:4px"></div>
+              </div>
+            </div>`).join('')}
+        </div>
+        <div class="panel">
+          <h3>📈 Totais Gerais</h3>
+          <table class="tabela">
+            ${Object.entries(d.totais || {}).map(([k, v]) => `
+              <tr>
+                <td>${k.charAt(0).toUpperCase() + k.slice(1)}</td>
+                <td style="font-weight:700">${v.toLocaleString('pt-BR')}</td>
+              </tr>`).join('')}
+          </table>
+          ${d.setorCritico ? `<p style="margin-top:12px;padding:10px;background:#fef2f2;border-radius:6px;font-size:13px">⚠️ Setor com mais obs. críticas: <strong>${esc(d.setorCritico[0])}</strong> (${d.setorCritico[1]})</p>` : ''}
+        </div>
+      </div>`;
+  } catch (err) { el.innerHTML = `<p class="hint" style="padding:24px">Erro ao carregar insights: ${esc(err.message)}</p>`; }
+}
+
+/* ── SafePoint 3.0 — IA SST (gestor) ── */
+
+let _iaHistory = [];
+
+function carregarIAView() {
+  const el = document.getElementById('ia-chat-area');
+  if (!el) return;
+  if (_iaHistory.length) return; // already loaded
+  _iaHistory = [];
+  el.innerHTML = `
+    <div class="ia-welcome" style="text-align:center;padding:32px 16px">
+      <div style="font-size:48px;margin-bottom:12px">🤖</div>
+      <h3>Assistente IA de SST</h3>
+      <p class="hint" style="margin-bottom:18px">Tire dúvidas sobre NRs, CIPA, Brigada, APR, PCMSO, PGR e muito mais.</p>
+      <div style="display:flex;flex-wrap:wrap;gap:8px;justify-content:center">
+        ${['O que é a NR-5?','Como formar a CIPA?','Quais são as funções da Brigada?','O que deve conter um PCMSO?'].map(s => `<button class="btn btn-sm" onclick="iaEnviarSugestao('${s}')">${s}</button>`).join('')}
+      </div>
+    </div>
+    <div id="ia-msgs" style="min-height:200px;padding:0 0 80px"></div>`;
+}
+
+function iaEnviarSugestao(msg) {
+  const input = document.getElementById('ia-input');
+  if (input) { input.value = msg; iaEnviar(); }
+}
+
+async function iaEnviar() {
+  const input = document.getElementById('ia-input');
+  const msg = (input?.value || '').trim();
+  if (!msg) return;
+  if (input) input.value = '';
+  const msgsEl = document.getElementById('ia-msgs');
+  if (!msgsEl) return;
+
+  // Hide welcome
+  const welcome = document.querySelector('.ia-welcome');
+  if (welcome) welcome.style.display = 'none';
+
+  _iaHistory.push({ role: 'user', content: msg });
+  msgsEl.innerHTML += `<div class="ia-msg ia-user"><div class="ia-bubble">${esc(msg)}</div></div>`;
+  msgsEl.innerHTML += `<div class="ia-msg ia-bot ia-loading"><div class="ia-bubble">💭 Pensando...</div></div>`;
+  msgsEl.scrollTop = msgsEl.scrollHeight;
+
+  try {
+    const r = await api('/api/ia/chat', { method: 'POST', body: { message: msg, history: _iaHistory.slice(-8) } });
+    _iaHistory.push({ role: 'assistant', content: r.resposta });
+    const loading = msgsEl.querySelector('.ia-loading');
+    if (loading) loading.outerHTML = `<div class="ia-msg ia-bot"><div class="ia-bubble">${r.resposta.replace(/\n/g, '<br>')}</div></div>`;
+  } catch (err) {
+    const loading = msgsEl.querySelector('.ia-loading');
+    if (loading) loading.outerHTML = `<div class="ia-msg ia-bot"><div class="ia-bubble" style="color:#dc2626">Erro: ${esc(err.message)}</div></div>`;
+  }
+  msgsEl.scrollTop = msgsEl.scrollHeight;
+}
+
+/* ── SafePoint 3.0 — Academia SST (gestor) ── */
+
+let _academiaGestorList = [];
+
+async function carregarAcademiaGestor() {
+  const el = document.getElementById('academia-gestor-lista');
+  if (!el) return;
+  try {
+    _academiaGestorList = await api('/api/academia');
+    renderAcademiaGestor();
+  } catch (err) { el.innerHTML = '<p class="hint" style="padding:20px">Erro ao carregar.</p>'; }
+}
+
+function renderAcademiaGestor() {
+  const el = document.getElementById('academia-gestor-lista');
+  if (!el) return;
+  const busca = (document.getElementById('academia-busca-g')?.value || '').toLowerCase();
+  const cat = document.getElementById('academia-cat-g')?.value || '';
+  let lista = _academiaGestorList;
+  if (busca) lista = lista.filter(a => a.titulo.toLowerCase().includes(busca) || (a.conteudo || '').toLowerCase().includes(busca));
+  if (cat) lista = lista.filter(a => a.categoria === cat);
+  if (!lista.length) { el.innerHTML = '<p class="hint" style="padding:20px;text-align:center">Nenhum conteúdo publicado ainda. Clique em "+ Novo Conteúdo" para adicionar.</p>'; return; }
+  const tipoEmoji = { artigo: '📄', video: '🎬', pdf: '📋', infografico: '📊' };
+  el.innerHTML = `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px">
+    ${lista.map(a => `
+      <div class="panel">
+        <div style="display:flex;justify-content:space-between;margin-bottom:8px">
+          <span style="font-size:20px">${tipoEmoji[a.tipo] || '📄'}</span>
+          <button class="btn btn-sm btn-perigo" onclick="excluirAcademia(${a.id})">✕</button>
+        </div>
+        <div style="font-weight:700;margin-bottom:4px">${esc(a.titulo)}</div>
+        <div class="hint" style="font-size:11px;margin-bottom:6px">${esc(a.categoria)} • ${esc(a.autor || 'SESMT')}</div>
+        <div style="font-size:13px;color:#637080;line-height:1.5">${esc((a.conteudo || '').slice(0, 120))}${a.conteudo && a.conteudo.length > 120 ? '...' : ''}</div>
+        ${a.url ? `<a href="${esc(a.url)}" target="_blank" class="btn btn-sm" style="margin-top:8px;display:inline-block">Abrir link</a>` : ''}
+      </div>`).join('')}
+  </div>`;
+}
+
+function abrirNovoConteudoAcademia() {
+  const CATS = ['NR Geral','EPI','Ergonomia','Primeiros Socorros','Incêndio','Procedimentos','CIPA','Brigada','Legislação','Outros'];
+  abrirModal('+ Novo Conteúdo da Academia', `
+    <label>Título *</label>
+    <input type="text" id="acad-titulo" placeholder="Título do conteúdo">
+    <label style="margin-top:10px">Tipo</label>
+    <select id="acad-tipo">
+      <option value="artigo">📄 Artigo / Texto</option>
+      <option value="video">🎬 Vídeo</option>
+      <option value="pdf">📋 PDF / Documento</option>
+      <option value="infografico">📊 Infográfico</option>
+    </select>
+    <label style="margin-top:10px">Categoria</label>
+    <select id="acad-cat">
+      ${CATS.map(c => `<option>${esc(c)}</option>`).join('')}
+    </select>
+    <label style="margin-top:10px">Autor</label>
+    <input type="text" id="acad-autor" placeholder="Ex.: Técnico de Segurança">
+    <label style="margin-top:10px">URL (link externo)</label>
+    <input type="url" id="acad-url" placeholder="https://...">
+    <label style="margin-top:10px">Conteúdo / Descrição *</label>
+    <textarea id="acad-conteudo" style="min-height:100px" placeholder="Descreva o conteúdo..."></textarea>
+    <div class="modal-rodape">
+      <button class="btn" onclick="fecharModal()">Cancelar</button>
+      <button class="btn btn-primary" onclick="salvarConteudoAcademia()">Publicar</button>
+    </div>`);
+}
+
+async function salvarConteudoAcademia() {
+  const titulo = (document.getElementById('acad-titulo')?.value || '').trim();
+  const conteudo = (document.getElementById('acad-conteudo')?.value || '').trim();
+  if (!titulo || !conteudo) return toast('Título e conteúdo são obrigatórios.', 'erro');
+  try {
+    await api('/api/academia', { method: 'POST', body: {
+      titulo, conteudo,
+      tipo: document.getElementById('acad-tipo')?.value || 'artigo',
+      categoria: document.getElementById('acad-cat')?.value || 'Outros',
+      autor: document.getElementById('acad-autor')?.value || '',
+      url: document.getElementById('acad-url')?.value || ''
+    }});
+    fecharModal();
+    toast('Conteúdo publicado!', 'ok');
+    await carregarAcademiaGestor();
+  } catch (err) { toast(err.message, 'erro'); }
+}
+
+async function excluirAcademia(id) {
+  if (!confirm('Excluir este conteúdo?')) return;
+  try {
+    await api(`/api/academia/${id}`, { method: 'DELETE' });
+    toast('Conteúdo excluído.', 'ok');
+    await carregarAcademiaGestor();
+  } catch (err) { toast(err.message, 'erro'); }
+}
+
+/* ── SafePoint 3.0 — Academia SST (colaborador) ── */
+
+async function carregarAcademiaColab() {
+  const el = document.getElementById('academia-colab-lista');
+  if (!el) return;
+  el.innerHTML = '<p class="hint" style="padding:20px;text-align:center">Carregando...</p>';
+  try {
+    const lista = await api('/api/academia');
+    if (!lista.length) { el.innerHTML = '<p class="hint" style="padding:24px;text-align:center">Nenhum conteúdo disponível ainda.</p>'; return; }
+    const tipoEmoji = { artigo: '📄', video: '🎬', pdf: '📋', infografico: '📊' };
+    el.innerHTML = `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px">
+      ${lista.map(a => `
+        <div class="panel" style="cursor:default">
+          <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px">
+            <span style="font-size:24px">${tipoEmoji[a.tipo] || '📄'}</span>
+            <div>
+              <div style="font-weight:700;font-size:14px">${esc(a.titulo)}</div>
+              <div class="hint" style="font-size:11px">${esc(a.categoria)} • ${esc(a.autor || 'SESMT')}</div>
+            </div>
+          </div>
+          <div style="font-size:13px;color:#374151;line-height:1.6;margin-bottom:8px">${esc((a.conteudo || '').slice(0, 200))}${a.conteudo && a.conteudo.length > 200 ? '...' : ''}</div>
+          ${a.url ? `<a href="${esc(a.url)}" target="_blank" class="btn btn-sm btn-primary">Acessar conteúdo →</a>` : ''}
+        </div>`).join('')}
+    </div>`;
+  } catch (err) { el.innerHTML = '<p class="hint" style="padding:20px">Erro ao carregar academia.</p>'; }
+}
+
+/* ── SafePoint 3.0 — Eleição CIPA (colaborador) ── */
+
+async function carregarEleicaoColab() {
+  const el = document.getElementById('eleicao-colab-conteudo');
+  if (!el) return;
+  el.innerHTML = '<p class="hint" style="padding:20px;text-align:center">Carregando...</p>';
+  try {
+    const { eleicao } = await api('/api/cipa/eleicao');
+    if (!eleicao) {
+      el.innerHTML = `<div class="panel" style="text-align:center;padding:32px">
+        <div style="font-size:48px;margin-bottom:12px">🗳</div>
+        <h3>Nenhuma eleição ativa</h3>
+        <p class="hint">Quando o SESMT criar uma eleição da CIPA, ela aparecerá aqui.</p>
+      </div>`;
+      return;
+    }
+    if (eleicao.jaVotou) {
+      el.innerHTML = `<div class="panel" style="text-align:center;padding:32px">
+        <div style="font-size:48px;margin-bottom:12px">✅</div>
+        <h3>Você já votou!</h3>
+        <p class="hint">Obrigado pela participação. Você ganhou +10 pontos.</p>
+        <p style="margin-top:10px;font-size:13px">${esc(eleicao.titulo)}</p>
+      </div>`;
+      return;
+    }
+    el.innerHTML = `<div class="panel">
+      <h3 style="margin-bottom:4px">🗳 ${esc(eleicao.titulo)}</h3>
+      <p class="hint" style="margin-bottom:16px">${esc(eleicao.descricao || 'Eleja o representante da CIPA.')}</p>
+      <p class="hint" style="margin-bottom:14px">Vagas disponíveis: <strong>${eleicao.vagas}</strong> • Sua participação vale <strong>+10 pontos</strong>!</p>
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px">
+        ${(eleicao.candidatos || []).map(c => `
+          <button class="panel" style="cursor:pointer;text-align:center;padding:18px;border:2px solid var(--cinza-borda);background:#fff;transition:border-color .2s"
+            onmouseover="this.style.borderColor='var(--azul)'" onmouseout="this.style.borderColor='var(--cinza-borda)'"
+            onclick="votar(${c.id})">
+            <div style="font-size:36px;margin-bottom:8px">👤</div>
+            <div style="font-weight:700;font-size:15px">${esc(c.nome)}</div>
+            <div class="hint" style="font-size:12px">${esc(c.funcao || '')}</div>
+            <div class="btn btn-primary" style="margin-top:12px;display:inline-block;pointer-events:none">Votar</div>
+          </button>`).join('')}
+      </div>
+    </div>`;
+  } catch (err) { el.innerHTML = '<p class="hint" style="padding:20px">Erro ao carregar eleição.</p>'; }
+}
+
+async function votar(candidatoId) {
+  if (!confirm('Confirmar voto? Esta ação não pode ser desfeita.')) return;
+  try {
+    const r = await api('/api/cipa/eleicao/votar', { method: 'POST', body: { candidatoId } });
+    toast(`Voto registrado! +${r.pontos} pontos`, 'ok');
+    await carregarEleicaoColab();
+  } catch (err) { toast(err.message, 'erro'); }
+}
+
+/* ── SafePoint 3.2 – Submódulos ── */
+
+const SUBMODULO_LABELS = {
+  dashboard:    { visao_geral:'Visão Geral', indicadores:'Indicadores', alertas:'Alertas', score:'Score da Empresa', insights_ia:'Insights IA' },
+  pessoas:      { cadastro:'Cadastro Individual', importacao:'Importação em Massa', estrutura:'Estrutura Org.', setores:'Setores', equipes:'Equipes', senhas:'Gestão de Senhas', acesso:'Controle de Acesso' },
+  aprendizagem: { dds:'DDS', dds_battle:'DDS Battle', treinamentos:'Treinamentos', flashcards:'Flashcards', certificados:'Certificados', simulador:'Simulador de Cenários', academia:'Academia SST', trilhas:'Trilhas de Aprendizagem' },
+  cultura:      { feed:'Feed Social', reconhecimentos:'Reconhecimentos', ranking:'Ranking', loja:'Loja', missoes:'Missões', campanhas:'Campanhas', moedas:'Moedas SafePoint' },
+  seguranca_op: { observacoes:'Observações', ato_inseguro:'Ato Inseguro', condicao_insegura:'Condição Insegura', quase_acidente:'Quase Acidente', boa_pratica:'Boa Prática', melhoria:'Oportunidade de Melhoria', plano_acao:'Plano de Ação', workflow:'Workflow' },
+  comunicacao:  { comunicados:'Comunicados', pesquisas:'Pesquisas', podcast:'Podcast', mensagens:'Mensagens Diretas' },
+  cipa:         { estrutura:'Estrutura', integrantes:'Integrantes', mandatos:'Mandatos', reunioes:'Reuniões', eleicao:'Eleição Digital', inspecoes:'Inspeções' },
+  brigada:      { estrutura:'Estrutura', brigadistas:'Brigadistas', simulados:'Simulados', certificacoes:'Certificações', plano_emergencia:'Plano de Emergência', mapa:'Mapa de Emergência' },
+  relatorios:   { dds:'Relatório DDS', treinamentos:'Relatório Treinamentos', quiz:'Relatório Quiz', engajamento:'Relatório Engajamento', exportacoes:'Exportações' },
+  ia_insights:  { assistente:'Assistente SST', insights:'SafePoint Insights', mapa_calor:'Mapa de Calor', predicoes:'Predições e Recomendações' },
+};
+
+const MODULO_NOMES = {
+  dashboard:'Dashboard', pessoas:'Gestão de Pessoas', aprendizagem:'Aprendizagem',
+  cultura:'Cultura e Engajamento', seguranca_op:'Segurança Operacional',
+  comunicacao:'Comunicação', cipa:'CIPA', brigada:'Brigada de Emergência',
+  relatorios:'Relatórios', ia_insights:'IA e Insights',
+};
+
+const PERMISSION_LABELS = {
+  criar_dds:'Criar DDS', editar_dds:'Editar DDS', excluir_dds:'Excluir DDS',
+  criar_quiz:'Criar Quiz', gerenciar_pontos:'Gerenciar Pontos',
+  gerenciar_reconhecimentos:'Gerenciar Reconhecimentos', criar_campanhas:'Criar Campanhas',
+  gerenciar_usuarios:'Gerenciar Usuários', alterar_senhas:'Alterar Senhas',
+  gerenciar_cipa:'Gerenciar CIPA', gerenciar_brigada:'Gerenciar Brigada',
+  visualizar_auditoria:'Visualizar Auditoria', exportar_relatorios:'Exportar Relatórios',
+  gerenciar_modulos:'Gerenciar Módulos',
+};
+
+const PERFIL_NOMES = {
+  sesmt:'SESMT', cipa:'CIPA', brigada:'Brigada', lideranca:'Liderança', colaborador:'Colaborador',
+};
+
+let _submodulosData = null;
+
+async function carregarSubmodulos() {
+  const el = document.getElementById('submodulos-conteudo');
+  if (!el) return;
+  try {
+    const resp = await api('/api/empresa/submodulos');
+    const data = resp.submodulos || resp;
+    _submodulosData = data;
+    let html = '';
+    for (const [mod, subs] of Object.entries(SUBMODULO_LABELS)) {
+      const modSubs = data[mod] || {};
+      html += `<div class="submod-section panel" style="margin-bottom:14px">
+        <div class="submod-section-header"><strong>${MODULO_NOMES[mod] || mod}</strong></div>
+        <div class="submod-grid">`;
+      for (const [key, label] of Object.entries(subs)) {
+        const checked = modSubs[key] ? 'checked' : '';
+        html += `<label class="submod-item">
+          <input type="checkbox" data-mod="${mod}" data-sub="${key}" ${checked}>
+          <span>${label}</span>
+        </label>`;
+      }
+      html += `</div></div>`;
+    }
+    el.innerHTML = html;
+  } catch (err) { el.innerHTML = `<p class="hint">Erro ao carregar submódulos: ${esc(err.message)}</p>`; }
+}
+
+async function salvarSubmodulos() {
+  const checks = document.querySelectorAll('#submodulos-conteudo input[type=checkbox]');
+  const submodulos = {};
+  checks.forEach(cb => {
+    const mod = cb.dataset.mod, sub = cb.dataset.sub;
+    if (!submodulos[mod]) submodulos[mod] = {};
+    submodulos[mod][sub] = cb.checked;
+  });
+  try {
+    await api('/api/empresa/submodulos', { method: 'POST', body: { submodulos } });
+    toast('Configuração de submódulos salva!', 'ok');
+  } catch (err) { toast(err.message, 'erro'); }
+}
+
+/* ── SafePoint 3.2 – Permissões ── */
+
+let _permissoesData = null;
+
+async function carregarPermissoes() {
+  const el = document.getElementById('permissoes-conteudo');
+  if (!el) return;
+  try {
+    const resp = await api('/api/empresa/permissoes');
+    const data = resp.permissoes || resp;
+    _permissoesData = data;
+    const perfis = Object.keys(PERFIL_NOMES);
+    const perms  = Object.keys(PERMISSION_LABELS);
+    let html = `<div style="overflow-x:auto"><table class="perm-matrix tabela">
+      <thead><tr><th>Permissão</th>${perfis.map(p => `<th>${PERFIL_NOMES[p]}</th>`).join('')}</tr></thead>
+      <tbody>`;
+    for (const perm of perms) {
+      html += `<tr><td>${PERMISSION_LABELS[perm]}</td>`;
+      for (const perfil of perfis) {
+        const checked = (data[perfil] && data[perfil][perm]) ? 'checked' : '';
+        html += `<td style="text-align:center"><input type="checkbox" data-perfil="${perfil}" data-perm="${perm}" ${checked}></td>`;
+      }
+      html += `</tr>`;
+    }
+    html += `</tbody></table></div>`;
+    el.innerHTML = html;
+  } catch (err) { el.innerHTML = `<p class="hint">Erro ao carregar permissões: ${esc(err.message)}</p>`; }
+}
+
+async function salvarPermissoes() {
+  const checks = document.querySelectorAll('#permissoes-conteudo input[type=checkbox]');
+  const permissoes = {};
+  checks.forEach(cb => {
+    const perfil = cb.dataset.perfil, perm = cb.dataset.perm;
+    if (!permissoes[perfil]) permissoes[perfil] = {};
+    permissoes[perfil][perm] = cb.checked;
+  });
+  try {
+    await api('/api/empresa/permissoes', { method: 'POST', body: { permissoes } });
+    toast('Matriz de permissões salva!', 'ok');
+  } catch (err) { toast(err.message, 'erro'); }
+}
+
+/* ── SafePoint 3.2 – Governance ── */
+
+async function carregarGovernance() {
+  const el = document.getElementById('governance-conteudo');
+  if (!el) return;
+  try {
+    const g = await api('/api/governance');
+    const barColor = g.score >= 80 ? '#1a8a4c' : g.score >= 60 ? '#e8801a' : '#d32f2f';
+    const comps = g.components || {};
+    const compRows = [
+      { label: 'Permissões configuradas', key: 'permissoes', icon: '🔐' },
+      { label: 'Dados da empresa',        key: 'configuracao', icon: '🏢' },
+      { label: 'Eventos críticos (48h)',  key: 'eventos_criticos', icon: '🚨' },
+      { label: 'Engajamento (30 dias)',   key: 'engajamento', icon: '📊' },
+    ].map(c => {
+      const v = comps[c.key] ?? 0;
+      const col = v >= 80 ? '#1a8a4c' : v >= 60 ? '#e8801a' : '#d32f2f';
+      return `<div class="gov-comp-row">
+        <span class="gov-comp-label">${c.icon} ${c.label}</span>
+        <div class="gov-comp-bar-wrap">
+          <div class="gov-comp-bar" style="width:${v}%;background:${col}"></div>
+        </div>
+        <span class="gov-comp-val">${v}</span>
+      </div>`;
+    }).join('');
+    el.innerHTML = `
+      <div class="gov-score-card panel" style="text-align:center;padding:32px 24px;margin-bottom:20px">
+        <div style="font-size:64px;line-height:1">${g.gradeEmoji}</div>
+        <div style="font-size:52px;font-weight:900;color:${barColor};margin:8px 0">${g.score}</div>
+        <div style="font-size:18px;font-weight:600;color:#374151">${g.grade}</div>
+        <div class="hint" style="margin-top:6px">Score de Governança SafePoint</div>
+      </div>
+      <div class="panel">
+        <h3 style="margin-bottom:14px">Componentes do Score</h3>
+        <div class="gov-comps">${compRows}</div>
+        <div class="hint" style="margin-top:14px">
+          Colaboradores ativos (30d): <strong>${g.totalAtivos || 0}</strong> / ${g.totalEmps || 0} &nbsp;|&nbsp;
+          Eventos críticos (48h): <strong>${g.totalCriticos || 0}</strong>
+        </div>
+      </div>`;
+  } catch (err) { el.innerHTML = `<p class="hint">Erro ao carregar governança: ${esc(err.message)}</p>`; }
+}
+
+/* ── SafePoint 3.2 – Auditoria Avançada ── */
+
+let _auditAvancadaData = [];
+
+async function carregarAuditAvancada() {
+  const el = document.getElementById('audit-avancada-lista');
+  if (!el) return;
+  const de  = (document.getElementById('audit-f-de')  || {}).value || '';
+  const ate = (document.getElementById('audit-f-ate') || {}).value || '';
+  const params = new URLSearchParams();
+  if (de)  params.set('de',  de);
+  if (ate) params.set('ate', ate);
+  try {
+    el.innerHTML = '<p class="hint">Carregando...</p>';
+    const data = await api('/api/auditlog/avancado?' + params.toString());
+    _auditAvancadaData = Array.isArray(data) ? data : (data.logs || []);
+    filtrarAuditAvancada();
+  } catch (err) { el.innerHTML = `<p class="hint">Erro: ${esc(err.message)}</p>`; }
+}
+
+function filtrarAuditAvancada() {
+  const el = document.getElementById('audit-avancada-lista');
+  if (!el) return;
+  const busca  = ((document.getElementById('audit-f-usuario') || {}).value || '').toLowerCase();
+  const acao   = ((document.getElementById('audit-f-acao')    || {}).value || '').toLowerCase();
+  const critico= (document.getElementById('audit-so-critico') || {}).checked;
+  let logs = _auditAvancadaData;
+  if (busca)  logs = logs.filter(l => (l.userName || l.userId || '').toLowerCase().includes(busca));
+  if (acao)   logs = logs.filter(l => (l.acao || '').toLowerCase().includes(acao));
+  if (critico) logs = logs.filter(l => l.critico);
+  if (!logs.length) { el.innerHTML = '<p class="hint" style="padding:20px">Nenhum registro encontrado.</p>'; return; }
+  el.innerHTML = `<div class="audit-timeline">${logs.map(l => {
+    const dt = new Date(l.timestamp).toLocaleString('pt-BR');
+    const badge = l.critico ? '<span class="badge badge-perigo" style="font-size:10px">CRÍTICO 🚨</span>' : '';
+    const before = l.valorAntes !== null && l.valorAntes !== undefined
+      ? `<div class="audit-diff"><span class="audit-antes">${esc(String(l.valorAntes))}</span> → <span class="audit-depois">${esc(String(l.valorDepois))}</span></div>` : '';
+    const meta = [l.modulo, l.submodulo].filter(Boolean).join(' › ');
+    return `<div class="audit-entry${l.critico ? ' audit-critico' : ''}">
+      <div class="audit-dot"></div>
+      <div class="audit-body">
+        <div class="audit-head-row">
+          <strong>${esc(l.acao)}</strong> ${badge}
+          <span class="audit-time">${dt}</span>
+        </div>
+        ${meta ? `<div class="hint" style="font-size:11px;margin-top:2px">📂 ${esc(meta)}</div>` : ''}
+        <div style="font-size:12px;color:#6b7280;margin-top:3px">
+          ${l.nomeUsuario || l.userName || `ID ${l.userId}`} · ${esc(l.role || '')}
+          ${l.ip ? ` · 🌐 ${esc(l.ip)}` : ''}
+          ${l.dispositivo ? ` · 📱 ${esc(l.dispositivo)}` : ''}
+        </div>
+        ${l.detalhes ? `<div style="font-size:12px;margin-top:4px;color:#374151">${esc(l.detalhes)}</div>` : ''}
+        ${before}
+      </div>
+    </div>`;
+  }).join('')}</div>`;
 }
 
 /* ── Boot ── */

@@ -91,25 +91,10 @@
 <div id="app-gestor" class="hidden">
   <header class="topbar">
     <div class="topbar-brand">
+      <button class="topbar-menu-btn" onclick="toggleSidebar('gestor')" title="Menu">☰</button>
       <img src="/logo-icon.svg" alt="SafePoint" class="topbar-logo-icon">
       <span id="empresa-logo-wrap"></span>
     </div>
-    <nav class="topbar-nav">
-      <button data-view="dashboard"      class="nav-btn active" onclick="navegar('dashboard')">Painel</button>
-      <button data-view="eventos"        class="nav-btn"        onclick="navegar('eventos')">Atividades</button>
-      <button data-view="colaboradores"  class="nav-btn"        onclick="navegar('colaboradores')">Colaboradores</button>
-      <button data-view="comunicados"     class="nav-btn"        onclick="navegar('comunicados')">📢 Comunicados</button>
-      <button data-view="quiz-gestor"    class="nav-btn"        onclick="navegar('quiz-gestor')">🧠 Aprendizado</button>
-      <button data-view="observacoes"    class="nav-btn"        onclick="navegar('observacoes')">Observações</button>
-      <button data-view="sugestoes"      class="nav-btn"        onclick="navegar('sugestoes')">Sugestões</button>
-      <button data-view="ranking"        class="nav-btn"        onclick="navegar('ranking')">Ranking</button>
-      <button data-view="engajamento"    class="nav-btn"        onclick="navegar('engajamento')">🎯 Engajamento</button>
-      <button data-view="pesquisas-gestor" class="nav-btn"      onclick="navegar('pesquisas-gestor')">📋 Pesquisas</button>
-      <button data-view="quem-e-quem"    class="nav-btn"        onclick="navegar('quem-e-quem')">👥 Quem é Quem</button>
-      <button data-view="roles"          class="nav-btn"        onclick="navegar('roles')">🏅 Papéis</button>
-      <button data-view="estrutura"      class="nav-btn"        onclick="navegar('estrutura')">🛡 Estrutura</button>
-      <button data-view="config"         class="nav-btn"        onclick="navegar('config')">Config</button>
-    </nav>
     <div class="topbar-user">
       <span id="gestor-nome"></span>
       <span id="gestor-empresa-nome" class="topbar-empresa"></span>
@@ -122,7 +107,74 @@
     <button class="btn btn-sm" onclick="sair()" style="margin-left:12px">Encerrar visita</button>
   </div>
 
-  <main class="container">
+  <div class="app-layout">
+
+  <!-- ── Sidebar Gestor ── -->
+  <nav class="sidebar" id="sidebar-gestor">
+    <div class="sidebar-header">
+      <button class="sidebar-toggle" onclick="toggleSidebar('gestor')">☰</button>
+      <span class="sidebar-brand">SAFEPOINT 3.2</span>
+    </div>
+    <div class="sidebar-module-single active" data-view="dashboard" id="sb-g-dashboard" onclick="navegar('dashboard')"><span class="sm-icon">🏠</span><span>Dashboard</span></div>
+    <div class="sidebar-module" id="sbmod-pessoas">
+      <div class="sidebar-module-header" onclick="toggleSbMod('pessoas')"><span class="sm-icon">👥</span><span class="sm-label">Gestão de Pessoas</span><span class="sm-arrow">▶</span></div>
+      <div class="sidebar-items">
+        <div class="sidebar-item" data-view="colaboradores"  onclick="navegar('colaboradores')">Colaboradores</div>
+        <div class="sidebar-item" data-view="quem-e-quem"    onclick="navegar('quem-e-quem')">Quem é Quem</div>
+        <div class="sidebar-item" data-view="roles"          onclick="navegar('roles')">Papéis</div>
+        <div class="sidebar-item" data-view="estrutura"      onclick="navegar('estrutura')">Estrutura Org.</div>
+      </div>
+    </div>
+    <div class="sidebar-module" id="sbmod-aprendizagem">
+      <div class="sidebar-module-header" onclick="toggleSbMod('aprendizagem')"><span class="sm-icon">📚</span><span class="sm-label">Aprendizagem</span><span class="sm-arrow">▶</span></div>
+      <div class="sidebar-items">
+        <div class="sidebar-item" data-view="eventos"     onclick="navegar('eventos')">DDS / Atividades</div>
+        <div class="sidebar-item" data-view="quiz-gestor" onclick="navegar('quiz-gestor')">Central do Conhecimento</div>
+        <div class="sidebar-item" data-view="academia"    onclick="navegar('academia')">Academia SST</div>
+      </div>
+    </div>
+    <div class="sidebar-module" id="sbmod-cultura">
+      <div class="sidebar-module-header" onclick="toggleSbMod('cultura')"><span class="sm-icon">🎯</span><span class="sm-label">Cultura e Engajamento</span><span class="sm-arrow">▶</span></div>
+      <div class="sidebar-items">
+        <div class="sidebar-item" data-view="ranking"     onclick="navegar('ranking')">Ranking</div>
+        <div class="sidebar-item" data-view="engajamento" onclick="navegar('engajamento')">Engajamento</div>
+      </div>
+    </div>
+    <div class="sidebar-module" id="sbmod-seguranca-op">
+      <div class="sidebar-module-header" onclick="toggleSbMod('seguranca-op')"><span class="sm-icon">🔍</span><span class="sm-label">Segurança Operacional</span><span class="sm-arrow">▶</span></div>
+      <div class="sidebar-items">
+        <div class="sidebar-item" data-view="observacoes" onclick="navegar('observacoes')">Observações</div>
+        <div class="sidebar-item" data-view="sugestoes"   onclick="navegar('sugestoes')">Sugestões</div>
+      </div>
+    </div>
+    <div class="sidebar-module" id="sbmod-comunicacao">
+      <div class="sidebar-module-header" onclick="toggleSbMod('comunicacao')"><span class="sm-icon">📢</span><span class="sm-label">Comunicação</span><span class="sm-arrow">▶</span></div>
+      <div class="sidebar-items">
+        <div class="sidebar-item" data-view="comunicados"       onclick="navegar('comunicados')">Comunicados</div>
+        <div class="sidebar-item" data-view="pesquisas-gestor"  onclick="navegar('pesquisas-gestor')">Pesquisas</div>
+      </div>
+    </div>
+    <div class="sidebar-module" id="sbmod-ia-insights">
+      <div class="sidebar-module-header" onclick="toggleSbMod('ia-insights')"><span class="sm-icon">🧠</span><span class="sm-label">IA e Insights</span><span class="sm-arrow">▶</span></div>
+      <div class="sidebar-items">
+        <div class="sidebar-item" data-view="insights" onclick="navegar('insights')">SafePoint Insights</div>
+        <div class="sidebar-item" data-view="ia"       onclick="navegar('ia')">Assistente IA</div>
+      </div>
+    </div>
+    <div class="sidebar-module" id="sbmod-config">
+      <div class="sidebar-module-header" onclick="toggleSbMod('config')"><span class="sm-icon">⚙️</span><span class="sm-label">Configurações</span><span class="sm-arrow">▶</span></div>
+      <div class="sidebar-items">
+        <div class="sidebar-item" data-view="config"     onclick="navegar('config')">Geral</div>
+        <div class="sidebar-item" data-view="submodulos" onclick="navegar('submodulos')">Módulos / Submódulos</div>
+        <div class="sidebar-item" data-view="permissoes" onclick="navegar('permissoes')">Permissões</div>
+        <div class="sidebar-item" data-view="governance" onclick="navegar('governance')">Governança</div>
+        <div class="sidebar-item" data-view="auditoria-avancada" onclick="navegar('auditoria-avancada')">Auditoria Avançada</div>
+      </div>
+    </div>
+  </nav>
+  <div class="sidebar-overlay" id="overlay-gestor" onclick="toggleSidebar('gestor')"></div>
+
+  <main class="main-content">
 
     <!-- Painel -->
     <section id="view-dashboard" class="view">
@@ -527,6 +579,52 @@
       </div>
     </section>
 
+    <!-- Insights 3.0 -->
+    <section id="view-insights" class="view hidden">
+      <div class="view-head" style="margin-bottom:14px">
+        <h2>🧠 Insights de Segurança</h2>
+        <button class="btn" onclick="carregarInsights()">↺ Atualizar</button>
+      </div>
+      <div id="insights-conteudo"></div>
+    </section>
+
+    <!-- IA SST -->
+    <section id="view-ia" class="view hidden">
+      <div class="view-head" style="margin-bottom:14px">
+        <h2>🤖 Assistente IA de SST</h2>
+        <button class="btn btn-sm" onclick="_iaHistory=[];carregarIAView()">🗑 Limpar conversa</button>
+      </div>
+      <p class="hint" style="margin-bottom:14px">Tire dúvidas sobre NRs, CIPA, Brigada, PCMSO, PGR, APR e outros temas de segurança do trabalho.</p>
+      <div class="panel" style="max-width:800px;margin:0 auto">
+        <div id="ia-chat-area" style="max-height:500px;overflow-y:auto;padding:8px"></div>
+        <div style="display:flex;gap:8px;margin-top:10px;padding-top:10px;border-top:1px solid var(--cinza-borda)">
+          <input type="text" id="ia-input" placeholder="Faça sua pergunta sobre SST..." style="flex:1"
+            onkeydown="if(event.key==='Enter')iaEnviar()">
+          <button class="btn btn-primary" onclick="iaEnviar()">Enviar →</button>
+        </div>
+        <p class="hint" style="margin-top:8px;font-size:11px">⚠️ A IA pode cometer erros. Sempre consulte profissionais habilitados para decisões de segurança. Configure a chave da API nas configurações.</p>
+      </div>
+    </section>
+
+    <!-- Academia SST (gestor) -->
+    <section id="view-academia" class="view hidden">
+      <div class="view-head" style="margin-bottom:14px">
+        <h2>🎓 Academia SST</h2>
+        <button class="btn btn-primary" onclick="abrirNovoConteudoAcademia()">+ Novo Conteúdo</button>
+      </div>
+      <p class="hint" style="margin-bottom:14px">Publique artigos, vídeos, PDFs e infográficos de SST para seus colaboradores.</p>
+      <div class="filtros" style="margin-bottom:14px">
+        <input type="text" id="academia-busca-g" placeholder="Buscar por título..." oninput="renderAcademiaGestor()" style="flex:1">
+        <select id="academia-cat-g" onchange="renderAcademiaGestor()">
+          <option value="">Todas as categorias</option>
+          <option>NR Geral</option><option>EPI</option><option>Ergonomia</option>
+          <option>Primeiros Socorros</option><option>Incêndio</option><option>Procedimentos</option>
+          <option>CIPA</option><option>Brigada</option><option>Legislação</option><option>Outros</option>
+        </select>
+      </div>
+      <div id="academia-gestor-lista"></div>
+    </section>
+
     <!-- Config -->
     <section id="view-config" class="view hidden">
       <h2>Configurações</h2>
@@ -595,7 +693,67 @@
       </div>
     </section>
 
+    <!-- Módulos e Submódulos (3.2) -->
+    <section id="view-submodulos" class="view hidden">
+      <div class="view-head" style="margin-bottom:14px">
+        <h2>⚙️ Módulos e Submódulos</h2>
+        <button class="btn btn-primary" onclick="salvarSubmodulos()">Salvar configuração</button>
+      </div>
+      <p class="hint" style="margin-bottom:18px">Ative ou desative recursos específicos para esta empresa. As alterações ficam registradas na auditoria.</p>
+      <div id="submodulos-conteudo"></div>
+    </section>
+
+    <!-- Matriz de Permissões (3.2) -->
+    <section id="view-permissoes" class="view hidden">
+      <div class="view-head" style="margin-bottom:14px">
+        <h2>🔐 Matriz de Permissões</h2>
+        <button class="btn btn-primary" onclick="salvarPermissoes()">Salvar permissões</button>
+      </div>
+      <p class="hint" style="margin-bottom:18px">Defina o que cada perfil pode fazer na plataforma. Alterações ficam registradas na auditoria.</p>
+      <div class="perm-matrix-wrap panel">
+        <div id="permissoes-conteudo"></div>
+      </div>
+    </section>
+
+    <!-- Governança (3.2) -->
+    <section id="view-governance" class="view hidden">
+      <div class="view-head" style="margin-bottom:14px">
+        <h2>🏛 Score de Governança</h2>
+        <button class="btn" onclick="carregarGovernance()">↺ Atualizar</button>
+      </div>
+      <div id="governance-conteudo"></div>
+    </section>
+
+    <!-- Auditoria Avançada (3.2) -->
+    <section id="view-auditoria-avancada" class="view hidden">
+      <div class="view-head" style="margin-bottom:14px">
+        <h2>📋 Auditoria e Rastreabilidade</h2>
+        <label><input type="checkbox" id="audit-so-critico" onchange="filtrarAuditAvancada()"> Somente críticos 🚨</label>
+      </div>
+      <div class="audit-filters">
+        <div class="filtro-grupo">
+          <label>Responsável</label>
+          <input type="text" id="audit-f-usuario" placeholder="Nome..." oninput="filtrarAuditAvancada()" style="width:160px">
+        </div>
+        <div class="filtro-grupo">
+          <label>Ação</label>
+          <input type="text" id="audit-f-acao" placeholder="Ex: bloquear..." oninput="filtrarAuditAvancada()" style="width:160px">
+        </div>
+        <div class="filtro-grupo">
+          <label>De</label>
+          <input type="date" id="audit-f-de" onchange="carregarAuditAvancada()">
+        </div>
+        <div class="filtro-grupo">
+          <label>Até</label>
+          <input type="date" id="audit-f-ate" onchange="carregarAuditAvancada()">
+        </div>
+        <button class="btn btn-primary" onclick="carregarAuditAvancada()">Filtrar</button>
+      </div>
+      <div id="audit-avancada-lista"></div>
+    </section>
+
   </main>
+  </div><!-- /.app-layout -->
 </div>
 
 <!-- ═══════════════ APP COLABORADOR ═══════════════ -->
@@ -605,20 +763,7 @@
       <img src="/logo-icon.svg" alt="SafePoint" class="topbar-logo-icon">
       <span id="colab-logo-wrap"></span>
     </div>
-    <nav class="topbar-nav">
-      <button data-cview="painel"       class="nav-btn active" onclick="navegarColab('painel')">🏠 Início</button>
-      <button data-cview="mural"        class="nav-btn"        onclick="navegarColab('mural')">📣 Mural</button>
-      <button data-cview="comunicados"  class="nav-btn"        onclick="navegarColab('comunicados')">📢 Comunicados</button>
-      <button data-cview="quiz"         class="nav-btn"        onclick="navegarColab('quiz')">🧠 Aprendizado</button>
-      <button data-cview="checkin"      class="nav-btn"        onclick="navegarColab('checkin')">Check-in</button>
-      <button data-cview="observar"     class="nav-btn"        onclick="navegarColab('observar')">Observações</button>
-      <button data-cview="sugerir"      class="nav-btn"        onclick="navegarColab('sugerir')">Sugestões</button>
-      <button data-cview="historico"    class="nav-btn"        onclick="navegarColab('historico')">Histórico</button>
-      <button data-cview="pesquisas"    class="nav-btn"        onclick="navegarColab('pesquisas')">📋 Pesquisas</button>
-      <button data-cview="quem-e-quem" class="nav-btn"        onclick="navegarColab('quem-e-quem')">👥 Quem é Quem</button>
-      <button data-cview="estrutura"    class="nav-btn"        onclick="navegarColab('estrutura')">🛡 Estrutura</button>
-      <button data-cview="perfil"       class="nav-btn"        onclick="navegarColab('perfil')">👤 Perfil</button>
-    </nav>
+    <button class="topbar-menu-btn" onclick="toggleSidebar('colab')" title="Menu">☰</button>
     <div class="topbar-user">
       <span id="colab-nome"></span>
       <span id="colab-role-badges"></span>
@@ -626,7 +771,83 @@
     </div>
   </header>
 
-  <main class="container">
+  <div class="app-layout">
+  <aside class="sidebar" id="sidebar-colab">
+    <div class="sidebar-header">
+      <button class="sidebar-toggle" onclick="toggleSidebar('colab')">☰</button>
+      <span class="sidebar-brand">COLABORADOR</span>
+    </div>
+
+    <div class="sidebar-module open" id="sbmod-colab-inicio">
+      <div class="sidebar-module-header" onclick="toggleSbMod('colab-inicio')">
+        <span class="sm-icon">🏠</span>
+        <span class="sm-label">Início</span>
+      </div>
+      <div class="sidebar-items">
+        <div class="sidebar-item" data-cview="painel" onclick="navegarColab('painel')">Painel</div>
+      </div>
+    </div>
+
+    <div class="sidebar-module open" id="sbmod-colab-social">
+      <div class="sidebar-module-header" onclick="toggleSbMod('colab-social')">
+        <span class="sm-icon">📣</span>
+        <span class="sm-label">Social</span>
+      </div>
+      <div class="sidebar-items">
+        <div class="sidebar-item" data-cview="mural"       onclick="navegarColab('mural')">Mural Social</div>
+        <div class="sidebar-item" data-cview="comunicados" onclick="navegarColab('comunicados')">Comunicados</div>
+        <div class="sidebar-item" data-cview="pesquisas"   onclick="navegarColab('pesquisas')">Pesquisas</div>
+      </div>
+    </div>
+
+    <div class="sidebar-module open" id="sbmod-colab-aprend">
+      <div class="sidebar-module-header" onclick="toggleSbMod('colab-aprend')">
+        <span class="sm-icon">🎓</span>
+        <span class="sm-label">Aprendizado</span>
+      </div>
+      <div class="sidebar-items">
+        <div class="sidebar-item" data-cview="quiz"    onclick="navegarColab('quiz')">Quiz &amp; DDS</div>
+        <div class="sidebar-item" data-cview="academia" onclick="navegarColab('academia')">Academia SST</div>
+      </div>
+    </div>
+
+    <div class="sidebar-module open" id="sbmod-colab-partic">
+      <div class="sidebar-module-header" onclick="toggleSbMod('colab-partic')">
+        <span class="sm-icon">🛡</span>
+        <span class="sm-label">Participação</span>
+      </div>
+      <div class="sidebar-items">
+        <div class="sidebar-item" data-cview="checkin"  onclick="navegarColab('checkin')">Check-in</div>
+        <div class="sidebar-item" data-cview="observar" onclick="navegarColab('observar')">Observações</div>
+        <div class="sidebar-item" data-cview="sugerir"  onclick="navegarColab('sugerir')">Sugestões</div>
+        <div class="sidebar-item" data-cview="eleicao"  onclick="navegarColab('eleicao')">Eleição CIPA</div>
+      </div>
+    </div>
+
+    <div class="sidebar-module open" id="sbmod-colab-equipe">
+      <div class="sidebar-module-header" onclick="toggleSbMod('colab-equipe')">
+        <span class="sm-icon">👥</span>
+        <span class="sm-label">Equipe</span>
+      </div>
+      <div class="sidebar-items">
+        <div class="sidebar-item" data-cview="quem-e-quem" onclick="navegarColab('quem-e-quem')">Quem é Quem</div>
+        <div class="sidebar-item" data-cview="estrutura"   onclick="navegarColab('estrutura')">Estrutura SST</div>
+        <div class="sidebar-item" data-cview="historico"   onclick="navegarColab('historico')">Histórico</div>
+      </div>
+    </div>
+
+    <div class="sidebar-module open" id="sbmod-colab-perfil">
+      <div class="sidebar-module-header" onclick="toggleSbMod('colab-perfil')">
+        <span class="sm-icon">👤</span>
+        <span class="sm-label">Meu Perfil</span>
+      </div>
+      <div class="sidebar-items">
+        <div class="sidebar-item" data-cview="perfil" onclick="navegarColab('perfil')">Perfil</div>
+      </div>
+    </div>
+  </aside>
+
+  <main class="main-content">
 
     <!-- Painel colaborador -->
     <section id="cview-painel" class="cview">
@@ -736,6 +957,20 @@
       <div id="cview-estrutura-conteudo"></div>
     </section>
 
+    <!-- Academia SST (colaborador) -->
+    <section id="cview-academia" class="cview hidden">
+      <h3 style="margin-bottom:14px">🎓 Academia SST</h3>
+      <p class="hint" style="margin-bottom:14px">Conteúdos educativos de SST publicados pelo seu SESMT.</p>
+      <div id="academia-colab-lista"></div>
+    </section>
+
+    <!-- Eleição CIPA (colaborador) -->
+    <section id="cview-eleicao" class="cview hidden">
+      <h3 style="margin-bottom:14px">🗳 Eleição da CIPA</h3>
+      <p class="hint" style="margin-bottom:14px">Participe da eleição dos representantes da CIPA. Sua participação vale pontos!</p>
+      <div id="eleicao-colab-conteudo"></div>
+    </section>
+
     <!-- Perfil -->
     <section id="cview-perfil" class="cview hidden">
       <div id="perfil-conteudo"></div>
@@ -816,6 +1051,7 @@
     </section>
 
   </main>
+  </div><!-- /.app-layout -->
 </div>
 
 <!-- ═══════════════ APP ADMINISTRADOR ═══════════════ -->
