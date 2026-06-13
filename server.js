@@ -152,6 +152,13 @@ const EXPERT_BADGES = [
 
 let db = null;
 
+function gerarCodigoEmpresa() {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // sem 0,O,I,1 para evitar confusão
+  let code = '';
+  for (let i = 0; i < 6; i++) code += chars[Math.floor(Math.random() * chars.length)];
+  return code;
+}
+
 function hashPassword(password, salt) {
   salt = salt || crypto.randomBytes(16).toString('hex');
   const hash = crypto.scryptSync(password, salt, 32).toString('hex');
@@ -178,6 +185,7 @@ function loadDb() {
       companies: [{
         id: defaultCompanyId,
         nome: 'Empresa Padrão',
+        codigoEmpresa: 'SP0001',
         cnpj: '',
         logo: null,
         cores: { ...DEFAULT_CORES },
@@ -237,6 +245,18 @@ function loadDb() {
     if (c.limiteColaboradores === undefined) c.limiteColaboradores = 0;
     if (c.dataAtivacao   === undefined)      c.dataAtivacao = '';
     if (c.dataVencimento === undefined)      c.dataVencimento = '';
+  }
+  // Atribuir código único a empresas que não têm um
+  {
+    const usedCodes = new Set(db.companies.map(c => c.codigoEmpresa).filter(Boolean));
+    for (const c of db.companies) {
+      if (!c.codigoEmpresa) {
+        let code;
+        do { code = gerarCodigoEmpresa(); } while (usedCodes.has(code));
+        c.codigoEmpresa = code;
+        usedCodes.add(code);
+      }
+    }
   }
   // SafePoint 3.2 — submodulos + permissoes
   for (const c of db.companies) {
@@ -948,16 +968,19 @@ route('POST', /^\/api\/login$/, { public: true }, async (req, res, m, body) => {
     return sendJson(res, 200, { ok: true, perfil: 'colaborador', nome: emp.nome, branding });
   }
   if (body.perfil === 'unificado') {
+    const codigo = String(body.codigoEmpresa || '').trim().toUpperCase().replace(/\s/g, '');
+    if (!codigo) return sendJson(res, 400, { error: 'Informe o código da empresa. Solicite ao seu gestor SST.' });
+    const comp = db.companies.find(c => c.codigoEmpresa === codigo);
+    if (!comp) return sendJson(res, 401, { error: 'Código de empresa inválido. Verifique com o seu gestor SST.' });
+    if (['suspensa', 'bloqueada', 'cancelada'].includes(comp.status)) {
+      return sendJson(res, 403, { error: `Acesso bloqueado. Status da empresa: ${comp.status}.` });
+    }
     const mat = normalizeMatricula(body.matricula);
-    const emp = db.employees.find(e => e.matricula === mat && e.ativo !== false);
-    if (!emp) return sendJson(res, 401, { error: 'Matrícula não encontrada. Consulte o setor de SST.' });
+    const emp = db.employees.find(e => e.matricula === mat && e.companyId === comp.id && e.ativo !== false);
+    if (!emp) return sendJson(res, 401, { error: 'Matrícula não encontrada nesta empresa. Consulte o gestor SST.' });
     if (emp.bloqueado) return sendJson(res, 403, { error: 'Acesso bloqueado. Entre em contato com o SESMT.' });
     const check = hashPassword(String(body.senha || ''), emp.senhaSalt);
     if (check.hash !== emp.senhaHash) return sendJson(res, 401, { error: 'Senha incorreta.' });
-    const comp = db.companies.find(c => c.id === emp.companyId);
-    if (comp && ['suspensa', 'bloqueada', 'cancelada'].includes(comp.status)) {
-      return sendJson(res, 403, { error: `Acesso bloqueado. Status da empresa: ${comp.status}.` });
-    }
     processarStreak(emp);
     saveDb();
     const branding = getCompanyBranding(emp.companyId);
@@ -975,6 +998,25 @@ route('POST', /^\/api\/login$/, { public: true }, async (req, res, m, body) => {
     return sendJson(res, 200, { ok: true, perfil: 'colaborador', nome: emp.nome, branding, primeiroAcesso: !!emp.primeiroAcesso, termosAceitos: !!emp.termosAceitos, roles: emp.roles || [], isLideranca });
   }
   return sendJson(res, 400, { error: 'Perfil inválido.' });
+});
+
+/* Lookup de empresa pelo código (público — usado no login) */
+route('GET', /^\/api\/lookup-empresa$/, { public: true }, async (req, res) => {
+  const url = new URL('http://x' + req.url);
+  const codigo = String(url.searchParams.get('codigo') || '').trim().toUpperCase();
+  if (!codigo) return sendJson(res, 400, { error: 'Código obrigatório.' });
+  const comp = db.companies.find(c => c.codigoEmpresa === codigo);
+  if (!comp || ['suspensa','bloqueada','cancelada'].includes(comp.status)) {
+    return sendJson(res, 404, { error: 'Empresa não encontrada.' });
+  }
+  const branding = getCompanyBranding(comp.id);
+  sendJson(res, 200, { nome: comp.nomeFantasia || comp.nome, branding });
+});
+
+/* Gestor: retorna o código de acesso da própria empresa */
+route('GET', /^\/api\/empresa\/codigo$/, { role: 'gestor' }, async (req, res, m, body, s) => {
+  const comp = db.companies.find(c => c.id === s.companyId);
+  sendJson(res, 200, { codigo: comp?.codigoEmpresa || '' });
 });
 
 route('POST', /^\/api\/logout$/, { public: true }, async (req, res) => {
@@ -1361,10 +1403,13 @@ const DEFAULT_SUBMODULOS_ENGAJAMENTO = {
 route('POST', /^\/api\/admin\/empresas$/, { role: 'admin' }, async (req, res, m, body, s) => {
   if (!String(body.nome || '').trim()) return sendJson(res, 400, { error: 'Razão Social é obrigatória.' });
   const tipo = ['sst', 'engajamento'].includes(body.tipoPlataforma) ? body.tipoPlataforma : 'sst';
+  const usedCodes = new Set(db.companies.map(c => c.codigoEmpresa).filter(Boolean));
+  let novoCode; do { novoCode = gerarCodigoEmpresa(); } while (usedCodes.has(novoCode));
   const empresa = {
     id: nextId(),
     nome:               String(body.nome || '').trim(),
     nomeFantasia:       String(body.nomeFantasia || '').trim(),
+    codigoEmpresa:      novoCode,
     cnpj:               String(body.cnpj || '').trim(),
     responsavel:        String(body.responsavel || '').trim(),
     email:              String(body.email || '').trim(),

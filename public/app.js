@@ -208,10 +208,12 @@ function esconderLoginAdmin() {
 
 async function loginUnificado(e) {
   e.preventDefault();
+  const codigoEmpresa = (document.getElementById('login-codigo')?.value || '').trim().toUpperCase();
   const matricula = document.getElementById('login-mat').value.trim();
   const senha = document.getElementById('login-pwd').value;
+  if (!codigoEmpresa) { mostrarErroLogin('Informe o código da empresa.'); return false; }
   try {
-    const r = await api('/api/login', { method: 'POST', body: { perfil: 'unificado', matricula, senha } });
+    const r = await api('/api/login', { method: 'POST', body: { perfil: 'unificado', codigoEmpresa, matricula, senha } });
     if (r.branding) aplicarBranding(r.branding);
     if (r.primeiroAcesso || !r.termosAceitos) {
       await iniciar();
@@ -221,6 +223,34 @@ async function loginUnificado(e) {
     }
   } catch (err) { mostrarErroLogin(err.message); }
   return false;
+}
+
+async function verificarCodigoEmpresa() {
+  const codigo = (document.getElementById('login-codigo')?.value || '').trim().toUpperCase();
+  const preview = document.getElementById('login-empresa-preview');
+  if (!preview) return;
+  if (!codigo || codigo.length < 4) { preview.style.display = 'none'; return; }
+  try {
+    const r = await api('/api/lookup-empresa?codigo=' + encodeURIComponent(codigo));
+    preview.style.display = '';
+    preview.innerHTML = `✅ ${esc(r.nome)}`;
+    preview.style.cssText = 'display:block;margin:6px 0 2px;padding:8px 12px;border-radius:8px;font-size:13px;font-weight:600;background:#f0fdf4;border:1px solid #86efac;color:#166534';
+    if (r.branding) aplicarBranding(r.branding);
+  } catch {
+    preview.style.display = '';
+    preview.innerHTML = `❌ Código não encontrado`;
+    preview.style.cssText = 'display:block;margin:6px 0 2px;padding:8px 12px;border-radius:8px;font-size:13px;font-weight:600;background:#fef2f2;border:1px solid #fca5a5;color:#991b1b';
+  }
+}
+
+function copiarCodigoEmpresa() {
+  const el = document.getElementById('empresa-codigo-display');
+  if (!el) return;
+  const code = el.textContent.trim().replace(/\s/g, '');
+  if (!code || code === '——') return;
+  navigator.clipboard?.writeText(code)
+    .then(() => toast('Código copiado!', 'ok'))
+    .catch(() => toast(code, 'ok'));
 }
 
 async function loginAdmin(e) {
@@ -554,6 +584,7 @@ function renderEmpresas() {
         <div class="empresa-card-info">
           <h3>${esc(e.nomeFantasia || e.nome)}</h3>
           <div class="cnpj">${e.cnpj ? esc(e.cnpj) : 'CNPJ não informado'}</div>
+          ${e.codigoEmpresa ? `<div style="font-family:monospace;font-size:13px;font-weight:700;color:var(--azul);letter-spacing:3px;margin:3px 0">🔑 ${esc(e.codigoEmpresa)}</div>` : ''}
           <span class="empresa-status-badge" style="background:${statusCor}">${STATUS_LABELS[status] || status}</span>
           ${e.plano ? `<span class="empresa-plano-badge">${PLANO_LABELS[e.plano]||e.plano}</span>` : ''}
         </div>
@@ -1971,6 +2002,12 @@ async function carregarBrandingConfig() {
       if (el && cores[k]) el.value = cores[k];
     });
   } catch { /* ignore */ }
+  // Carregar código de acesso da empresa
+  try {
+    const { codigo } = await api('/api/empresa/codigo');
+    const el = document.getElementById('empresa-codigo-display');
+    if (el && codigo) el.textContent = codigo;
+  } catch {}
 }
 
 async function salvarPontos(e) {

@@ -16,8 +16,13 @@
     </div>
     <p class="login-sub">Gestão de Segurança do Trabalho Gamificada</p>
 
-    <!-- Unified login form (SafePoint 2.1) -->
+    <!-- Unified login form -->
     <form id="form-login-unificado" onsubmit="return loginUnificado(event)">
+      <label>Código da Empresa</label>
+      <input type="text" id="login-codigo" placeholder="Ex.: A3B7XY" autocomplete="off" maxlength="6"
+        oninput="this.value=this.value.toUpperCase().replace(/[^A-Z0-9]/g,'')" onblur="verificarCodigoEmpresa()" required
+        style="text-transform:uppercase;letter-spacing:4px;font-size:18px;font-weight:700;text-align:center">
+      <div id="login-empresa-preview" style="display:none;margin:6px 0 2px;padding:8px 12px;border-radius:8px;font-size:13px;font-weight:600"></div>
       <label>Matrícula</label>
       <input type="text" id="login-mat" placeholder="Ex.: 12345" autocomplete="username" required>
       <label>Senha</label>
@@ -771,6 +776,17 @@
     <!-- Config -->
     <section id="view-config" class="view hidden">
       <h2>Configurações</h2>
+
+      <!-- Código de acesso da empresa -->
+      <div class="panel" style="margin-bottom:16px;border-left:4px solid var(--azul)">
+        <h3>🔑 Código de Acesso da Empresa</h3>
+        <p class="hint" style="margin-bottom:12px">Compartilhe este código com os colaboradores para que possam acessar o sistema no login.</p>
+        <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">
+          <span id="empresa-codigo-display" style="font-size:32px;font-weight:900;letter-spacing:8px;color:var(--azul);font-family:monospace;background:#f0f9ff;padding:8px 18px;border-radius:10px;border:2px dashed var(--azul)">——</span>
+          <button class="btn" onclick="copiarCodigoEmpresa()">📋 Copiar código</button>
+        </div>
+      </div>
+
       <div class="grid-2">
         <div class="panel">
           <h3>Pontuação por atividade</h3>
