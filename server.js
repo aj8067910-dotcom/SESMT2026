@@ -3175,9 +3175,6 @@ route('POST', /^\/api\/ia\/chat$/, { role: 'any' }, async (req, res, m, body, s)
     return sendJson(res, 200, { resposta, model: 'safepoint-kb-local' });
   }
 
-  const msg = String(body.message || '').trim().slice(0, 2000);
-  if (!msg) return sendJson(res, 400, { error: 'Mensagem obrigatória.' });
-
   const history = Array.isArray(body.history) ? body.history.slice(-8) : [];
 
   const systemPrompt = `Você é o assistente de SST (Saúde e Segurança do Trabalho) do SafePoint. Responda sempre em português brasileiro. Você é especialista em normas regulamentadoras brasileiras (NRs), prevenção de acidentes, CIPA, Brigada de Emergência, PPR, PCMSO, PGR, APR, LTCAT e gestão de segurança do trabalho. Seja objetivo, prático e cite normas quando relevante. Limite respostas a 400 palavras. Nunca forneça aconselhamento jurídico ou médico específico — apenas orientações gerais de SST.`;
