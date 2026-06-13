@@ -1484,3 +1484,15 @@ hr { border: none; border-top: 1px solid var(--cinza-borda); margin: 16px 0; }
 .tipo-card.selecionado .tipo-card-titulo { color:var(--azul); }
 .tipo-plataforma-badge { display:inline-block; padding:6px 14px; background:#f0fdf4; border:1px solid #86efac; border-radius:20px; font-size:13px; font-weight:600; color:#166534; margin-bottom:14px; }
 @media(max-width:480px) { .tipo-plataforma-cards { grid-template-columns:1fr; } }
+
+/* ── Personalizar Terminologia ──────────────────────────── */
+#terminologia-form .form-group { margin-bottom:14px; }
+.terminologia-actions { display:flex; gap:10px; margin-top:16px; flex-wrap:wrap; }
+
+/* ── Feedback da Plataforma ─────────────────────────────── */
+.fbp-card:hover, .fbp-colab-card:hover { box-shadow:0 2px 8px rgba(0,0,0,.08); }
+.btn-star { transition:transform .1s; font-size:24px; background:none; border:none; cursor:pointer; padding:4px; }
+.btn-star:hover, .btn-star.ativo { transform:scale(1.2); color:#f59e0b; }
+.fbp-criar-form { background:#f8fafc; border:1px solid var(--cinza-borda); border-radius:12px; padding:16px; margin-bottom:20px; }
+.fbp-criar-form h3 { margin-bottom:12px; font-size:15px; }
+#fbp-opcoes-wrap { display:none; }

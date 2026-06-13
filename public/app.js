@@ -2,6 +2,14 @@
 'use strict';
 
 let CONFIG = { tipos: [], pontos: {}, conquistas: [], codigoValidade: 60, recompensas: [] };
+let TERMINOLOGIA = {};
+const TERMINOLOGIA_DEFAULT = {
+  dds:'DDS', observacao:'Observação', missao:'Missão', reconhecimento:'Reconhecimento',
+  pontos:'Pontos', nivel:'Nível', score:'Safety Score', checkin:'Check-in',
+  colaborador:'Colaborador', equipe:'Equipe', feed_nome:'Mural de Segurança',
+  app_tema:'Segurança', cipa_nome:'CIPA', brigada_nome:'Brigada', sesmt_nome:'SESMT'
+};
+function T(key) { return TERMINOLOGIA[key] || TERMINOLOGIA_DEFAULT[key] || key; }
 let EVENTOS = [];
 let COLABORADORES = [];
 let OBSERVACOES = [];
@@ -344,6 +352,7 @@ async function iniciar() {
     preencherFiltroTipos();
     await Promise.all([carregarColaboradores(), carregarEventos()]);
     try { EMPRESA_INFO = await api('/api/empresa/branding'); } catch {}
+    try { TERMINOLOGIA = await api('/api/empresa/terminologia'); } catch {}
     adaptarSidebarPorTipo(EMPRESA_INFO?.tipoPlataforma || 'sst');
     navegar('dashboard');
     carregarBrandingConfig();
@@ -426,6 +435,8 @@ async function navegar(view) {
   if (view === 'governance')        await carregarGovernance();
   if (view === 'auditoria-avancada') await carregarAuditAvancada();
   if (view === 'feedback-anonimo-gestor') carregarFeedbackAnonimo();
+  if (view === 'personalizar')            carregarTerminologia();
+  if (view === 'feedback-plataforma')     carregarFeedbackPlataformaGestor();
   // SafePoint 3.3 — novas views
   if (view === 'safety-score-corp') await carregarSafetyScoreCorp();
   if (view === 'risk-engine')       await carregarRiskEngine();
@@ -457,8 +468,9 @@ async function navegarColab(view) {
   if (view === 'historico')    await carregarHistoricoCompleto();
   if (view === 'feedback-anonimo') { /* just show */ }
   if (view === 'canal-lideranca')  { /* just show */ }
-  if (view === 'reconhec-360')     await carregarReconhec360();
-  if (view === 'missoes-center')   carregarMissoesCentral();
+  if (view === 'reconhec-360')       await carregarReconhec360();
+  if (view === 'missoes-center')     carregarMissoesCentral();
+  if (view === 'feedback-plataforma') await carregarFeedbackPlataformaColab();
 }
 
 async function navegarAdmin(view) {
@@ -5882,6 +5894,205 @@ async function carregarFeedbackAnonimo() {
         <div>${esc(f.mensagem)}</div>
       </div>`).join('');
   } catch(e) { console.error(e); }
+}
+
+/* ── Personalizar Terminologia (gestor) ─────────────────── */
+async function carregarTerminologia() {
+  const el = document.getElementById('terminologia-form');
+  if (!el) return;
+  el.innerHTML = '<p class="hint">Carregando…</p>';
+  try {
+    const data = await apiFetch('/api/empresa/terminologia');
+    TERMINOLOGIA = data;
+    el.innerHTML = Object.keys(TERMINOLOGIA_DEFAULT).map(key => `
+      <div class="form-group">
+        <label style="font-size:12px;color:#6b7280;text-transform:uppercase;letter-spacing:.5px">${key}</label>
+        <div style="display:flex;gap:8px;align-items:center">
+          <input class="input" id="term-${key}" value="${esc(data[key] || TERMINOLOGIA_DEFAULT[key])}" placeholder="${esc(TERMINOLOGIA_DEFAULT[key])}" style="flex:1">
+          <span class="hint" style="white-space:nowrap">padrão: <em>${esc(TERMINOLOGIA_DEFAULT[key])}</em></span>
+        </div>
+      </div>`).join('');
+  } catch(e) { el.innerHTML = `<p class="hint">${esc(e.message)}</p>`; }
+}
+
+async function salvarTerminologia() {
+  const payload = {};
+  Object.keys(TERMINOLOGIA_DEFAULT).forEach(key => {
+    const el = document.getElementById('term-' + key);
+    if (el) payload[key] = el.value.trim() || TERMINOLOGIA_DEFAULT[key];
+  });
+  try {
+    await apiFetch('/api/empresa/terminologia', { method: 'PUT', body: payload });
+    TERMINOLOGIA = payload;
+    toast('Terminologia salva! As alterações serão aplicadas ao recarregar as telas.', 'ok');
+  } catch(e) { toast(e.message, 'erro'); }
+}
+
+function resetarTerminologia() {
+  Object.keys(TERMINOLOGIA_DEFAULT).forEach(key => {
+    const el = document.getElementById('term-' + key);
+    if (el) el.value = TERMINOLOGIA_DEFAULT[key];
+  });
+  toast('Termos redefinidos para os valores padrão (ainda não salvo).', 'ok');
+}
+
+/* ── Feedback da Plataforma — Gestor ────────────────────── */
+function renderOpcoesFbp() {
+  const tipo = document.getElementById('fbp-tipo')?.value;
+  const box = document.getElementById('fbp-opcoes-wrap');
+  if (box) box.style.display = tipo === 'opcao' ? '' : 'none';
+}
+
+async function criarPerguntaFeedback() {
+  const texto  = document.getElementById('fbp-texto')?.value.trim();
+  const tipo   = document.getElementById('fbp-tipo')?.value;
+  const opcoes = document.getElementById('fbp-opcoes')?.value.trim();
+  if (!texto) { toast('Digite o texto da pergunta.', 'erro'); return; }
+  if (tipo === 'opcao' && !opcoes) { toast('Informe as opções (uma por linha).', 'erro'); return; }
+  const body = { texto, tipo };
+  if (tipo === 'opcao') body.opcoes = opcoes.split('\n').map(s => s.trim()).filter(Boolean);
+  try {
+    await apiFetch('/api/feedback-plataforma/perguntas', { method: 'POST', body });
+    document.getElementById('fbp-texto').value = '';
+    if (document.getElementById('fbp-opcoes')) document.getElementById('fbp-opcoes').value = '';
+    toast('Pergunta enviada aos colaboradores!', 'ok');
+    carregarFeedbackPlataformaGestor();
+  } catch(e) { toast(e.message, 'erro'); }
+}
+
+async function carregarFeedbackPlataformaGestor() {
+  const el = document.getElementById('fbp-perguntas-lista');
+  if (!el) return;
+  el.innerHTML = '<p class="hint">Carregando…</p>';
+  try {
+    const list = await apiFetch('/api/feedback-plataforma/perguntas');
+    if (!list.length) { el.innerHTML = '<p class="hint">Nenhuma pergunta ativa no momento.</p>'; return; }
+    const TIPO_ICON = { nota:'⭐', texto:'💬', opcao:'🔘' };
+    el.innerHTML = list.map(p => `
+      <div class="fbp-card" style="background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:16px;margin-bottom:12px">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
+          <div style="flex:1">
+            <span class="chip" style="background:#eff6ff;color:#3b82f6;margin-bottom:8px">${TIPO_ICON[p.tipo]||'❓'} ${p.tipo}</span>
+            <div style="font-weight:600;margin-bottom:4px">${esc(p.texto)}</div>
+            ${p.opcoes?.length ? `<div class="hint">Opções: ${p.opcoes.map(o=>esc(o)).join(' · ')}</div>` : ''}
+            <div class="hint">${tsDataHora(p.criadaEm)}</div>
+          </div>
+          <div style="display:flex;gap:6px">
+            <button class="btn-sm" onclick="abrirRespostasFbp('${p.id}')">📊 Ver respostas</button>
+            <button class="btn-sm btn-danger" onclick="excluirPerguntaFbp('${p.id}')">🗑</button>
+          </div>
+        </div>
+      </div>`).join('');
+  } catch(e) { el.innerHTML = `<p class="hint">${esc(e.message)}</p>`; }
+}
+
+async function abrirRespostasFbp(id) {
+  try {
+    const data = await apiFetch('/api/feedback-plataforma/respostas/' + id);
+    const { pergunta, total, mediaNotas, distribuicao, textos } = data;
+    const TIPO_ICON = { nota:'⭐', texto:'💬', opcao:'🔘' };
+    let corpo = `<h3 style="margin-bottom:12px">${TIPO_ICON[pergunta.tipo]||'❓'} ${esc(pergunta.texto)}</h3>
+      <p class="hint">${total} resposta${total !== 1 ? 's' : ''} recebida${total !== 1 ? 's' : ''}</p>`;
+    if (pergunta.tipo === 'nota' && total > 0) {
+      corpo += `<div style="font-size:28px;font-weight:700;color:#f59e0b;margin:12px 0">⭐ ${mediaNotas.toFixed(1)} <span style="font-size:14px;color:#6b7280">/ 5 média</span></div>`;
+      corpo += `<div style="display:flex;flex-direction:column;gap:4px">` +
+        [5,4,3,2,1].map(n => {
+          const cnt = distribuicao[n] || 0;
+          const pct = total ? Math.round(cnt/total*100) : 0;
+          return `<div style="display:flex;align-items:center;gap:8px">
+            <span style="width:14px;text-align:right">${n}★</span>
+            <div style="flex:1;background:#f3f4f6;border-radius:4px;height:10px">
+              <div style="width:${pct}%;background:#f59e0b;height:10px;border-radius:4px"></div>
+            </div>
+            <span class="hint">${cnt}</span>
+          </div>`;
+        }).join('') + `</div>`;
+    }
+    if (pergunta.tipo === 'opcao' && distribuicao) {
+      corpo += `<div style="display:flex;flex-direction:column;gap:6px;margin-top:8px">` +
+        Object.entries(distribuicao).map(([opcao, cnt]) => {
+          const pct = total ? Math.round(cnt/total*100) : 0;
+          return `<div>
+            <div style="display:flex;justify-content:space-between;margin-bottom:2px">
+              <span>${esc(opcao)}</span><span class="hint">${cnt} (${pct}%)</span>
+            </div>
+            <div style="background:#f3f4f6;border-radius:4px;height:8px">
+              <div style="width:${pct}%;background:#3b82f6;height:8px;border-radius:4px"></div>
+            </div>
+          </div>`;
+        }).join('') + `</div>`;
+    }
+    if (textos?.length) {
+      corpo += `<hr style="margin:16px 0"><h4 style="margin-bottom:8px">Respostas abertas</h4>` +
+        textos.map(t => `<div style="background:#f9fafb;border-radius:8px;padding:10px;margin-bottom:6px;font-style:italic">"${esc(t)}"</div>`).join('');
+    }
+    if (total === 0) corpo += '<p class="hint">Nenhuma resposta ainda.</p>';
+    abrirModal('📊 Resultados', corpo);
+  } catch(e) { toast(e.message, 'erro'); }
+}
+
+async function excluirPerguntaFbp(id) {
+  if (!confirm('Desativar esta pergunta?')) return;
+  try {
+    await apiFetch('/api/feedback-plataforma/perguntas/' + id, { method: 'DELETE' });
+    toast('Pergunta desativada.', 'ok');
+    carregarFeedbackPlataformaGestor();
+  } catch(e) { toast(e.message, 'erro'); }
+}
+
+/* ── Feedback da Plataforma — Colaborador ───────────────── */
+async function carregarFeedbackPlataformaColab() {
+  const el = document.getElementById('fbp-colab-lista');
+  if (!el) return;
+  el.innerHTML = '<p class="hint">Carregando…</p>';
+  try {
+    const list = await api('/api/feedback-plataforma/perguntas');
+    if (!list.length) {
+      el.innerHTML = `<div style="text-align:center;padding:32px 0">
+        <div style="font-size:40px;margin-bottom:12px">✅</div>
+        <strong>Tudo em dia!</strong>
+        <p class="hint">Não há perguntas ativas no momento.</p>
+      </div>`;
+      return;
+    }
+    const TIPO_ICON = { nota:'⭐', texto:'💬', opcao:'🔘' };
+    el.innerHTML = list.map(p => {
+      let inputHtml = '';
+      if (p.tipo === 'nota') {
+        inputHtml = `<div class="nota-stars" style="display:flex;gap:8px;margin:12px 0">
+          ${[1,2,3,4,5].map(n => `<button class="btn-star" onclick="responderFeedbackPlataforma('${p.id}', ${n})" style="font-size:24px;background:none;border:none;cursor:pointer;padding:4px" title="${n} estrela${n>1?'s':''}">☆</button>`).join('')}
+        </div>`;
+      } else if (p.tipo === 'texto') {
+        inputHtml = `<textarea id="fbp-resp-${p.id}" class="input" rows="3" placeholder="Sua resposta…" style="width:100%;margin:10px 0;resize:vertical"></textarea>
+          <button class="btn btn-primary btn-sm" onclick="responderFeedbackPlataforma('${p.id}', document.getElementById('fbp-resp-${p.id}').value)">Enviar</button>`;
+      } else if (p.tipo === 'opcao' && p.opcoes?.length) {
+        inputHtml = `<div style="display:flex;flex-direction:column;gap:6px;margin:10px 0">
+          ${p.opcoes.map(o => `<button class="btn btn-outline btn-sm" onclick="responderFeedbackPlataforma('${p.id}', '${o.replace(/'/g,"&#39;")}')" style="text-align:left">${esc(o)}</button>`).join('')}
+        </div>`;
+      }
+      return `<div class="fbp-colab-card" style="background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:16px;margin-bottom:12px" id="fbp-colab-${p.id}">
+        <div class="chip" style="background:#eff6ff;color:#3b82f6;margin-bottom:8px">${TIPO_ICON[p.tipo]||'❓'} ${p.tipo}</div>
+        <div style="font-weight:600;margin-bottom:4px">${esc(p.texto)}</div>
+        ${inputHtml}
+      </div>`;
+    }).join('');
+  } catch(e) { el.innerHTML = `<p class="hint">${esc(e.message)}</p>`; }
+}
+
+async function responderFeedbackPlataforma(pergId, resposta) {
+  if (resposta === null || resposta === undefined || String(resposta).trim() === '') {
+    toast('Selecione ou escreva uma resposta.', 'erro'); return;
+  }
+  try {
+    await api('/api/feedback-plataforma/responder', { method: 'POST', body: { perguntaId: pergId, resposta } });
+    const card = document.getElementById('fbp-colab-' + pergId);
+    if (card) card.innerHTML = `<div style="text-align:center;padding:16px">
+      <div style="font-size:28px">✅</div>
+      <strong>Obrigado pelo feedback!</strong>
+      <p class="hint">Sua resposta foi registrada.</p>
+    </div>`;
+    toast('Feedback enviado! Obrigado pela contribuição.', 'ok');
+  } catch(e) { toast(e.message, 'erro'); }
 }
 
 iniciar().catch(err => {

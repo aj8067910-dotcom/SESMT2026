@@ -200,7 +200,8 @@ function loadDb() {
   if (!db.activeCodes)        db.activeCodes = [];
   if (!db.observations)       db.observations = [];
   if (!db.suggestions)        db.suggestions = [];
-  if (!db.feedbacksAnonimos)  db.feedbacksAnonimos = [];
+  if (!db.feedbacksAnonimos)   db.feedbacksAnonimos = [];
+  if (!db.feedbackPlataforma)  db.feedbackPlataforma = { perguntas: [], respostas: [] };
   if (!db.admins)       db.admins = [];
   if (!db.companies)    db.companies = [];
   if (!db.settings.recompensas)    db.settings.recompensas = [];
@@ -2183,6 +2184,113 @@ route('POST', /^\/api\/feedback-anonimo$/, { role: 'colaborador' }, async (req, 
 route('GET', /^\/api\/feedback-anonimo$/, { role: 'gestor' }, async (req, res, m, body, s) => {
   const list = (db.feedbacksAnonimos || []).filter(f => f.companyId === s.companyId).sort((a,b) => b.timestamp - a.timestamp);
   sendJson(res, 200, list);
+});
+
+/* ── Terminologia personalizada ─────────────────────────────── */
+
+const TERMINOLOGIA_DEFAULT = {
+  dds:              'DDS',
+  observacao:       'Observação',
+  missao:           'Missão',
+  reconhecimento:   'Reconhecimento',
+  pontos:           'Pontos',
+  nivel:            'Nível',
+  score:            'Safety Score',
+  checkin:          'Check-in',
+  colaborador:      'Colaborador',
+  equipe:           'Equipe',
+  feed_nome:        'Mural de Segurança',
+  app_tema:         'Segurança',
+  cipa_nome:        'CIPA',
+  brigada_nome:     'Brigada',
+  sesmt_nome:       'SESMT',
+};
+
+route('GET', /^\/api\/empresa\/terminologia$/, { role: 'any' }, async (req, res, m, body, s) => {
+  const comp = db.companies.find(c => c.id === s.companyId);
+  sendJson(res, 200, { ...TERMINOLOGIA_DEFAULT, ...(comp?.terminologia || {}) });
+});
+
+route('PUT', /^\/api\/empresa\/terminologia$/, { role: 'gestor' }, async (req, res, m, body, s) => {
+  const comp = db.companies.find(c => c.id === s.companyId);
+  if (!comp) return sendJson(res, 404, { error: 'Empresa não encontrada.' });
+  const allowed = Object.keys(TERMINOLOGIA_DEFAULT);
+  comp.terminologia = comp.terminologia || {};
+  for (const k of allowed) {
+    if (body[k] !== undefined) comp.terminologia[k] = String(body[k]).trim() || TERMINOLOGIA_DEFAULT[k];
+  }
+  saveDb();
+  logAudit(s.userId, 'gestor', 'terminologia_atualizada', 'Terminologia da plataforma personalizada', s.companyId);
+  sendJson(res, 200, { ok: true, terminologia: comp.terminologia });
+});
+
+/* ── Feedback da Plataforma ─────────────────────────────────── */
+
+route('POST', /^\/api\/feedback-plataforma\/perguntas$/, { role: 'gestor' }, async (req, res, m, body, s) => {
+  if (!db.feedbackPlataforma) db.feedbackPlataforma = { perguntas: [], respostas: [] };
+  const texto = String(body.texto || '').trim();
+  if (!texto) return sendJson(res, 400, { error: 'Texto da pergunta é obrigatório.' });
+  const p = {
+    id: nextId(),
+    companyId: s.companyId,
+    texto,
+    tipo: ['texto','nota','opcao'].includes(body.tipo) ? body.tipo : 'nota',
+    opcoes: Array.isArray(body.opcoes) ? body.opcoes.map(o => String(o).trim()).filter(Boolean) : [],
+    ativo: true,
+    criadaEm: Date.now(),
+    criadaPor: s.userId
+  };
+  db.feedbackPlataforma.perguntas.push(p);
+  saveDb();
+  sendJson(res, 201, p);
+});
+
+route('GET', /^\/api\/feedback-plataforma\/perguntas$/, { role: 'any' }, async (req, res, m, body, s) => {
+  if (!db.feedbackPlataforma) return sendJson(res, 200, []);
+  const list = db.feedbackPlataforma.perguntas.filter(p => p.companyId === s.companyId && p.ativo).sort((a,b) => b.criadaEm - a.criadaEm);
+  sendJson(res, 200, list);
+});
+
+route('DELETE', /^\/api\/feedback-plataforma\/perguntas\/(\d+)$/, { role: 'gestor' }, async (req, res, m, body, s) => {
+  if (!db.feedbackPlataforma) return sendJson(res, 404, {});
+  const p = db.feedbackPlataforma.perguntas.find(x => x.id === Number(m[1]) && x.companyId === s.companyId);
+  if (p) p.ativo = false;
+  saveDb();
+  sendJson(res, 200, { ok: true });
+});
+
+route('POST', /^\/api\/feedback-plataforma\/responder$/, { role: 'colaborador' }, async (req, res, m, body, s) => {
+  if (!db.feedbackPlataforma) return sendJson(res, 400, { error: 'Não disponível.' });
+  const emp = (db.employees||[]).find(e => e.id === s.employeeId);
+  const pergId = Number(body.perguntaId);
+  const perg = db.feedbackPlataforma.perguntas.find(p => p.id === pergId && p.companyId === s.companyId);
+  if (!perg) return sendJson(res, 404, { error: 'Pergunta não encontrada.' });
+  // prevent duplicate response
+  const jaRespondeu = db.feedbackPlataforma.respostas.find(r => r.perguntaId === pergId && r.empId === (emp?.id));
+  if (jaRespondeu) return sendJson(res, 409, { error: 'Você já respondeu esta pergunta.' });
+  db.feedbackPlataforma.respostas.push({
+    id: nextId(),
+    companyId: s.companyId,
+    perguntaId: pergId,
+    empId: emp?.id,
+    resposta: String(body.resposta || '').trim(),
+    timestamp: Date.now()
+  });
+  saveDb();
+  sendJson(res, 200, { ok: true });
+});
+
+route('GET', /^\/api\/feedback-plataforma\/respostas\/(\d+)$/, { role: 'gestor' }, async (req, res, m, body, s) => {
+  if (!db.feedbackPlataforma) return sendJson(res, 200, { respostas: [], total: 0 });
+  const pergId = Number(m[1]);
+  const respostas = db.feedbackPlataforma.respostas.filter(r => r.perguntaId === pergId && r.companyId === s.companyId);
+  // Group for nota type
+  const perg = db.feedbackPlataforma.perguntas.find(p => p.id === pergId);
+  const media = perg?.tipo === 'nota' && respostas.length
+    ? (respostas.reduce((s2, r) => s2 + (Number(r.resposta) || 0), 0) / respostas.length).toFixed(1)
+    : null;
+  const distribuicao = perg?.tipo === 'nota' ? [1,2,3,4,5].map(n => ({ nota: n, count: respostas.filter(r => Number(r.resposta) === n).length })) : null;
+  sendJson(res, 200, { respostas, total: respostas.length, media, distribuicao });
 });
 
 route('POST', /^\/api\/reconhecimentos$/, { role: 'gestor' }, async (req, res, m, body, s) => {

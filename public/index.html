@@ -278,6 +278,8 @@
         <div class="sidebar-item" data-view="marketplace"       onclick="navegar('marketplace')">Marketplace SafePoint</div>
         <div class="sidebar-item" data-view="gov-digital"       onclick="navegar('gov-digital')">Governança Digital</div>
         <div class="sidebar-item" data-view="gestao-conteudo"   onclick="navegar('gestao-conteudo')">Gestão de Conteúdo</div>
+        <div class="sidebar-item" data-view="personalizar"       onclick="navegar('personalizar')">🎨 Personalizar Plataforma</div>
+        <div class="sidebar-item" data-view="feedback-plataforma" onclick="navegar('feedback-plataforma')">📣 Feedback da Plataforma</div>
       </div>
     </div>
   </nav>
@@ -1616,6 +1618,47 @@
       </div>
     </section>
 
+    <!-- Personalizar Plataforma -->
+    <section id="view-personalizar" class="view hidden">
+      <h2>🎨 Personalizar Plataforma</h2>
+      <div class="panel" style="max-width:680px">
+        <p class="hint" style="margin-bottom:18px">Adapte os termos da plataforma para a realidade da sua empresa. As alterações são aplicadas em toda a experiência dos colaboradores.</p>
+        <div id="terminologia-form"></div>
+        <div style="margin-top:18px;display:flex;gap:10px;flex-wrap:wrap">
+          <button class="btn btn-primary" onclick="salvarTerminologia()">💾 Salvar Personalização</button>
+          <button class="btn" onclick="resetarTerminologia()">↩️ Restaurar Padrão</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- Feedback da Plataforma -->
+    <section id="view-feedback-plataforma" class="view hidden">
+      <h2>📣 Feedback da Plataforma</h2>
+      <div class="grid-2" style="gap:16px;align-items:start">
+        <div class="panel">
+          <h3>Nova Pergunta</h3>
+          <p class="hint" style="margin-bottom:12px">Envie perguntas para seus colaboradores avaliarem a plataforma.</p>
+          <label>Pergunta</label>
+          <input type="text" id="fbp-texto" class="input" placeholder="Ex: Como você avalia a facilidade de uso?">
+          <label style="margin-top:10px">Tipo de resposta</label>
+          <select id="fbp-tipo" class="input" onchange="renderOpcoesFbp()">
+            <option value="nota">⭐ Nota de 1 a 5</option>
+            <option value="texto">📝 Texto livre</option>
+            <option value="opcao">🔘 Múltipla escolha</option>
+          </select>
+          <div id="fbp-opcoes-wrap" style="display:none;margin-top:10px">
+            <label>Opções (uma por linha)</label>
+            <textarea id="fbp-opcoes" class="input" rows="3" placeholder="Ótima&#10;Boa&#10;Regular&#10;Ruim"></textarea>
+          </div>
+          <button class="btn btn-primary" style="margin-top:12px;width:100%" onclick="criarPerguntaFeedback()">➕ Publicar Pergunta</button>
+        </div>
+        <div class="panel">
+          <h3>Perguntas Ativas</h3>
+          <div id="fbp-perguntas-lista"><p class="hint">Carregando...</p></div>
+        </div>
+      </div>
+    </section>
+
   </main>
   </div><!-- /.app-layout -->
 </div>
@@ -1661,8 +1704,9 @@
         <div class="sidebar-item" data-cview="mural"       onclick="navegarColab('mural')">Mural Social</div>
         <div class="sidebar-item" data-cview="comunicados" onclick="navegarColab('comunicados')">Comunicados</div>
         <div class="sidebar-item" data-cview="pesquisas"   onclick="navegarColab('pesquisas')">Pesquisas</div>
-        <div class="sidebar-item" data-cview="feedback-anonimo" onclick="navegarColab('feedback-anonimo')">Feedback Anônimo</div>
-        <div class="sidebar-item" data-cview="canal-lideranca"  onclick="navegarColab('canal-lideranca')">Canal da Liderança</div>
+        <div class="sidebar-item" data-cview="feedback-anonimo"    onclick="navegarColab('feedback-anonimo')">Feedback Anônimo</div>
+        <div class="sidebar-item" data-cview="canal-lideranca"     onclick="navegarColab('canal-lideranca')">Canal da Liderança</div>
+        <div class="sidebar-item" data-cview="feedback-plataforma" onclick="navegarColab('feedback-plataforma')">📣 Avalie a Plataforma</div>
       </div>
     </div>
 
@@ -1887,6 +1931,13 @@
       <div id="perftab-perfil"><div id="perfil-conteudo"></div></div>
       <div id="perftab-jornada" class="hidden"><div id="perfil-jornada"></div></div>
       <div id="perftab-dna" class="hidden"><div id="perfil-dna"></div></div>
+    </section>
+
+    <!-- Feedback da Plataforma (colaborador) -->
+    <section id="cview-feedback-plataforma" class="cview hidden">
+      <h2>📣 Avalie a Plataforma</h2>
+      <p class="hint" style="margin-bottom:16px">Sua opinião é essencial para melhorarmos a plataforma.</p>
+      <div id="fbp-colab-lista"><p class="hint">Carregando perguntas...</p></div>
     </section>
 
     <!-- Feedback Anônimo -->
