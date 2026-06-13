@@ -53,6 +53,23 @@ function tsDataHora(ts) {
   try { return new Date(ts).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }); } catch { return ''; }
 }
 
+function mascaraCPF(input) {
+  let v = input.value.replace(/\D/g, '').slice(0, 11);
+  if (v.length > 9)      v = v.replace(/^(\d{3})(\d{3})(\d{3})(\d{2}).*/, '$1.$2.$3-$4');
+  else if (v.length > 6) v = v.replace(/^(\d{3})(\d{3})(\d{1,3})/, '$1.$2.$3');
+  else if (v.length > 3) v = v.replace(/^(\d{3})(\d{1,3})/, '$1.$2');
+  input.value = v;
+}
+
+function mascaraTelefone(input) {
+  let v = input.value.replace(/\D/g, '').slice(0, 11);
+  if (v.length > 10)     v = v.replace(/^(\d{2})(\d{5})(\d{4})/, '($1) $2-$3');
+  else if (v.length > 6) v = v.replace(/^(\d{2})(\d{4,5})(\d{0,4})/, '($1) $2-$3');
+  else if (v.length > 2) v = v.replace(/^(\d{2})(\d{0,5})/, '($1) $2');
+  else if (v.length > 0) v = v.replace(/^(\d{0,2})/, '($1');
+  input.value = v;
+}
+
 async function api(url, opts = {}) {
   const res = await fetch(url, {
     headers: { 'Content-Type': 'application/json' },
@@ -190,15 +207,73 @@ async function loginAdmin(e) {
 
 /* ── Primeiro Acesso ── */
 
+let _paStep = 1;
 let _paTermosNecessarios = false;
+
+function paSetStep(n) {
+  _paStep = n;
+  document.querySelectorAll('[id^="pa-step-"]').forEach(el => el.classList.add('hidden'));
+  const steps = ['termos','dados','emergencia','senha'];
+  const el = document.getElementById('pa-step-' + steps[n-1]);
+  if (el) el.classList.remove('hidden');
+  document.querySelectorAll('.pa-step-dot').forEach((d, i) => {
+    d.classList.toggle('active', i < n);
+    d.classList.toggle('done', i < n - 1);
+  });
+  const titles = ['1/4 — Termos de Uso', '2/4 — Seus Dados', '3/4 — Contato de Emergência', '4/4 — Nova Senha'];
+  const t = document.getElementById('pa-titulo');
+  if (t) t.textContent = titles[n - 1] || '';
+}
+
+function paVoltarStep(n) { paSetStep(n); }
 
 function abrirPrimeiroAcesso(precisaSenha, termosAceitos) {
   _paTermosNecessarios = !termosAceitos;
-  const overlay = document.getElementById('primeiro-acesso-overlay');
-  overlay.classList.remove('hidden');
-  document.getElementById('pa-step-senha').classList.toggle('hidden', !precisaSenha);
-  document.getElementById('pa-step-termos').classList.toggle('hidden', precisaSenha || !!termosAceitos);
-  document.getElementById('pa-titulo').textContent = precisaSenha ? 'Crie sua senha pessoal' : 'Termos de Uso';
+  document.getElementById('primeiro-acesso-overlay').classList.remove('hidden');
+  paSetStep(termosAceitos ? (precisaSenha ? 4 : 1) : 1);
+}
+
+async function paAceitarTermos() {
+  const check = document.getElementById('pa-termos-check');
+  const erro = document.getElementById('pa-termos-erro');
+  erro.classList.add('hidden');
+  if (!check.checked) { erro.textContent = 'Você precisa aceitar os termos para continuar.'; erro.classList.remove('hidden'); return; }
+  try {
+    await api('/api/aceitar-termos', { method: 'POST' });
+    paSetStep(2);
+  } catch (err) { erro.textContent = err.message; erro.classList.remove('hidden'); }
+}
+
+async function paSalvarDados() {
+  const erro = document.getElementById('pa-dados-erro');
+  erro.classList.add('hidden');
+  const body = {
+    telefone: (document.getElementById('pa-telefone') || {}).value || '',
+    email: (document.getElementById('pa-email') || {}).value || '',
+    dataNascimento: (document.getElementById('pa-dataNascimento') || {}).value || '',
+  };
+  try {
+    await api('/api/primeiro-acesso/dados', { method: 'POST', body });
+    paSetStep(3);
+  } catch (err) { erro.textContent = err.message; erro.classList.remove('hidden'); }
+}
+
+async function paSalvarEmergencia() {
+  const nome = (document.getElementById('pa-emerg-nome') || {}).value || '';
+  const parentesco = (document.getElementById('pa-emerg-parentesco') || {}).value || '';
+  const telefone1 = (document.getElementById('pa-emerg-tel1') || {}).value || '';
+  const erro = document.getElementById('pa-emerg-erro');
+  erro.classList.add('hidden');
+  if (!nome || !parentesco || !telefone1) {
+    erro.textContent = 'Preencha nome, parentesco e telefone principal.'; erro.classList.remove('hidden'); return;
+  }
+  try {
+    await api('/api/primeiro-acesso/emergencia', { method: 'POST', body: {
+      nome, parentesco, telefone1,
+      telefone2: (document.getElementById('pa-emerg-tel2') || {}).value || '',
+    }});
+    paSetStep(4);
+  } catch (err) { erro.textContent = err.message; erro.classList.remove('hidden'); }
 }
 
 async function confirmarNovaSenha() {
@@ -212,26 +287,8 @@ async function confirmarNovaSenha() {
   if (nova !== conf) { erro.textContent = 'As senhas não coincidem.'; erro.classList.remove('hidden'); return; }
   try {
     await api('/api/alterar-senha-emp', { method: 'POST', body: { senhaAtual: atual, novaSenha: nova } });
-    if (_paTermosNecessarios) {
-      document.getElementById('pa-step-senha').classList.add('hidden');
-      document.getElementById('pa-step-termos').classList.remove('hidden');
-      document.getElementById('pa-titulo').textContent = 'Termos de Uso';
-    } else {
-      document.getElementById('primeiro-acesso-overlay').classList.add('hidden');
-      toast('Senha criada com sucesso! Bem-vindo ao SafePoint 🚀', 'ok');
-    }
-  } catch (err) { erro.textContent = err.message; erro.classList.remove('hidden'); }
-}
-
-async function confirmarTermos() {
-  const check = document.getElementById('pa-termos-check');
-  const erro  = document.getElementById('pa-termos-erro');
-  erro.classList.add('hidden');
-  if (!check.checked) { erro.textContent = 'Você precisa aceitar os termos para continuar.'; erro.classList.remove('hidden'); return; }
-  try {
-    await api('/api/aceitar-termos', { method: 'POST' });
     document.getElementById('primeiro-acesso-overlay').classList.add('hidden');
-    toast('Bem-vindo ao SafePoint! 🚀');
+    toast('Bem-vindo ao SafePoint! Configuração concluída 🚀', 'ok');
   } catch (err) { erro.textContent = err.message; erro.classList.remove('hidden'); }
 }
 
@@ -1259,10 +1316,11 @@ function renderColaboradores() {
       <td><strong>${c.ies}</strong>/100</td>
       <td>${conquista ? conquista.emoji + ' ' + conquista.nome : '—'}</td>
       <td class="pontos-cel">${c.pontos}</td>
-      <td>${c.ativo !== false ? '<span class="tag tag-verde">Ativo</span>' : '<span class="tag tag-inativo">Inativo</span>'}</td>
+      <td>${c.status === 'desligado' ? '<span class="badge badge-perigo">Desligado</span>' : c.ativo !== false ? '<span class="tag tag-verde">Ativo</span>' : '<span class="tag tag-inativo">Inativo</span>'}</td>
       <td class="acoes">
         <button class="btn btn-sm" onclick="abrirPerfilCompleto(${c.id})">👤 Perfil</button>
         <button class="btn btn-sm" onclick="abrirEditarColaborador(${c.id})">Editar</button>
+        ${c.status !== 'desligado' ? `<button class="btn btn-sm btn-perigo" onclick="abrirDesligamento(${c.id})">Desligar</button>` : ''}
         <button class="btn btn-sm btn-perigo" onclick="excluirColaborador(${c.id})">✕</button>
       </td>
     </tr>`;
@@ -1309,7 +1367,7 @@ function formColaboradorHtml(c) {
       <div class="emp-form-section-title">👤 Dados Pessoais</div>
       <div class="linha-2">
         <div><label>Nome completo *</label><input type="text" id="co-nome" value="${c ? esc(c.nome) : ''}"></div>
-        <div><label>CPF</label><input type="text" id="co-cpf" value="${c ? esc(c.cpf || '') : ''}" placeholder="000.000.000-00"></div>
+        <div><label>CPF</label><input type="text" id="co-cpf" value="${c ? esc(c.cpf || '') : ''}" placeholder="000.000.000-00" oninput="mascaraCPF(this)"></div>
       </div>
       <div class="linha-3">
         <div><label>Matrícula *</label><input type="text" id="co-matricula" value="${c ? esc(c.matricula) : ''}"></div>
@@ -1490,17 +1548,67 @@ async function excluirColaborador(id) {
   } catch (err) { toast(err.message, 'erro'); }
 }
 
-function abrirImportacao() {
-  abrirModal('Importar colaboradores via planilha', `
-    <p class="hint">Formato: <strong>matrícula;nome;setor;função;equipe;unidade;empresa</strong><br>
-    Colunas setor em diante são opcionais. Aceita CSV, TXT e colagem direta do Excel.</p>
-    <label>Arquivo CSV/TXT</label>
-    <input type="file" id="imp-arquivo" accept=".csv,.txt" onchange="lerArquivoImportacao(this)">
-    <label>Lista de colaboradores</label>
-    <textarea id="imp-texto" style="min-height:160px" placeholder="1001;Maria Silva;Produção;Operadora;Equipe A;Unidade SP;Empresa XYZ"></textarea>
+function abrirDesligamento(id) {
+  const c = COLABORADORES.find(x => x.id === id);
+  if (!c) return;
+  abrirModal(`🔴 Desligar colaborador — ${esc(c.nome)}`, `
+    <p class="hint" style="margin-bottom:14px">O colaborador perderá acesso imediatamente. Os dados históricos serão preservados para auditoria.</p>
+    <label>Motivo do desligamento *</label>
+    <select id="desl-motivo">
+      <option value="">Selecione...</option>
+      <option value="Pedido de demissão">Pedido de demissão</option>
+      <option value="Demissão sem justa causa">Demissão sem justa causa</option>
+      <option value="Demissão por justa causa">Demissão por justa causa</option>
+      <option value="Término de contrato">Término de contrato</option>
+      <option value="Aposentadoria">Aposentadoria</option>
+      <option value="Transferência">Transferência</option>
+      <option value="Outro">Outro</option>
+    </select>
+    <label style="margin-top:10px">Observações</label>
+    <textarea id="desl-obs" rows="3" placeholder="Informações adicionais sobre o desligamento..."></textarea>
     <div class="modal-rodape">
       <button class="btn" onclick="fecharModal()">Cancelar</button>
-      <button class="btn btn-primary" onclick="enviarImportacao()">Importar</button>
+      <button class="btn btn-perigo" onclick="confirmarDesligamento(${id})">🔴 Confirmar desligamento</button>
+    </div>`);
+}
+
+async function confirmarDesligamento(id) {
+  const motivo = document.getElementById('desl-motivo').value;
+  if (!motivo) return toast('Selecione o motivo do desligamento.', 'erro');
+  const obs = document.getElementById('desl-obs').value;
+  if (!confirm('Confirma o desligamento? O acesso será revogado imediatamente.')) return;
+  try {
+    await api(`/api/colaboradores/${id}/desligar`, { method: 'POST', body: { motivo, observacoes: obs } });
+    fecharModal();
+    toast('Colaborador desligado. Acesso revogado.', 'ok');
+    await carregarColaboradores();
+  } catch (err) { toast(err.message, 'erro'); }
+}
+
+function baixarModeloImportacao() {
+  const header = 'matricula;nome;cpf;dataNascimento;dataAdmissao;telefone;email;empresa;contrato;unidade;setor;equipe;cargo;gestorDireto;status;perfil;funcaoCipa;funcaoBrigada';
+  const exemplo = '001;Maria Silva;000.000.000-00;01/01/1990;01/01/2020;(11) 99999-9999;maria@email.com;Empresa XYZ;CLT;Unidade SP;Producao;Equipe A;Operadora;João;ativo;;cipa_titular;';
+  const blob = new Blob(['﻿' + header + '\n' + exemplo], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a'); a.href = url; a.download = 'modelo_importacao_safepoint.csv'; a.click();
+  URL.revokeObjectURL(url);
+}
+
+function abrirImportacao() {
+  abrirModal('📥 Importar colaboradores via planilha', `
+    <p class="hint" style="margin-bottom:12px">
+      Importe múltiplos colaboradores de uma vez. Baixe o modelo para garantir o formato correto.
+    </p>
+    <button class="btn" style="margin-bottom:14px" onclick="baixarModeloImportacao()">⬇️ Baixar planilha modelo (.csv)</button>
+    <label>Arquivo CSV/TXT</label>
+    <input type="file" id="imp-arquivo" accept=".csv,.txt,.xlsx" onchange="lerArquivoImportacao(this)">
+    <label style="margin-top:10px">Ou cole os dados diretamente</label>
+    <textarea id="imp-texto" style="min-height:120px" placeholder="matricula;nome;cpf;dataNascimento;..."></textarea>
+    <div id="imp-preview" style="margin-top:12px"></div>
+    <div class="modal-rodape">
+      <button class="btn" onclick="fecharModal()">Cancelar</button>
+      <button class="btn" onclick="validarImportacao()">🔍 Validar</button>
+      <button class="btn btn-primary" id="imp-btn-importar" onclick="enviarImportacao()" disabled>✔ Importar</button>
     </div>
     <div id="imp-resultado" style="margin-top:12px"></div>`);
 }
@@ -1513,14 +1621,45 @@ function lerArquivoImportacao(input) {
   reader.readAsText(file, 'utf-8');
 }
 
+async function validarImportacao() {
+  const texto = document.getElementById('imp-texto').value;
+  if (!texto.trim()) return toast('Cole a lista ou selecione um arquivo.', 'erro');
+  const preview = document.getElementById('imp-preview');
+  preview.innerHTML = '<p class="hint">Validando...</p>';
+  try {
+    const r = await api('/api/colaboradores/validar-importacao', { method: 'POST', body: { texto } });
+    const btn = document.getElementById('imp-btn-importar');
+    if (btn) btn.disabled = r.totalValidos === 0;
+    let html = `<div class="panel" style="padding:12px">
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:10px;text-align:center">
+        <div style="padding:10px;background:#eaf9ee;border-radius:8px"><div style="font-size:24px;font-weight:900;color:#1a8a4c">${r.totalValidos}</div><div class="hint">Válidos</div></div>
+        <div style="padding:10px;background:#fff8e6;border-radius:8px"><div style="font-size:24px;font-weight:900;color:#e8801a">${r.duplicados.length}</div><div class="hint">Duplicados</div></div>
+        <div style="padding:10px;background:#fff0f0;border-radius:8px"><div style="font-size:24px;font-weight:900;color:#d32f2f">${r.totalErros}</div><div class="hint">Erros</div></div>
+      </div>`;
+    if (r.validos.length) {
+      html += `<table class="tabela" style="font-size:12px"><thead><tr><th>Matrícula</th><th>Nome</th><th>Setor</th><th>Status</th></tr></thead><tbody>`;
+      for (const v of r.validos.slice(0, 10)) {
+        html += `<tr><td>${esc(v.matricula)}</td><td>${esc(v.nome)}</td><td>${esc(v.setor||'—')}</td><td><span class="tag tag-verde">OK</span></td></tr>`;
+      }
+      if (r.validos.length > 10) html += `<tr><td colspan="4" class="hint" style="text-align:center">... e mais ${r.validos.length - 10}</td></tr>`;
+      html += `</tbody></table>`;
+    }
+    if (r.duplicados.length) html += `<p class="hint" style="margin-top:8px">⚠️ Matrícula já existente: ${r.duplicados.slice(0,5).map(esc).join(', ')}${r.duplicados.length>5?'...':''}</p>`;
+    if (r.erros.length)     html += `<p class="erro" style="margin-top:6px">❌ Erros: ${r.erros.slice(0,3).map(e=>'linha '+(e.linha||0)+': '+esc(e.motivo||'')).join('; ')}</p>`;
+    html += `</div>`;
+    preview.innerHTML = html;
+  } catch (err) { preview.innerHTML = `<p class="hint">Erro: ${esc(err.message)}</p>`; }
+}
+
 async function enviarImportacao() {
   const texto = document.getElementById('imp-texto').value;
   if (!texto.trim()) return toast('Cole a lista ou selecione um arquivo.', 'erro');
   try {
     const r = await api('/api/colaboradores/importar', { method: 'POST', body: { texto } });
     let html = `<p style="color:var(--verde);font-weight:700">✔ ${r.inseridos} colaborador(es) importado(s).</p>`;
-    if (r.duplicados.length) html += `<p class="hint">Ignoradas (já existem): ${r.duplicados.map(esc).join(', ')}</p>`;
-    if (r.erros.length) html += `<p class="erro">Erros: ${r.erros.map(e => 'linha ' + e.linha).join(', ')}</p>`;
+    if (r.duplicados && r.duplicados.length) html += `<p class="hint">Ignorados (matrícula duplicada): ${r.duplicados.map(esc).join(', ')}</p>`;
+    if (r.cpfDuplicados && r.cpfDuplicados.length) html += `<p class="hint">Ignorados (CPF duplicado): ${r.cpfDuplicados.map(esc).join(', ')}</p>`;
+    if (r.erros && r.erros.length) html += `<p class="erro">Erros: ${r.erros.map(e => 'linha ' + (e.linha||0)).join(', ')}</p>`;
     document.getElementById('imp-resultado').innerHTML = html;
     toast(`${r.inseridos} importado(s).`, 'ok');
     await carregarColaboradores();
@@ -3671,6 +3810,134 @@ let QEQ_LISTA = [];
 async function carregarQuemEQuem() {
   QEQ_LISTA = await api('/api/quem-e-quem').catch(() => []);
   filtrarQuemEQuem();
+  renderOrgChartQeq('cipa', 'qeq-org-cipa');
+  renderOrgChartQeq('brigada', 'qeq-org-brigada');
+  renderOrgChartQeq('sesmt', 'qeq-org-sesmt');
+}
+
+function qeqTab(tab) {
+  document.querySelectorAll('#qeq-tabs .quiz-tab').forEach(b => b.classList.toggle('active', b.dataset.qeqtab === tab));
+  ['diretorio','cipa','brigada','sesmt'].forEach(t => {
+    const el = document.getElementById('qeqtab-' + t);
+    if (el) el.classList.toggle('hidden', t !== tab);
+  });
+}
+
+function buscaInteligenteQeq() {
+  const q = (document.getElementById('qeq-smart-busca') || {}).value || '';
+  const el = document.getElementById('qeq-smart-resultado');
+  if (!el) return;
+  buscaInteligente(q, QEQ_LISTA, el);
+}
+
+function buscaInteligenteQeqColab() {
+  const q = (document.getElementById('cqeq-smart-busca') || {}).value || '';
+  const el = document.getElementById('cqeq-smart-resultado');
+  if (!el) return;
+  buscaInteligente(q, CQEQ_LISTA, el);
+}
+
+function buscaInteligente(q, lista, el) {
+  if (!q || q.length < 3) { el.innerHTML = ''; return; }
+  const qLow = q.toLowerCase();
+  // Detect intent from natural language
+  const rolemap = { 'presidente':'cipa_presidente','vice':'cipa_vice','secretário':'cipa_secretario','titular':'cipa_titular','suplente':'cipa_suplente','coordenador':'brigada_coordenador','líder':'brigada_lider','brigadista':'brigada_brigadista','socorrista':'brigada_socorrista','cipa':'cipa','brigada':'brigada','sesmt':'sesmt','técnico':'tecnico_seguranca','médico':'medico_trabalho','ergonomista':'ergonomista','liderança':'lideranca' };
+  let results = [];
+  for (const [keyword, role] of Object.entries(rolemap)) {
+    if (qLow.includes(keyword)) {
+      results = lista.filter(p => {
+        if (p.roles && p.roles.includes(role)) return true;
+        if (p.subRoles && p.subRoles.some(sr => sr.cargo === role)) return true;
+        return false;
+      });
+      break;
+    }
+  }
+  if (!results.length) {
+    results = lista.filter(p => [p.nome, p.funcao, p.setor, p.equipe].join(' ').toLowerCase().includes(qLow));
+  }
+  if (!results.length) { el.innerHTML = '<p class="hint">Nenhum resultado encontrado.</p>'; return; }
+  el.innerHTML = `<div class="qeq-grid" style="margin-top:0">${results.slice(0,4).map(p => renderQeqCard(p)).join('')}</div>`;
+}
+
+function renderOrgChartQeq(tipo, containerId) {
+  const el = document.getElementById(containerId);
+  if (!el) return;
+  const CARGO_ORDER = tipo === 'cipa'
+    ? ['cipa_presidente','cipa_vice','cipa_secretario','cipa_titular','cipa_suplente']
+    : tipo === 'brigada'
+    ? ['brigada_coordenador','brigada_lider','brigada_brigadista','brigada_socorrista']
+    : ['sesmt'];
+  const CARGO_LABELS = {
+    cipa_presidente:'Presidente',cipa_vice:'Vice-Presidente',cipa_secretario:'Secretário',
+    cipa_titular:'Titular',cipa_suplente:'Suplente',
+    brigada_coordenador:'Coordenador Geral',brigada_lider:'Líder de Brigada',
+    brigada_brigadista:'Brigadista',brigada_socorrista:'Socorrista',
+    sesmt:'Equipe SESMT'
+  };
+  const GRUPO_ICONS = { cipa:'⚠️', brigada:'🚒', sesmt:'🦺' };
+  const lista = QEQ_LISTA.length ? QEQ_LISTA : CQEQ_LISTA;
+  if (!lista.length) { el.innerHTML = '<p class="hint" style="padding:24px;text-align:center">Nenhum integrante cadastrado.</p>'; return; }
+  let membros;
+  if (tipo === 'sesmt') {
+    membros = lista.filter(p => p.roles && p.roles.includes('sesmt'));
+    el.innerHTML = `<div class="org-chart-section"><div class="org-chart-title">${GRUPO_ICONS.sesmt} SESMT</div>
+      <div class="org-chart-group"><div class="qeq-grid">${membros.length ? membros.map(p => renderQeqCard(p)).join('') : '<p class="hint">Sem integrantes.</p>'}</div></div></div>`;
+    return;
+  }
+  let html = `<div class="org-chart-section">`;
+  for (const cargo of CARGO_ORDER) {
+    membros = lista.filter(p => p.subRoles && p.subRoles.some(sr => sr.cargo === cargo));
+    if (!membros.length) continue;
+    html += `<div class="org-chart-level">
+      <div class="org-chart-level-label">${GRUPO_ICONS[tipo]} ${CARGO_LABELS[cargo] || cargo}</div>
+      <div class="qeq-grid">${membros.map(p => renderQeqCardOrg(p, cargo)).join('')}</div>
+    </div>`;
+  }
+  // show members with just the group role but no specific cargo
+  const semCargo = lista.filter(p => p.roles && p.roles.includes(tipo) && (!p.subRoles || !p.subRoles.some(sr => sr.cargo.startsWith(tipo + '_'))));
+  if (semCargo.length) html += `<div class="org-chart-level"><div class="org-chart-level-label">${GRUPO_ICONS[tipo]} Integrantes</div><div class="qeq-grid">${semCargo.map(p => renderQeqCard(p)).join('')}</div></div>`;
+  html += `</div>`;
+  el.innerHTML = html || '<p class="hint" style="padding:24px;text-align:center">Nenhum integrante com cargo definido. Atribua funções em Papéis → editar colaborador.</p>';
+}
+
+function renderQeqCardOrg(p, cargo) {
+  const avatarBg = p.roles.includes('sesmt') ? 'var(--azul)' : p.roles.includes('cipa') ? '#e8801a' : p.roles.includes('brigada') ? '#c43a3a' : '#637080';
+  const initial = (p.nome || '?').charAt(0).toUpperCase();
+  const foto = p.foto ? `<img src="${p.foto}" alt="" class="qeq-avatar-img">` : `<div class="qeq-avatar" style="background:${avatarBg}">${initial}</div>`;
+  return `<div class="qeq-card" onclick="abrirPerfilQeq(${p.id})">
+    ${foto}
+    <div class="qeq-info">
+      <div class="qeq-nome">${esc(p.nome)}</div>
+      <div class="qeq-funcao hint">${esc(p.funcao || p.setor || '—')}</div>
+      ${p.emailCorp ? `<div class="hint" style="font-size:11px">✉ ${esc(p.emailCorp)}</div>` : ''}
+      ${p.telefone ? `<div class="hint" style="font-size:11px">📱 ${esc(p.telefone)}</div>` : ''}
+    </div>
+  </div>`;
+}
+
+function abrirPerfilQeq(id) {
+  const p = (QEQ_LISTA.length ? QEQ_LISTA : CQEQ_LISTA).find(x => x.id === id);
+  if (!p) return;
+  const avatarBg = p.roles.includes('sesmt') ? 'var(--azul)' : p.roles.includes('cipa') ? '#e8801a' : p.roles.includes('brigada') ? '#c43a3a' : '#637080';
+  const initial = (p.nome || '?').charAt(0).toUpperCase();
+  const foto = p.foto ? `<img src="${p.foto}" alt="" style="width:80px;height:80px;border-radius:50%;object-fit:cover;margin:0 auto 12px;display:block">`
+    : `<div style="width:80px;height:80px;border-radius:50%;background:${avatarBg};color:#fff;font-size:32px;font-weight:900;display:flex;align-items:center;justify-content:center;margin:0 auto 12px">${initial}</div>`;
+  const cargosSr = (p.subRoles || []).map(sr => `<span class="badge">${esc(sr.cargo.replace(/_/g,' '))}</span>`).join(' ');
+  abrirModal('👤 Perfil', `
+    ${foto}
+    <div style="text-align:center;margin-bottom:16px">
+      <div style="font-size:18px;font-weight:700">${esc(p.nome)}</div>
+      <div class="hint">${esc(p.funcao || '—')} · ${esc(p.setor || '—')}</div>
+      <div style="margin-top:6px">${renderRoleBadges(p.roles)} ${cargosSr}</div>
+    </div>
+    <div style="display:grid;gap:6px;font-size:13px">
+      ${p.equipe ? `<div><strong>Equipe:</strong> ${esc(p.equipe)}</div>` : ''}
+      ${p.unidade ? `<div><strong>Unidade:</strong> ${esc(p.unidade)}</div>` : ''}
+      ${p.telefone ? `<div><strong>Telefone:</strong> ${esc(p.telefone)}</div>` : ''}
+      ${p.emailCorp ? `<div><strong>E-mail corp.:</strong> ${esc(p.emailCorp)}</div>` : ''}
+      ${p.gestorDireto ? `<div><strong>Gestor:</strong> ${esc(p.gestorDireto)}</div>` : ''}
+    </div>`);
 }
 
 function filtrarQuemEQuem() {
@@ -3687,10 +3954,13 @@ function filtrarQuemEQuem() {
 }
 
 function renderQeqCard(p) {
-  const avatarBg = p.roles.includes('sesmt') ? 'var(--azul)' : p.roles.includes('cipa') ? '#e8801a' : p.roles.includes('brigada') ? '#c43a3a' : 'var(--cinza-borda)';
+  const avatarBg = p.roles.includes('sesmt') ? 'var(--azul)' : p.roles.includes('cipa') ? '#e8801a' : p.roles.includes('brigada') ? '#c43a3a' : p.roles.includes('lideranca') ? '#7b5ea7' : '#637080';
   const initial = (p.nome || '?').charAt(0).toUpperCase();
-  return `<div class="qeq-card">
-    <div class="qeq-avatar" style="background:${avatarBg}">${initial}</div>
+  const foto = p.foto
+    ? `<img src="${p.foto}" alt="" class="qeq-avatar-img">`
+    : `<div class="qeq-avatar" style="background:${avatarBg}">${initial}</div>`;
+  return `<div class="qeq-card" onclick="abrirPerfilQeq(${p.id})">
+    ${foto}
     <div class="qeq-info">
       <div class="qeq-nome">${esc(p.nome)}</div>
       <div class="qeq-funcao hint">${esc(p.funcao || p.setor || '—')}</div>
@@ -3707,6 +3977,17 @@ let CQEQ_LISTA = [];
 async function carregarQuemEQuemColab() {
   CQEQ_LISTA = await api('/api/quem-e-quem').catch(() => []);
   filtrarQuemEQuemColab();
+  renderOrgChartQeq('cipa', 'cqeq-org-cipa');
+  renderOrgChartQeq('brigada', 'cqeq-org-brigada');
+  renderOrgChartQeq('sesmt', 'cqeq-org-sesmt');
+}
+
+function cqeqTab(tab) {
+  document.querySelectorAll('#cqeq-tabs .quiz-tab').forEach(b => b.classList.toggle('active', b.dataset.cqeqtab === tab));
+  ['diretorio','cipa','brigada','sesmt'].forEach(t => {
+    const el = document.getElementById('cqeqtab-' + t);
+    if (el) el.classList.toggle('hidden', t !== tab);
+  });
 }
 
 function filtrarQuemEQuemColab() {

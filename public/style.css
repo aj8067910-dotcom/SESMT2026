@@ -1217,3 +1217,54 @@ hr { border: none; border-top: 1px solid var(--cinza-borda); margin: 16px 0; }
   font-size: 14px; font-weight: 700; color: var(--azul-escuro);
   margin-bottom: 12px; padding-bottom: 6px; border-bottom: 2px solid var(--cinza-borda);
 }
+
+/* ═══════════════════════════════════════════════════════════
+   SafePoint 3.3 — Primeiro Acesso Wizard
+═══════════════════════════════════════════════════════════ */
+
+.pa-step-dot {
+  flex: 1; height: 6px; border-radius: 3px;
+  background: var(--cinza-borda); transition: background .3s;
+}
+.pa-step-dot.active { background: var(--azul); }
+.pa-step-dot.done   { background: var(--verde); }
+
+/* ═══════════════════════════════════════════════════════════
+   SafePoint 3.3 — QEQ Org Chart
+═══════════════════════════════════════════════════════════ */
+
+.qeq-org-wrap { padding: 16px 0; }
+.org-chart-section { display: flex; flex-direction: column; gap: 20px; }
+.org-chart-level { background: #fff; border-radius: 10px; padding: 14px; border: 1px solid var(--cinza-borda); }
+.org-chart-level-label {
+  font-size: 13px; font-weight: 700; color: var(--azul-escuro);
+  margin-bottom: 10px; padding-bottom: 8px; border-bottom: 2px solid var(--cinza-borda);
+  display: flex; align-items: center; gap: 6px;
+}
+.org-chart-title {
+  font-size: 16px; font-weight: 700; color: var(--azul-escuro);
+  margin-bottom: 12px; padding: 10px; background: #f0f6ff; border-radius: 8px;
+}
+
+/* QEQ card with photo support */
+.qeq-avatar-img {
+  width: 48px; height: 48px; border-radius: 50%; object-fit: cover;
+  flex-shrink: 0; border: 2px solid var(--cinza-borda);
+}
+
+/* ═══════════════════════════════════════════════════════════
+   SafePoint 3.3 — Smart Search
+═══════════════════════════════════════════════════════════ */
+
+#qeq-smart-resultado .qeq-grid,
+#cqeq-smart-resultado .qeq-grid { margin-top: 0; }
+
+/* ═══════════════════════════════════════════════════════════
+   SafePoint 3.3 — Employee Status Badges
+═══════════════════════════════════════════════════════════ */
+
+.badge-desligado { background: #fee2e2; color: #991b1b; }
+.badge-afastado  { background: #fef3c7; color: #92400e; }
+.badge-inativo   { background: #f1f5f9; color: #475569; }
+.status-desligado { opacity: .6; }
+

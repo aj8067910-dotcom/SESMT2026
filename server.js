@@ -680,18 +680,22 @@ function generateCode() {
 }
 
 function parseBulk(text) {
+  const COLS = ['matricula','nome','cpf','dataNascimento','dataAdmissao','telefone','email','empresa','contrato','unidade','setor','equipe','funcao','gestorDireto','status','perfil','funcaoCipa','funcaoBrigada'];
   const lines = String(text || '').split(/\r?\n/);
   const rows = [], errors = [];
   lines.forEach((line, idx) => {
     const raw = line.trim();
     if (!raw) return;
     const parts = raw.split(/\t|;|,(?=(?:[^"]*"[^"]*")*[^"]*$)/).map(p => p.replace(/^"|"$/g, '').trim());
-    if (idx === 0 && /matr[ií]cula/i.test(parts[0])) return;
+    if (idx === 0 && /matr[ií]cula|nome/i.test(parts[0])) return;
     if (parts.length < 2 || !parts[0] || !parts[1]) {
       errors.push({ linha: idx + 1, conteudo: raw, motivo: 'esperado: matrícula;nome' });
       return;
     }
-    rows.push({ matricula: normalizeMatricula(parts[0]), nome: parts[1], setor: parts[2] || '', funcao: parts[3] || '', equipe: parts[4] || '', unidade: parts[5] || '', empresa: parts[6] || '' });
+    const row = {};
+    COLS.forEach((col, i) => { row[col] = parts[i] ? parts[i].trim() : ''; });
+    row.matricula = normalizeMatricula(row.matricula);
+    rows.push(row);
   });
   return { rows, errors };
 }
@@ -1051,11 +1055,60 @@ route('POST', /^\/api\/aceitar-termos$/, { role: 'any' }, async (req, res, m, bo
   if (!emp) return sendJson(res, 403, { error: 'Não autorizado.' });
   emp.termosAceitos   = true;
   emp.termosAceitosEm = Date.now();
+  emp.termosIp        = getClientIP(req);
+  saveDb();
+  logAudit(emp.id, s.role || 'colaborador', 'aceitar_termos', `Termos aceitos por ${emp.nome}`, emp.companyId,
+    { ip: getClientIP(req), dispositivo: getDeviceInfo(req) });
+  sendJson(res, 200, { ok: true });
+});
+
+route('POST', /^\/api\/primeiro-acesso\/dados$/, { role: 'any' }, async (req, res, m, body, s) => {
+  let emp;
+  if (s.role === 'colaborador')                 emp = db.employees.find(e => e.id === s.employeeId);
+  else if (s.role === 'gestor' && s.isEmployee) emp = db.employees.find(e => e.id === s.userId);
+  if (!emp) return sendJson(res, 403, { error: 'Não autorizado.' });
+  ['telefone','email','dataNascimento','emailCorp'].forEach(f => {
+    if (body[f] !== undefined) emp[f] = String(body[f]).trim();
+  });
   saveDb();
   sendJson(res, 200, { ok: true });
 });
 
-// SafePoint 2.1 — role management (somente SESMT ou gestor legado)
+route('POST', /^\/api\/primeiro-acesso\/emergencia$/, { role: 'any' }, async (req, res, m, body, s) => {
+  let emp;
+  if (s.role === 'colaborador')                 emp = db.employees.find(e => e.id === s.employeeId);
+  else if (s.role === 'gestor' && s.isEmployee) emp = db.employees.find(e => e.id === s.userId);
+  if (!emp) return sendJson(res, 403, { error: 'Não autorizado.' });
+  emp.contatoEmergencia = {
+    nome:       String(body.nome       || '').trim(),
+    parentesco: String(body.parentesco || '').trim(),
+    telefone1:  String(body.telefone1  || '').trim(),
+    telefone2:  String(body.telefone2  || '').trim(),
+  };
+  saveDb();
+  sendJson(res, 200, { ok: true });
+});
+
+route('POST', /^\/api\/colaboradores\/(\d+)\/desligar$/, { role: 'gestor' }, async (req, res, m, body, s) => {
+  if (!checkSesmtPermission(s)) return sendJson(res, 403, { error: 'Apenas o SESMT pode desligar colaboradores.' });
+  const emp = db.employees.find(e => e.id === Number(m[1]) && e.companyId === s.companyId);
+  if (!emp) return sendJson(res, 404, { error: 'Colaborador não encontrado.' });
+  const antes = emp.status;
+  emp.status          = 'desligado';
+  emp.ativo           = false;
+  emp.desligadoEm     = Date.now();
+  emp.desligadoMotivo = String(body.motivo || '').trim();
+  emp.desligadoObs    = String(body.observacoes || '').trim();
+  emp.roles           = (emp.roles || []).filter(r => !['sesmt'].includes(r));
+  saveDb();
+  logAudit(s.userId, s.role, 'desligar_colaborador',
+    `Desligamento: ${emp.nome} — ${emp.desligadoMotivo}`, s.companyId,
+    { modulo: 'pessoas', valorAntes: antes, valorDepois: 'desligado',
+      ip: getClientIP(req), dispositivo: getDeviceInfo(req) });
+  sendJson(res, 200, { ok: true });
+});
+
+
 function checkSesmtPermission(s) {
   if (!s.isEmployee) return true; // gestor legado (tabela managers) → pode
   const requester = db.employees.find(e => e.id === s.userId);
@@ -1496,23 +1549,55 @@ route('POST', /^\/api\/colaboradores$/, { role: 'gestor' }, async (req, res, m, 
   sendJson(res, 201, safeEmp);
 });
 
+route('POST', /^\/api\/colaboradores\/validar-importacao$/, { role: 'gestor' }, async (req, res, m, body, s) => {
+  const { rows, errors } = parseBulk(body.texto);
+  const validos = [], duplicados = [], cpfDuplicados = [];
+  const seenMats = new Set(), seenCpfs = new Set();
+  for (const r of rows) {
+    const matExists = db.employees.some(e => e.matricula === r.matricula && e.companyId === s.companyId);
+    const cpfExists = r.cpf && db.employees.some(e => e.cpf === r.cpf && e.companyId === s.companyId);
+    if (matExists || seenMats.has(r.matricula)) { duplicados.push(r.matricula); continue; }
+    if (cpfExists || (r.cpf && seenCpfs.has(r.cpf))) { cpfDuplicados.push(r.cpf); errors.push({ linha: 0, motivo: `CPF duplicado: ${r.cpf}` }); continue; }
+    seenMats.add(r.matricula);
+    if (r.cpf) seenCpfs.add(r.cpf);
+    validos.push(r);
+  }
+  sendJson(res, 200, { validos, duplicados, cpfDuplicados, erros: errors, totalValidos: validos.length, totalErros: errors.length + duplicados.length });
+});
+
 route('POST', /^\/api\/colaboradores\/importar$/, { role: 'gestor' }, async (req, res, m, body, s) => {
   const { rows, errors } = parseBulk(body.texto);
-  const inseridos = [], duplicados = [];
+  const inseridos = [], duplicados = [], cpfDuplicados = [];
+  const seenMats = new Set();
   for (const r of rows) {
-    if (db.employees.some(e => e.matricula === r.matricula && e.companyId === s.companyId) || inseridos.some(e => e.matricula === r.matricula)) {
+    if (db.employees.some(e => e.matricula === r.matricula && e.companyId === s.companyId) || seenMats.has(r.matricula)) {
       duplicados.push(r.matricula); continue;
     }
-    const bpwd = hashPassword('SafePoint@2026');
-    const emp = { id: nextId(), ...r, cpf: '', ativo: true, companyId: s.companyId,
-      senhaSalt: bpwd.salt, senhaHash: bpwd.hash, primeiroAcesso: true, roles: [],
-      termosAceitos: false, email: '', telefone: '', dataNascimento: '',
-      streakAtual: 0, maiorStreak: 0, ultimoAcessoDia: '', nivelAtual: 1 };
+    if (r.cpf && db.employees.some(e => e.cpf === r.cpf && e.companyId === s.companyId)) {
+      cpfDuplicados.push(r.cpf); continue;
+    }
+    seenMats.add(r.matricula);
+    const bpwd = hashPassword(r.matricula);
+    const roles = r.perfil ? r.perfil.split(/[|,]/).map(x => x.trim().toLowerCase()).filter(x => VALID_ROLES.includes(x)) : [];
+    const emp = { id: nextId(), matricula: r.matricula, nome: r.nome,
+      cpf: r.cpf || '', telefone: r.telefone || '', email: r.email || '',
+      emailCorp: '', dataNascimento: r.dataNascimento || '', dataAdmissao: r.dataAdmissao || '',
+      setor: r.setor || '', funcao: r.funcao || '', equipe: r.equipe || '',
+      unidade: r.unidade || '', empresa: r.empresa || '', contrato: r.contrato || '',
+      gestorDireto: r.gestorDireto || '', status: r.status || 'ativo',
+      ativo: (r.status || 'ativo') !== 'desligado',
+      companyId: s.companyId, senhaSalt: bpwd.salt, senhaHash: bpwd.hash,
+      primeiroAcesso: true, roles, subRoles: [], termosAceitos: false,
+      streakAtual: 0, maiorStreak: 0, ultimoAcessoDia: '', nivelAtual: 1,
+      foto: null, contatoEmergencia: null };
     db.employees.push(emp);
     inseridos.push(emp);
   }
   saveDb();
-  sendJson(res, 200, { inseridos: inseridos.length, duplicados, erros: errors });
+  logAudit(s.userId, s.role, 'importar_colaboradores',
+    `${inseridos.length} colaborador(es) importados`, s.companyId,
+    { ip: getClientIP(req), dispositivo: getDeviceInfo(req) });
+  sendJson(res, 200, { inseridos: inseridos.length, duplicados, cpfDuplicados, erros: errors });
 });
 
 route('PUT', /^\/api\/colaboradores\/(\d+)$/, { role: 'gestor' }, async (req, res, m, body, s) => {

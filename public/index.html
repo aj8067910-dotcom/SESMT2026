@@ -50,22 +50,16 @@
     <div class="modal-head">
       <h3 id="pa-titulo">Bem-vindo ao SafePoint!</h3>
     </div>
+    <div id="pa-progress" style="display:flex;gap:6px;padding:0 24px 16px;margin-top:-8px">
+      <div class="pa-step-dot active" id="pad-1"></div>
+      <div class="pa-step-dot" id="pad-2"></div>
+      <div class="pa-step-dot" id="pad-3"></div>
+      <div class="pa-step-dot" id="pad-4"></div>
+    </div>
     <div class="modal-corpo">
-      <!-- Step 1: trocar senha -->
-      <div id="pa-step-senha">
-        <p style="margin-bottom:14px">Por segurança, você precisa criar uma senha pessoal antes de continuar.</p>
-        <label>Senha provisória</label>
-        <input type="password" id="pa-senha-atual" placeholder="SafePoint@2026" autocomplete="current-password">
-        <label style="margin-top:10px">Nova senha <span class="hint">(mín. 6 caracteres)</span></label>
-        <input type="password" id="pa-senha-nova" autocomplete="new-password" minlength="6">
-        <label style="margin-top:10px">Confirmar nova senha</label>
-        <input type="password" id="pa-senha-confirma" autocomplete="new-password">
-        <p id="pa-senha-erro" class="erro hidden" style="margin-top:8px"></p>
-        <button class="btn btn-primary btn-block" style="margin-top:14px" onclick="confirmarNovaSenha()">Continuar →</button>
-      </div>
-      <!-- Step 2: aceitar termos -->
-      <div id="pa-step-termos" class="hidden">
-        <h4 style="margin-bottom:10px">Termos de Uso e Privacidade</h4>
+      <!-- Passo 1: Termos -->
+      <div id="pa-step-termos">
+        <h4 style="margin-bottom:10px">📋 Termos de Uso e Privacidade</h4>
         <div class="termos-scroll">
           <p>Ao utilizar o SafePoint, você concorda com as seguintes condições:</p>
           <ul>
@@ -78,10 +72,70 @@
         </div>
         <label class="check-inline" style="margin-top:14px;display:flex;align-items:flex-start;gap:8px">
           <input type="checkbox" id="pa-termos-check" style="margin-top:3px;flex-shrink:0">
-          <span>Li e aceito os Termos de Uso e a Política de Privacidade</span>
+          <span>Li e aceito os Termos de Uso e a Política de Privacidade da SafePoint</span>
         </label>
         <p id="pa-termos-erro" class="erro hidden" style="margin-top:8px"></p>
-        <button class="btn btn-primary btn-block" style="margin-top:14px" onclick="confirmarTermos()">Começar a usar o SafePoint 🚀</button>
+        <button class="btn btn-primary btn-block" style="margin-top:14px" onclick="paAceitarTermos()">Aceitar e Continuar →</button>
+      </div>
+      <!-- Passo 2: Conferência Cadastral -->
+      <div id="pa-step-dados" class="hidden">
+        <h4 style="margin-bottom:10px">👤 Confirme seus dados cadastrais</h4>
+        <p class="hint" style="margin-bottom:14px">Verifique e complemente as informações abaixo. Os campos podem ser atualizados a qualquer momento no seu perfil.</p>
+        <div class="linha-2">
+          <div><label>Telefone pessoal</label><input type="text" id="pa-telefone" placeholder="(71) 99999-9999" oninput="mascaraTelefone(this)"></div>
+          <div><label>E-mail pessoal</label><input type="email" id="pa-email" placeholder="seu@email.com"></div>
+        </div>
+        <div><label>Data de Nascimento</label><input type="date" id="pa-dataNascimento"></div>
+        <p id="pa-dados-erro" class="erro hidden" style="margin-top:8px"></p>
+        <div style="display:flex;gap:10px;margin-top:14px">
+          <button class="btn" onclick="paVoltarStep(1)">← Voltar</button>
+          <button class="btn btn-primary" style="flex:1" onclick="paSalvarDados()">Continuar →</button>
+        </div>
+      </div>
+      <!-- Passo 3: Contato de Emergência -->
+      <div id="pa-step-emergencia" class="hidden">
+        <h4 style="margin-bottom:10px">🆘 Contato de Emergência</h4>
+        <p class="hint" style="margin-bottom:14px">Informe um contato para emergências. Esta informação é usada apenas em situações críticas.</p>
+        <label>Nome completo *</label>
+        <input type="text" id="pa-emerg-nome" placeholder="Nome do contato">
+        <div class="linha-2" style="margin-top:10px">
+          <div><label>Grau de parentesco *</label>
+            <select id="pa-emerg-parentesco">
+              <option value="">Selecione...</option>
+              <option value="Pai">Pai</option>
+              <option value="Mãe">Mãe</option>
+              <option value="Esposo(a)">Esposo(a)</option>
+              <option value="Filho(a)">Filho(a)</option>
+              <option value="Irmão(ã)">Irmão(ã)</option>
+              <option value="Avô/Avó">Avô/Avó</option>
+              <option value="Outro">Outro</option>
+            </select>
+          </div>
+          <div><label>Telefone principal *</label><input type="text" id="pa-emerg-tel1" placeholder="(71) 99999-9999" oninput="mascaraTelefone(this)"></div>
+        </div>
+        <label style="margin-top:10px">Telefone secundário (opcional)</label>
+        <input type="text" id="pa-emerg-tel2" placeholder="(71) 99999-9999" oninput="mascaraTelefone(this)">
+        <p id="pa-emerg-erro" class="erro hidden" style="margin-top:8px"></p>
+        <div style="display:flex;gap:10px;margin-top:14px">
+          <button class="btn" onclick="paVoltarStep(2)">← Voltar</button>
+          <button class="btn btn-primary" style="flex:1" onclick="paSalvarEmergencia()">Continuar →</button>
+        </div>
+      </div>
+      <!-- Passo 4: Nova Senha -->
+      <div id="pa-step-senha" class="hidden">
+        <h4 style="margin-bottom:10px">🔐 Crie sua senha pessoal</h4>
+        <p style="margin-bottom:14px;font-size:13px;color:#6b7280">Por segurança, defina uma senha pessoal para substituir a senha provisória.</p>
+        <label>Senha provisória (atual)</label>
+        <input type="password" id="pa-senha-atual" placeholder="Sua senha atual" autocomplete="current-password">
+        <label style="margin-top:10px">Nova senha <span class="hint">(mín. 6 caracteres)</span></label>
+        <input type="password" id="pa-senha-nova" autocomplete="new-password" minlength="6">
+        <label style="margin-top:10px">Confirmar nova senha</label>
+        <input type="password" id="pa-senha-confirma" autocomplete="new-password">
+        <p id="pa-senha-erro" class="erro hidden" style="margin-top:8px"></p>
+        <div style="display:flex;gap:10px;margin-top:14px">
+          <button class="btn" onclick="paVoltarStep(3)">← Voltar</button>
+          <button class="btn btn-primary" style="flex:1" onclick="confirmarNovaSenha()">Finalizar e entrar 🚀</button>
+        </div>
       </div>
     </div>
   </div>
@@ -457,19 +511,39 @@
       <div class="view-head">
         <h2>👥 Quem é Quem — Diretório de Segurança</h2>
       </div>
-      <div class="filtros">
-        <input type="text" id="qeq-busca" placeholder="Buscar por nome, função, setor..." oninput="filtrarQuemEQuem()">
-        <select id="qeq-role-filtro" onchange="filtrarQuemEQuem()">
-          <option value="">Todos os papéis</option>
-          <option value="sesmt">🦺 SESMT</option>
-          <option value="cipa">⚠️ CIPA</option>
-          <option value="brigada">🚒 Brigada de Emergência</option>
-          <option value="tecnico_seguranca">🔧 Técnico de Segurança</option>
-          <option value="medico_trabalho">🩺 Médico do Trabalho</option>
-          <option value="ergonomista">🪑 Ergonomista</option>
-        </select>
+      <!-- Busca inteligente -->
+      <div class="panel" style="margin-bottom:14px">
+        <div style="display:flex;gap:8px;align-items:center">
+          <input type="text" id="qeq-smart-busca" placeholder="🔍 Ex.: Quem é o presidente da CIPA? Quem cuida do meu setor?" style="flex:1" oninput="buscaInteligenteQeq()">
+        </div>
+        <div id="qeq-smart-resultado" style="margin-top:10px"></div>
       </div>
-      <div id="qeq-grid" class="qeq-grid"></div>
+      <!-- Tabs -->
+      <div class="quiz-tabs" id="qeq-tabs">
+        <button class="quiz-tab active" data-qeqtab="diretorio" onclick="qeqTab('diretorio')">📋 Diretório</button>
+        <button class="quiz-tab" data-qeqtab="cipa"     onclick="qeqTab('cipa')">⚠️ CIPA</button>
+        <button class="quiz-tab" data-qeqtab="brigada"  onclick="qeqTab('brigada')">🚒 Brigada</button>
+        <button class="quiz-tab" data-qeqtab="sesmt"    onclick="qeqTab('sesmt')">🦺 SESMT</button>
+      </div>
+      <div id="qeqtab-diretorio">
+        <div class="filtros" style="margin-top:10px">
+          <input type="text" id="qeq-busca" placeholder="Buscar por nome, função, setor..." oninput="filtrarQuemEQuem()">
+          <select id="qeq-role-filtro" onchange="filtrarQuemEQuem()">
+            <option value="">Todos os papéis</option>
+            <option value="sesmt">🦺 SESMT</option>
+            <option value="cipa">⚠️ CIPA</option>
+            <option value="brigada">🚒 Brigada de Emergência</option>
+            <option value="lideranca">👔 Liderança</option>
+            <option value="tecnico_seguranca">🔧 Técnico de Segurança</option>
+            <option value="medico_trabalho">🩺 Médico do Trabalho</option>
+            <option value="ergonomista">🪑 Ergonomista</option>
+          </select>
+        </div>
+        <div id="qeq-grid" class="qeq-grid"></div>
+      </div>
+      <div id="qeqtab-cipa"    class="hidden"><div id="qeq-org-cipa"    class="qeq-org-wrap"></div></div>
+      <div id="qeqtab-brigada" class="hidden"><div id="qeq-org-brigada" class="qeq-org-wrap"></div></div>
+      <div id="qeqtab-sesmt"   class="hidden"><div id="qeq-org-sesmt"   class="qeq-org-wrap"></div></div>
     </section>
 
     <!-- Papéis de Segurança (gestor) -->
@@ -931,19 +1005,35 @@
       <div class="view-head">
         <h2>👥 Quem é Quem — Equipe de Segurança</h2>
       </div>
-      <div class="filtros">
-        <input type="text" id="cqeq-busca" placeholder="Buscar por nome, função, setor..." oninput="filtrarQuemEQuemColab()">
-        <select id="cqeq-role-filtro" onchange="filtrarQuemEQuemColab()">
-          <option value="">Todos os papéis</option>
-          <option value="sesmt">🦺 SESMT</option>
-          <option value="cipa">⚠️ CIPA</option>
-          <option value="brigada">🚒 Brigada de Emergência</option>
-          <option value="tecnico_seguranca">🔧 Técnico de Segurança</option>
-          <option value="medico_trabalho">🩺 Médico do Trabalho</option>
-          <option value="ergonomista">🪑 Ergonomista</option>
-        </select>
+      <div class="panel" style="margin-bottom:14px">
+        <input type="text" id="cqeq-smart-busca" placeholder="🔍 Ex.: Quem é o presidente da CIPA? Quem é o brigadista?" style="width:100%" oninput="buscaInteligenteQeqColab()">
+        <div id="cqeq-smart-resultado" style="margin-top:10px"></div>
       </div>
-      <div id="cqeq-grid" class="qeq-grid"></div>
+      <div class="quiz-tabs" id="cqeq-tabs">
+        <button class="quiz-tab active" data-cqeqtab="diretorio" onclick="cqeqTab('diretorio')">📋 Diretório</button>
+        <button class="quiz-tab" data-cqeqtab="cipa"    onclick="cqeqTab('cipa')">⚠️ CIPA</button>
+        <button class="quiz-tab" data-cqeqtab="brigada" onclick="cqeqTab('brigada')">🚒 Brigada</button>
+        <button class="quiz-tab" data-cqeqtab="sesmt"   onclick="cqeqTab('sesmt')">🦺 SESMT</button>
+      </div>
+      <div id="cqeqtab-diretorio">
+        <div class="filtros" style="margin-top:10px">
+          <input type="text" id="cqeq-busca" placeholder="Buscar por nome, função, setor..." oninput="filtrarQuemEQuemColab()">
+          <select id="cqeq-role-filtro" onchange="filtrarQuemEQuemColab()">
+            <option value="">Todos os papéis</option>
+            <option value="sesmt">🦺 SESMT</option>
+            <option value="cipa">⚠️ CIPA</option>
+            <option value="brigada">🚒 Brigada de Emergência</option>
+            <option value="lideranca">👔 Liderança</option>
+            <option value="tecnico_seguranca">🔧 Técnico de Segurança</option>
+            <option value="medico_trabalho">🩺 Médico do Trabalho</option>
+            <option value="ergonomista">🪑 Ergonomista</option>
+          </select>
+        </div>
+        <div id="cqeq-grid" class="qeq-grid"></div>
+      </div>
+      <div id="cqeqtab-cipa"    class="hidden"><div id="cqeq-org-cipa"    class="qeq-org-wrap"></div></div>
+      <div id="cqeqtab-brigada" class="hidden"><div id="cqeq-org-brigada" class="qeq-org-wrap"></div></div>
+      <div id="cqeqtab-sesmt"   class="hidden"><div id="cqeq-org-sesmt"   class="qeq-org-wrap"></div></div>
     </section>
 
     <!-- Estrutura de Segurança (colaborador) -->
