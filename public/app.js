@@ -126,6 +126,25 @@ function aplicarBranding(branding) {
 
 /* ── Modal genérico ── */
 
+// Items marcados com data-sst="true" ficam visíveis apenas em plataformas SST
+function adaptarSidebarPorTipo(tipo) {
+  const isSST = tipo !== 'engajamento';
+  document.querySelectorAll('#app-gestor [data-sst="true"]').forEach(el => {
+    el.style.display = isSST ? '' : 'none';
+  });
+  // Rebrand labels for engagement platforms
+  if (!isSST) {
+    const brand = document.querySelector('#sidebar-gestor .sidebar-brand');
+    if (brand) brand.textContent = 'SAFEPOINT · ENGAJAMENTO';
+  }
+}
+
+function selecionarTipoEmpresa(valor) {
+  document.querySelectorAll('.tipo-card').forEach(c => c.classList.remove('selecionado'));
+  const card = document.getElementById('tipo-card-' + valor);
+  if (card) { card.classList.add('selecionado'); card.querySelector('input').checked = true; }
+}
+
 function abrirModal(titulo, corpoHtml) {
   document.getElementById('modal-titulo').textContent = titulo;
   document.getElementById('modal-corpo').innerHTML = corpoHtml;
@@ -325,6 +344,7 @@ async function iniciar() {
     preencherFiltroTipos();
     await Promise.all([carregarColaboradores(), carregarEventos()]);
     try { EMPRESA_INFO = await api('/api/empresa/branding'); } catch {}
+    adaptarSidebarPorTipo(EMPRESA_INFO?.tipoPlataforma || 'sst');
     navegar('dashboard');
     carregarBrandingConfig();
     if (me.primeiroAcesso || !me.termosAceitos) {
@@ -599,7 +619,31 @@ function formEmpresaHtml(e) {
   const modulosHtml = Object.entries(MODULOS_LABELS).map(([k, v]) =>
     `<label class="check-inline"><input type="checkbox" id="mod-${k}" ${modulos[k] !== false ? 'checked' : ''}> ${esc(v)}</label>`
   ).join('');
+  const tipoAtual = e ? (e.tipoPlataforma || 'sst') : null;
+  const tipoSelector = !e ? `
+    <div class="tipo-plataforma-wrap">
+      <div class="tipo-plataforma-label">Qual o tipo de plataforma?</div>
+      <div class="tipo-plataforma-cards">
+        <label class="tipo-card selecionado" id="tipo-card-sst" onclick="selecionarTipoEmpresa('sst')">
+          <input type="radio" name="emp-tipo" value="sst" checked style="display:none">
+          <div class="tipo-card-inner">
+            <span class="tipo-card-icon">🦺</span>
+            <div class="tipo-card-titulo">Saúde e Segurança do Trabalho</div>
+            <div class="tipo-card-desc">CIPA, Brigada, SESMT, NRs, DDS, observações, gestão de segurança</div>
+          </div>
+        </label>
+        <label class="tipo-card" id="tipo-card-engajamento" onclick="selecionarTipoEmpresa('engajamento')">
+          <input type="radio" name="emp-tipo" value="engajamento" style="display:none">
+          <div class="tipo-card-inner">
+            <span class="tipo-card-icon">🎯</span>
+            <div class="tipo-card-titulo">Engajamento de Equipe</div>
+            <div class="tipo-card-desc">Feed, missões, reconhecimentos, ranking, comunicados, aprendizagem e gamificação</div>
+          </div>
+        </label>
+      </div>
+    </div>` : `<div class="tipo-plataforma-badge">${tipoAtual === 'engajamento' ? '🎯 Plataforma de Engajamento de Equipe' : '🦺 Plataforma SST'}</div>`;
   return `
+    ${tipoSelector}
     <div class="linha-2">
       <div><label>Razão Social *</label><input type="text" id="emp-nome" value="${e ? esc(e.nome) : ''}"></div>
       <div><label>Nome Fantasia</label><input type="text" id="emp-nomeFantasia" value="${e ? esc(e.nomeFantasia || '') : ''}"></div>
@@ -698,7 +742,8 @@ async function salvarEmpresa(id) {
     dataVencimento:     document.getElementById('emp-dataVencimento')?.value || '',
     modulos,
     cnpj: document.getElementById('emp-cnpj').value.trim(),
-    unidades: lerUnidades()
+    unidades: lerUnidades(),
+    tipoPlataforma: (document.querySelector('input[name="emp-tipo"]:checked')?.value) || undefined
   };
   try {
     if (id) await api('/api/admin/empresas/' + id, { method: 'PUT', body });

@@ -1342,8 +1342,23 @@ route('GET', /^\/api\/admin\/empresas$/, { role: 'admin' }, async (req, res) => 
   sendJson(res, 200, list);
 });
 
+const DEFAULT_SUBMODULOS_ENGAJAMENTO = {
+  dashboard:    { visao_geral:true, indicadores:true, alertas:true, score:false, insights_ia:false },
+  pessoas:      { cadastro:true, importacao:true, estrutura:true, setores:true, equipes:true, senhas:true, acesso:true },
+  aprendizagem: { dds:false, dds_battle:false, treinamentos:true, flashcards:true, certificados:false, simulador:false, academia:true, trilhas:false },
+  cultura:      { feed:true, reconhecimentos:true, ranking:true, loja:true, missoes:true, campanhas:true, moedas:true, comunidades:true, desafios_seg:true, reconhec_pares:true, hall_seguranca:true },
+  seguranca_op: { observacoes:false, ato_inseguro:false, condicao_insegura:false, quase_acidente:false, boa_pratica:true, melhoria:true, plano_acao:false },
+  comunicacao:  { comunicados:true, pesquisas:true, podcast:false, mensagens:true, canal_sesmt:false, comunicados_intel:true, tv_corporativa:false },
+  cipa:         { estrutura:false, integrantes:false, mandatos:false, reunioes:false, eleicao:false, inspecoes:false },
+  brigada:      { estrutura:false, brigadistas:false, simulados:false, certificacoes:false, plano_emergencia:false, mapa:false },
+  relatorios:   { dds:false, treinamentos:true, quiz:true, engajamento:true, exportacoes:true },
+  ia_insights:  { assistente:true, insights:true, mapa_calor:false, predicoes:false },
+  config:       { geral:true, modulos:true, permissoes:true, governanca:true, auditoria:true },
+};
+
 route('POST', /^\/api\/admin\/empresas$/, { role: 'admin' }, async (req, res, m, body, s) => {
   if (!String(body.nome || '').trim()) return sendJson(res, 400, { error: 'Razão Social é obrigatória.' });
+  const tipo = ['sst', 'engajamento'].includes(body.tipoPlataforma) ? body.tipoPlataforma : 'sst';
   const empresa = {
     id: nextId(),
     nome:               String(body.nome || '').trim(),
@@ -1361,11 +1376,14 @@ route('POST', /^\/api\/admin\/empresas$/, { role: 'admin' }, async (req, res, m,
     logo:               null,
     cores:              { ...DEFAULT_CORES, ...(body.cores || {}) },
     unidades:           Array.isArray(body.unidades) ? body.unidades : [{ id: nextId(), nome: 'Matriz', endereco: '', cidade: '', estado: '' }],
+    tipoPlataforma:     tipo,
+    submodulos:         JSON.parse(JSON.stringify(tipo === 'engajamento' ? DEFAULT_SUBMODULOS_ENGAJAMENTO : DEFAULT_SUBMODULOS)),
+    permissoes:         JSON.parse(JSON.stringify(DEFAULT_PERMISSIONS)),
     ativo:              true,
     criadaEm:           Date.now()
   };
   db.companies.push(empresa);
-  logAudit(s.userId, 'admin', 'empresa_criada', `Empresa "${empresa.nome}" criada`);
+  logAudit(s.userId, 'admin', 'empresa_criada', `Empresa "${empresa.nome}" criada (tipo: ${tipo})`);
   saveDb();
   sendJson(res, 201, { ...empresa, logo: null });
 });
@@ -1469,7 +1487,7 @@ route('DELETE', /^\/api\/admin\/gestores\/(\d+)$/, { role: 'admin' }, async (req
 route('GET', /^\/api\/empresa\/branding$/, { role: 'gestor' }, async (req, res, m, body, s) => {
   const empresa = db.companies.find(c => c.id === s.companyId);
   if (!empresa) return sendJson(res, 404, { error: 'Empresa não encontrada.' });
-  sendJson(res, 200, { logo: empresa.logo || null, cores: empresa.cores || DEFAULT_CORES, nome: empresa.nome, cnpj: empresa.cnpj, unidades: empresa.unidades || [] });
+  sendJson(res, 200, { logo: empresa.logo || null, cores: empresa.cores || DEFAULT_CORES, nome: empresa.nome, cnpj: empresa.cnpj, unidades: empresa.unidades || [], tipoPlataforma: empresa.tipoPlataforma || 'sst' });
 });
 
 route('PUT', /^\/api\/empresa\/branding$/, { role: 'gestor' }, async (req, res, m, body, s) => {
