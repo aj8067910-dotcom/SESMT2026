@@ -2950,10 +2950,104 @@ route('GET', /^\/api\/insights$/, { role: 'gestor' }, async (req, res, m, body, 
 
 /* ── SafePoint 3.0 — IA SST ─────────────────────────────────── */
 
+/* ── Base de conhecimento local SST ─────────────────────────── */
+function respostaLocalSST(msg) {
+  const q = msg.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+  const KB = [
+    { keys:['nr-1','nr 1','disposicoes gerais','pgr','programa de gerenciamento','perigo','risco','inventario'],
+      r:`**NR-1 — Disposições Gerais e Gerenciamento de Riscos Ocupacionais**\n\nA NR-1 estabelece as bases do gerenciamento de riscos ocupacionais no Brasil, exigindo o **PGR (Programa de Gerenciamento de Riscos)**.\n\n📋 **PGR contém:**\n• Inventário de riscos (identificação e avaliação)\n• Plano de ação para eliminar ou controlar riscos\n\n⏰ **Prazos de revisão:** sempre que houver mudança nos processos ou a cada 2 anos.\n\n🔑 **Hierarquia de controles:** Eliminação → Substituição → Controles de engenharia → Administrativos → EPI.` },
+
+    { keys:['nr-4','nr 4','sesmt','servico especializado','engenheiro seguranca','tecnico seguranca','medico trabalho'],
+      r:`**NR-4 — Serviços Especializados em Engenharia de Segurança e Medicina do Trabalho (SESMT)**\n\nDefine a obrigatoriedade de manutenção do SESMT conforme o grau de risco e o número de empregados.\n\n👥 **Profissionais:** Médico do Trabalho, Engenheiro de Segurança, Técnico de Segurança, Enfermeiro, Auxiliar de Enfermagem.\n\n📊 **Dimensionamento:** baseado no grau de risco da atividade econômica (CNAE) e quantidade de trabalhadores.\n\n⚖️ Empresas podem constituir SESMT próprio ou contratar serviços terceirizados.` },
+
+    { keys:['nr-5','nr 5','cipa','comissao interna','prevencao de acidentes','cipeiro','eleicao cipa','mandato cipa'],
+      r:`**NR-5 — CIPA (Comissão Interna de Prevenção de Acidentes)**\n\nA CIPA é obrigatória para empresas com número mínimo de empregados definido pelo Quadro I da NR-5.\n\n🛡️ **Objetivos:**\n• Prevenir acidentes e doenças ocupacionais\n• Preservar a vida e saúde dos trabalhadores\n\n👥 **Composição:** representantes do empregador (indicados) e dos empregados (eleitos).\n\n📅 **Mandato:** 1 ano, permitida uma reeleição.\n\n📋 **Atribuições da CIPA:**\n• Mapas de riscos\n• SIPAT anual obrigatória\n• Inspeções periódicas\n• Investigação de acidentes\n\n⚖️ **Estabilidade:** cipeiros eleitos têm estabilidade de 1 ano após o mandato.` },
+
+    { keys:['nr-6','nr 6','epi','equipamento protecao individual','ca','certificado aprovacao','luva','capacete','oculos','bota','mascara'],
+      r:`**NR-6 — EPI (Equipamento de Proteção Individual)**\n\nEPI é todo dispositivo de uso individual destinado a proteger a saúde e integridade física do trabalhador.\n\n✅ **Obrigações do empregador:**\n• Fornecer EPI adequado e com CA (Certificado de Aprovação) válido\n• Fornecer gratuitamente\n• Treinar o trabalhador para uso correto\n• Substituir quando danificado ou extraviado\n• Registrar entrega (ficha de EPI)\n\n✅ **Obrigações do trabalhador:**\n• Usar o EPI fornecido\n• Conservar e zelar pelo EPI\n• Comunicar irregularidades\n\n⚠️ **CA vencido = EPI irregular.** Verifique sempre a validade no site do MTE.` },
+
+    { keys:['nr-7','nr 7','pcmso','programa controle medico','aso','atestado saude ocupacional','exame admissional','exame demissional','exame periodico'],
+      r:`**NR-7 — PCMSO (Programa de Controle Médico de Saúde Ocupacional)**\n\nO PCMSO é um programa médico preventivo que todo empregador deve manter.\n\n📋 **Exames obrigatórios:**\n• **Admissional** — antes do início das atividades\n• **Periódico** — intervalos definidos por risco e faixa etária\n• **Retorno ao trabalho** — após afastamento ≥ 30 dias\n• **Mudança de função** — ao mudar de cargo com riscos diferentes\n• **Demissional** — até a data da homologação\n\n📄 **ASO (Atestado de Saúde Ocupacional):** emitido após cada exame, com resultado Apto/Inapto.\n\n👨‍⚕️ Deve ser elaborado e coordenado por Médico do Trabalho.` },
+
+    { keys:['nr-9','nr 9','ppra','agente quimico','agente fisico','agente biologico','ruido','calor','poeira','insalubr'],
+      r:`**NR-9 — Avaliação e Controle de Riscos Ambientais**\n\nA NR-9 trata da identificação e controle de agentes ambientais (físicos, químicos e biológicos).\n\n⚠️ **Agentes físicos:** Ruído, vibrações, temperaturas extremas, radiações, pressões anormais.\n\n⚠️ **Agentes químicos:** Poeiras, fumos, névoas, vapores, produtos químicos.\n\n⚠️ **Agentes biológicos:** Vírus, bactérias, fungos, parasitos.\n\n🔬 **Avaliação:** quantitativa (medições) e qualitativa.\n\n📋 Resultados fundamentam laudos de insalubridade (NR-15) e periculosidade (NR-16) e o LTCAT.` },
+
+    { keys:['nr-10','nr 10','eletrica','eletricidade','choque','instalacao eletrica','nr10'],
+      r:`**NR-10 — Segurança em Instalações e Serviços em Eletricidade**\n\nEstabelece requisitos mínimos para trabalhos em instalações elétricas.\n\n⚡ **Formações exigidas:**\n• **Nível básico:** trabalhadores que atuam em zonas controladas e de risco\n• **Nível habilitado/qualificado:** para execução de serviços elétricos\n\n🔒 **Medidas de controle:**\n• Desenergização (LOTO — Lockout/Tagout)\n• Sinalização e bloqueio\n• EPI específico (luva dielétrica, botina dielétrica, óculos)\n\n📅 **Reciclagem:** a cada 2 anos para trabalhadores em área de risco.` },
+
+    { keys:['nr-12','nr 12','maquina','equipamento','guarda','protetor','prensa','torno','fresa'],
+      r:`**NR-12 — Segurança no Trabalho em Máquinas e Equipamentos**\n\nDefine medidas de proteção para garantir saúde e integridade dos trabalhadores que trabalham com máquinas.\n\n🛡️ **Dispositivos de proteção:**\n• Proteções fixas e móveis\n• Dispositivos de intertravamento\n• Botoeira de emergência (cogumelo vermelho)\n• Sinalização e demarcação\n\n📋 **Obrigações do empregador:**\n• Manter APR (Análise Prévia de Risco) atualizada\n• Treinamento específico para operação\n• Manutenção preventiva documentada\n• Inventário de máquinas` },
+
+    { keys:['nr-15','nr 15','insalubridade','adicional insalubridade','agente nocivo','limite tolerancia'],
+      r:`**NR-15 — Atividades e Operações Insalubres**\n\nDefine as atividades que geram direito a adicional de insalubridade e seus limites de tolerância.\n\n💰 **Adicionais sobre o salário mínimo:**\n• Grau mínimo: **10%**\n• Grau médio: **20%**\n• Grau máximo: **40%**\n\n📋 **Caracterização:** laudo técnico emitido por Engenheiro de Segurança ou Médico do Trabalho.\n\n⚠️ Agentes: ruído, calor, radiações, vibrações, agentes biológicos e químicos acima dos limites.\n\n🔑 O uso de EPI eficaz pode eliminar ou neutralizar a insalubridade.` },
+
+    { keys:['nr-16','nr 16','periculosidade','adicional periculosidade','inflamavel','explosivo','roubos','seguranca pessoal'],
+      r:`**NR-16 — Atividades e Operações Perigosas**\n\nDefine atividades que geram adicional de periculosidade de **30% sobre o salário-base**.\n\n⚠️ **Atividades perigosas:**\n• Inflamáveis e explosivos\n• Energia elétrica (em condições especificadas)\n• Roubos ou outras violências físicas (vigilantes)\n• Motocicletas em vias públicas\n• Substâncias radioativas\n\n📋 **Caracterização:** laudo de Engenheiro de Segurança ou Médico do Trabalho.\n\n⚖️ O adicional não é acumulável com insalubridade — o trabalhador escolhe o mais favorável.` },
+
+    { keys:['nr-17','nr 17','ergonomia','lerdort','postura','posto de trabalho','monitor','cadeira','levantamento peso'],
+      r:`**NR-17 — Ergonomia**\n\nVisa adaptar as condições de trabalho às características psicofisiológicas dos trabalhadores.\n\n🖥️ **Trabalho com informática:**\n• Altura do monitor: nível dos olhos ou levemente abaixo\n• Cadeira com regulagem de altura e encosto\n• Apoio para pés quando necessário\n• Pausas periódicas\n\n📦 **Levantamento de cargas:**\n• Máximo recomendado: 23 kg individualmente\n• Acima disso: trabalho em equipe ou equipamentos auxiliares\n\n📋 **AET (Análise Ergonômica do Trabalho):** obrigatória para atividades com risco ergonômico.` },
+
+    { keys:['nr-18','nr 18','construcao civil','obra','andaime','escavacao','scaffold'],
+      r:`**NR-18 — Segurança e Saúde no Trabalho na Indústria da Construção**\n\nEstabelece diretrizes de ordem administrativa, de planejamento e de organização para obras de construção civil.\n\n📋 **Documentos obrigatórios:**\n• PCMAT (Programa de Condições e Meio Ambiente de Trabalho)\n• Projeto de Proteções Coletivas\n\n🪜 **Andaimes e estruturas:** inspeção prévia e aprovação técnica.\n\n🦺 **CIPA na construção:** obrigatória em obras com 70+ trabalhadores.` },
+
+    { keys:['nr-20','nr 20','inflamavel','combustivel','liquido inflamavel','glp','gas'],
+      r:`**NR-20 — Segurança e Saúde no Trabalho com Inflamáveis e Combustíveis**\n\nEstabelece requisitos mínimos para gestão de segurança com líquidos combustíveis e inflamáveis.\n\n🔥 **Classificação de líquidos inflamáveis:**\n• Classe I: ponto de fulgor < 23°C\n• Classe II: ponto de fulgor 23°C a 60°C\n• Classe III: ponto de fulgor > 60°C\n\n📋 **Obrigações:** mapeamento de áreas classificadas, treinamentos específicos, APR, aterramento e equipotencialização de tanques.` },
+
+    { keys:['nr-23','nr 23','incendio','combate incendio','extintor','hidrante','brigada','evacuacao'],
+      r:`**NR-23 — Proteção Contra Incêndios**\n\nEstabelece medidas de prevenção e combate a incêndios nos locais de trabalho.\n\n🧯 **Extintores:**\n• Tipo A (água): sólidos em geral\n• Tipo B (pó/CO₂): líquidos inflamáveis\n• Tipo C (CO₂/pó): equipamentos elétricos\n• Tipo D: metais combustíveis\n\n🚪 **Saídas de emergência:** sempre desobstruídas, sinalizadas e iluminadas.\n\n🚒 **Brigada de Incêndio (NR-23 + IT dos Bombeiros):** treinamento periódico obrigatório.\n\n📋 Plano de Emergência e simulados periódicos são recomendados.` },
+
+    { keys:['nr-33','nr 33','espaco confinado','espaco confinado','silo','tanque','caixa dagua','cisterna'],
+      r:`**NR-33 — Segurança e Saúde nos Trabalhos em Espaços Confinados**\n\nDefine medidas de proteção para trabalhos em espaços confinados.\n\n⚠️ **Espaço confinado:** espaço não projetado para ocupação contínua, com entrada/saída limitada e com riscos atmosféricos potenciais.\n\n👥 **Papéis obrigatórios:**\n• **Supervisor de entrada:** autoriza e monitora\n• **Vigia:** monitora externamente\n• **Trabalhador autorizado:** executa o serviço\n\n📋 **Permissão de Entrada:** documento obrigatório antes de qualquer entrada.\n\n🌬️ **Monitoramento atmosférico:** oxigênio (19,5% a 23,5%), LEI, agentes tóxicos.` },
+
+    { keys:['nr-35','nr 35','trabalho em altura','cinto seguranca','talabarte','linha de vida','andaime','telhado'],
+      r:`**NR-35 — Trabalho em Altura**\n\nEstabelece requisitos mínimos para trabalho em altura, considerado todo trabalho acima de **2 metros** do nível inferior.\n\n🪜 **Requisitos:**\n• Trabalhador autorizado por escrito pelo empregador\n• Capacitação periódica (mín. 8h teóricas + 4h práticas)\n• Reciclagem a cada 2 anos ou quando ocorrer acidente\n\n🦺 **EPI obrigatório:**\n• Cinto de segurança tipo paraquedista\n• Talabarte de posicionamento e/ou absorvedor de impacto\n• Linha de vida certificada\n\n📋 **APR (Análise Prévia de Risco):** obrigatória antes de cada atividade em altura.` },
+
+    { keys:['brigada','brigadista','emergencia','simulado','plano emergencia','sinistro','evacuacao','socorrista'],
+      r:`**Brigada de Emergência**\n\nEquipe treinada para atuar em situações de emergência nas empresas, conforme **ABNT NBR 14276** e exigências dos Corpos de Bombeiros estaduais.\n\n🚒 **Funções na brigada:**\n• Coordenador de brigada\n• Líder de equipe\n• Brigadista (combate a incêndio e primeiros socorros)\n• Socorrista\n\n📋 **Obrigações:**\n• Treinamento teórico e prático (8h a 16h conforme risco)\n• Reciclagem anual\n• Simulado prático pelo menos 1x ao ano\n• Dimensionamento conforme área e ocupação\n\n🏥 **Primeiros socorros:** RCP, uso de DEA, controle de hemorragia.` },
+
+    { keys:['ltcat','laudo tecnico condicoes ambientais','aposentadoria especial','ruido especial','aposentadoria antecipada'],
+      r:`**LTCAT — Laudo Técnico das Condições Ambientais do Trabalho**\n\nDocumento técnico que comprova a exposição a agentes nocivos para fins de **aposentadoria especial**.\n\n📋 **Requisitos:**\n• Emitido por Médico do Trabalho ou Engenheiro de Segurança\n• Deve descrever o agente nocivo, método de avaliação, EPI utilizado e resultado\n• Deve ser mantido por **20 anos** ou pelo prazo do vínculo empregatício\n\n⏰ **Aposentadoria especial:**\n• 15 anos de exposição: agentes cancerígenos, amianto\n• 20 anos: agentes específicos\n• 25 anos: ruído acima de 85 dB(A) e demais agentes\n\n🔗 Complementa o PPP (Perfil Profissiográfico Previdenciário).` },
+
+    { keys:['apr','analise previa de risco','permissao trabalho','pt de trabalho','analise risco'],
+      r:`**APR — Análise Prévia de Risco (ou Análise de Risco Preliminar)**\n\nFerramenta de gestão de segurança utilizada antes de iniciar uma atividade para identificar e controlar riscos.\n\n📋 **Etapas da APR:**\n1. Descrição da tarefa\n2. Identificação dos perigos e riscos\n3. Definição das medidas de controle\n4. Responsáveis e assinatura dos envolvidos\n\n⏰ **Quando usar:** trabalhos não rotineiros, em altura, espaço confinado, elétricos, a quente e manutenções críticas.\n\n✅ Todos os trabalhadores envolvidos devem assinar a APR antes de iniciar.` },
+
+    { keys:['cat','comunicacao acidente','acidente trabalho','notificacao acidente','doenca ocupacional'],
+      r:`**CAT — Comunicação de Acidente do Trabalho**\n\nDocumento obrigatório a ser emitido pelo empregador quando ocorre acidente do trabalho ou doença ocupacional.\n\n⏰ **Prazos:**\n• Acidente sem óbito: **até o 1º dia útil após o acidente**\n• Acidente com óbito: **imediatamente**\n\n📋 **Quem pode emitir:**\n• Empregador (obrigatório)\n• Trabalhador, dependentes ou sindicato (facultativo, quando o empregador não emite)\n• Médico ou autoridade pública\n\n🏥 Emissão pelo eSocial ou formulário físico entregue ao INSS.\n\n⚠️ Não emitir CAT pode gerar multa ao empregador.` },
+
+    { keys:['sipat','semana interna prevencao acidente','campanha seguranca'],
+      r:`**SIPAT — Semana Interna de Prevenção de Acidentes do Trabalho**\n\nEvento anual obrigatório para empresas com CIPA, voltado à prevenção de acidentes e promoção de saúde.\n\n📅 **Periodicidade:** obrigatória 1 vez por ano.\n\n📋 **Organização:** responsabilidade da CIPA com apoio do SESMT.\n\n🎯 **Conteúdo mínimo:**\n• Palestras sobre segurança e saúde\n• Estatísticas de acidentes da empresa\n• Apresentação de campanhas preventivas\n• Distribuição de material educativo\n\n🏆 Oportunidade de integrar programas de gamificação e engajamento em SST.` },
+
+    { keys:['ppe','epc','equipamento protecao coletiva','protecao coletiva','guarda corpo','sinaliza'],
+      r:`**EPC — Equipamentos de Proteção Coletiva**\n\nSão dispositivos que protegem simultaneamente vários trabalhadores de um mesmo ambiente.\n\n🔑 **Prioridade:** o EPC tem prioridade sobre o EPI na hierarquia de controles.\n\n🛡️ **Exemplos de EPC:**\n• Guarda-corpos e corrimãos\n• Redes de proteção\n• Enclausuramento acústico\n• Ventilação e exaustão local\n• Sinalização de segurança (cores, pictogramas)\n• Sistemas de LOTO (bloqueio/etiquetagem)\n• Detector de gás\n\n📋 A escolha entre EPC e EPI deve seguir a avaliação de risco e a hierarquia de controles da NR-1.` },
+  ];
+
+  // Find best match
+  let best = null, bestScore = 0;
+  for (const item of KB) {
+    const score = item.keys.filter(k => q.includes(k)).length;
+    if (score > bestScore) { bestScore = score; best = item; }
+  }
+
+  if (best && bestScore > 0) {
+    return best.r + '\n\n---\n💡 *Para respostas ainda mais personalizadas, configure a chave de API da IA nas configurações da empresa.*';
+  }
+
+  // Generic SST response
+  return `Olá! Sou o assistente de SST do SafePoint. Posso ajudar com dúvidas sobre:\n\n📋 **Normas Regulamentadoras:** NR-1, NR-4, NR-5, NR-6, NR-7, NR-9, NR-10, NR-12, NR-15, NR-16, NR-17, NR-18, NR-23, NR-33, NR-35\n\n🛡️ **Temas de SST:** CIPA, Brigada, EPI/EPC, PCMSO, PGR, APR, CAT, LTCAT, SIPAT, espaço confinado, trabalho em altura, ergonomia.\n\nTente perguntar, por exemplo: *"O que é a NR-5?"*, *"Como funciona a CIPA?"* ou *"Quais são os tipos de EPI?"*\n\n---\n💡 *Configure a chave de API da IA nas configurações para respostas personalizadas com IA generativa.*`;
+}
+
 route('POST', /^\/api\/ia\/chat$/, { role: 'any' }, async (req, res, m, body, s) => {
   const comp = db.companies.find(c => c.id === s.companyId);
   const iaKey = (comp && comp.iaApiKey) || process.env.ANTHROPIC_API_KEY || '';
-  if (!iaKey) return sendJson(res, 503, { error: 'IA não configurada. Adicione a chave da API nas configurações da empresa.' });
+
+  const msg = String(body.message || '').trim().slice(0, 2000);
+  if (!msg) return sendJson(res, 400, { error: 'Mensagem obrigatória.' });
+
+  // Fallback: local knowledge base when no API key configured
+  if (!iaKey) {
+    const resposta = respostaLocalSST(msg);
+    return sendJson(res, 200, { resposta, model: 'safepoint-kb-local' });
+  }
 
   const msg = String(body.message || '').trim().slice(0, 2000);
   if (!msg) return sendJson(res, 400, { error: 'Mensagem obrigatória.' });
