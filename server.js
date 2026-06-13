@@ -98,17 +98,17 @@ const SUBMODULO_LABELS = {
 };
 
 const DEFAULT_SUBMODULOS = {
-  dashboard:    { visao_geral:true, indicadores:true, alertas:true, score:false, insights_ia:false, safety_score_corp:false, radar_atencao:false, tendencias_seg:false },
-  pessoas:      { cadastro:true, importacao:true, estrutura:true, setores:true, equipes:true, senhas:true, acesso:true, safety_score_ind:false, historico_evolucao:false, evidencias_colab:false },
-  aprendizagem: { dds:true, dds_battle:true, treinamentos:true, flashcards:true, certificados:false, simulador:false, academia:false, trilhas:false, biblioteca_inteligente:false, microlearning:false },
-  cultura:      { feed:true, reconhecimentos:true, ranking:true, loja:true, missoes:true, campanhas:true, moedas:false, comunidades:false, desafios_seg:false, reconhec_pares:false, hall_seguranca:false },
-  seguranca_op: { observacoes:true, ato_inseguro:true, condicao_insegura:true, quase_acidente:false, boa_pratica:false, melhoria:false, plano_acao:false, workflow:false, heatmap_seg:false, tendencias_desvios:false, evidencias_op:false },
-  comunicacao:  { comunicados:true, pesquisas:true, podcast:false, mensagens:false, canal_sesmt:false, comunicados_intel:false, tv_corporativa:false },
-  cipa:         { estrutura:true, integrantes:true, mandatos:true, reunioes:false, eleicao:false, inspecoes:false, portal_cipa:false, indicadores_cipa:false, banco_ideias:false },
-  brigada:      { estrutura:true, brigadistas:true, simulados:false, certificacoes:false, plano_emergencia:false, mapa:false, gestao_simulados:false, cert_reciclagens:false, prontidao_op:false },
-  relatorios:   { dds:true, treinamentos:true, quiz:true, engajamento:true, exportacoes:true, relat_exec:false, relat_comp:false, relat_cultura:false, central_evidencias:false },
-  ia_insights:  { assistente:false, insights:true, mapa_calor:true, predicoes:false, risk_engine:false, safety_score_ia:false, recomendacoes:false, assistente_exec:false, predicao_tend:false, indice_maturidade:false },
-  config:       { geral:true, modulos:true, permissoes:true, governanca:true, auditoria:true, biblioteca_global:false, marketplace:false, gov_digital:false, gestao_conteudo:false },
+  dashboard:    { _modulo:true, visao_geral:true, indicadores:true, alertas:true, score:false, insights_ia:false, safety_score_corp:false, radar_atencao:false, tendencias_seg:false },
+  pessoas:      { _modulo:true, cadastro:true, importacao:true, estrutura:true, setores:true, equipes:true, senhas:true, acesso:true, safety_score_ind:false, historico_evolucao:false, evidencias_colab:false },
+  aprendizagem: { _modulo:true, dds:true, dds_battle:true, treinamentos:true, flashcards:true, certificados:false, simulador:false, academia:false, trilhas:false, biblioteca_inteligente:false, microlearning:false },
+  cultura:      { _modulo:true, feed:true, reconhecimentos:true, ranking:true, loja:true, missoes:true, campanhas:true, moedas:false, comunidades:false, desafios_seg:false, reconhec_pares:false, hall_seguranca:false },
+  seguranca_op: { _modulo:true, observacoes:true, ato_inseguro:true, condicao_insegura:true, quase_acidente:false, boa_pratica:false, melhoria:false, plano_acao:false, workflow:false, heatmap_seg:false, tendencias_desvios:false, evidencias_op:false },
+  comunicacao:  { _modulo:true, comunicados:true, pesquisas:true, podcast:false, mensagens:false, canal_sesmt:false, comunicados_intel:false, tv_corporativa:false },
+  cipa:         { _modulo:true, estrutura:true, integrantes:true, mandatos:true, reunioes:false, eleicao:false, inspecoes:false, portal_cipa:false, indicadores_cipa:false, banco_ideias:false },
+  brigada:      { _modulo:true, estrutura:true, brigadistas:true, simulados:false, certificacoes:false, plano_emergencia:false, mapa:false, gestao_simulados:false, cert_reciclagens:false, prontidao_op:false },
+  relatorios:   { _modulo:true, dds:true, treinamentos:true, quiz:true, engajamento:true, exportacoes:true, relat_exec:false, relat_comp:false, relat_cultura:false, central_evidencias:false },
+  ia_insights:  { _modulo:false, assistente:false, insights:true, mapa_calor:true, predicoes:false, risk_engine:false, safety_score_ia:false, recomendacoes:false, assistente_exec:false, predicao_tend:false, indice_maturidade:false },
+  config:       { _modulo:true, geral:true, modulos:true, permissoes:true, governanca:true, auditoria:true, biblioteca_global:false, marketplace:false, gov_digital:false, gestao_conteudo:false },
 };
 
 /* ── SafePoint 3.2 — Matriz de permissões ────────────────────── */
@@ -3342,7 +3342,7 @@ function contarVotos(eleicao) {
 route('GET', /^\/api\/empresa\/submodulos$/, { role: 'gestor' }, async (req, res, m, body, s) => {
   const comp = db.companies.find(c => c.id === s.companyId);
   if (!comp) return sendJson(res, 404, { error: 'Empresa não encontrada.' });
-  sendJson(res, 200, { submodulos: comp.submodulos || DEFAULT_SUBMODULOS, labels: SUBMODULO_LABELS });
+  sendJson(res, 200, { submodulos: comp.submodulos || DEFAULT_SUBMODULOS, labels: SUBMODULO_LABELS, moduleNames: comp.moduleNames || {} });
 });
 
 route('POST', /^\/api\/empresa\/submodulos$/, { role: 'gestor' }, async (req, res, m, body, s) => {
@@ -3354,6 +3354,12 @@ route('POST', /^\/api\/empresa\/submodulos$/, { role: 'gestor' }, async (req, re
   for (const [mod, subs] of Object.entries(body.submodulos || {})) {
     if (!comp.submodulos[mod]) comp.submodulos[mod] = {};
     for (const [sub, val] of Object.entries(subs)) comp.submodulos[mod][sub] = !!val;
+  }
+  if (body.moduleNames && typeof body.moduleNames === 'object') {
+    comp.moduleNames = comp.moduleNames || {};
+    for (const [mod, nome] of Object.entries(body.moduleNames)) {
+      comp.moduleNames[mod] = String(nome || '').trim();
+    }
   }
   saveDb();
   logAudit(s.userId, s.role, 'alterar_submodulo', 'Submódulos atualizados', s.companyId,
@@ -3438,7 +3444,7 @@ route('POST', /^\/api\/admin\/empresas\/(\d+)\/submodulos$/, { role: 'admin' }, 
 route('GET', /^\/api\/admin\/empresas\/(\d+)\/submodulos$/, { role: 'admin' }, async (req, res, m) => {
   const comp = db.companies.find(c => c.id === Number(m[1]));
   if (!comp) return sendJson(res, 404, { error: 'Empresa não encontrada.' });
-  sendJson(res, 200, { submodulos: comp.submodulos || DEFAULT_SUBMODULOS, labels: SUBMODULO_LABELS });
+  sendJson(res, 200, { submodulos: comp.submodulos || DEFAULT_SUBMODULOS, labels: SUBMODULO_LABELS, moduleNames: comp.moduleNames || {} });
 });
 
 route('GET', /^\/api\/admin\/auditlog$/, { role: 'admin' }, async (req, res, m, body, s) => {

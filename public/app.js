@@ -590,12 +590,14 @@ async function abrirModulosEmpresa(id, nome) {
     const resp = await api(`/api/admin/empresas/${id}/submodulos`);
     const data = resp.submodulos || resp;
     let html = '';
-    for (const [mod, subs] of Object.entries(SUBMODULO_LABELS)) {
+    const labels = resp.labels || SUBMODULO_LABELS;
+    for (const [mod, subs] of Object.entries(labels)) {
       const modSubs = data[mod] || {};
       html += `<div class="submod-section" style="margin-bottom:14px;padding-bottom:12px;border-bottom:1px solid var(--cinza-borda)">
         <div class="submod-section-header"><strong>${MODULO_NOMES[mod] || mod}</strong></div>
         <div class="submod-grid">`;
       for (const [key, label] of Object.entries(subs)) {
+        if (key === '_modulo') continue;
         const checked = modSubs[key] ? 'checked' : '';
         html += `<label class="submod-item">
           <input type="checkbox" data-mod="${mod}" data-sub="${key}" ${checked}>
@@ -5373,6 +5375,24 @@ async function salvarSubmodulos() {
     aplicarConfigModulos(resp.submodulos || submodulos, resp.moduleNames || moduleNames);
     toast('Módulos salvos! Sidebar atualizada.', 'ok');
   } catch (err) { toast(err.message, 'erro'); }
+}
+
+function aplicarConfigModulos(submodulos, moduleNames) {
+  if (!submodulos) return;
+  for (const mod of Object.keys(MODULO_NOMES)) {
+    const sbKey = mod.replace(/_/g, '-');
+    const sbEl  = document.getElementById('sbmod-' + sbKey) ||
+                  (mod === 'dashboard' ? document.getElementById('sb-g-dashboard') : null);
+    if (!sbEl) continue;
+    const modData = submodulos[mod] || {};
+    // Master toggle: _modulo controls sidebar visibility
+    const isActive = modData._modulo !== false;
+    sbEl.style.display = isActive ? '' : 'none';
+    // Custom name
+    const nome = moduleNames && moduleNames[mod];
+    const labelEl = sbEl.querySelector('.sm-label') || sbEl.querySelector('span:last-child');
+    if (labelEl) labelEl.textContent = nome || MODULO_NOMES[mod];
+  }
 }
 
 /* ── SafePoint 3.2 – Permissões ── */

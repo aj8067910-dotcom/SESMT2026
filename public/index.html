@@ -170,7 +170,7 @@
       <span class="sidebar-brand">SAFEPOINT 3.3</span>
     </div>
     <div class="sidebar-module-single active" data-view="dashboard" id="sb-g-dashboard" onclick="navegar('dashboard')"><span class="sm-icon">🏠</span><span>Dashboard</span></div>
-    <div class="sidebar-module" id="sbmod-pessoas">
+    <div class="sidebar-module" id="sbmod-pessoas" data-mod="pessoas">
       <div class="sidebar-module-header" onclick="toggleSbMod('pessoas')"><span class="sm-icon">👥</span><span class="sm-label">Gestão de Pessoas</span><span class="sm-arrow">▶</span></div>
       <div class="sidebar-items">
         <div class="sidebar-item" data-view="colaboradores"  onclick="navegar('colaboradores')">Colaboradores</div>
@@ -182,7 +182,7 @@
         <div class="sidebar-item" data-view="evidencias-colab"   onclick="navegar('evidencias-colab')">Evidências do Colaborador</div>
       </div>
     </div>
-    <div class="sidebar-module" id="sbmod-aprendizagem">
+    <div class="sidebar-module" id="sbmod-aprendizagem" data-mod="aprendizagem">
       <div class="sidebar-module-header" onclick="toggleSbMod('aprendizagem')"><span class="sm-icon">📚</span><span class="sm-label">Aprendizagem</span><span class="sm-arrow">▶</span></div>
       <div class="sidebar-items">
         <div class="sidebar-item" data-view="eventos"     onclick="navegar('eventos')" data-sst="true">DDS / Atividades</div>
@@ -193,7 +193,7 @@
         <div class="sidebar-item" data-view="microlearning"        onclick="navegar('microlearning')">Microlearning</div>
       </div>
     </div>
-    <div class="sidebar-module" id="sbmod-cultura">
+    <div class="sidebar-module" id="sbmod-cultura" data-mod="cultura">
       <div class="sidebar-module-header" onclick="toggleSbMod('cultura')"><span class="sm-icon">🎯</span><span class="sm-label">Cultura e Engajamento</span><span class="sm-arrow">▶</span></div>
       <div class="sidebar-items">
         <div class="sidebar-item" data-view="ranking"     onclick="navegar('ranking')">Ranking</div>
@@ -204,7 +204,7 @@
         <div class="sidebar-item" data-view="hall-seguranca"  onclick="navegar('hall-seguranca')">Hall de Destaque</div>
       </div>
     </div>
-    <div class="sidebar-module" id="sbmod-seguranca-op" data-sst="true">
+    <div class="sidebar-module" id="sbmod-seguranca-op" data-mod="seguranca_op" data-sst="true">
       <div class="sidebar-module-header" onclick="toggleSbMod('seguranca-op')"><span class="sm-icon">🔍</span><span class="sm-label">Segurança Operacional</span><span class="sm-arrow">▶</span></div>
       <div class="sidebar-items">
         <div class="sidebar-item" data-view="observacoes" onclick="navegar('observacoes')">Observações</div>
@@ -215,7 +215,7 @@
         <div class="sidebar-item" data-view="quase-acidentes"     onclick="navegar('quase-acidentes')">Quase Acidentes</div>
       </div>
     </div>
-    <div class="sidebar-module" id="sbmod-comunicacao">
+    <div class="sidebar-module" id="sbmod-comunicacao" data-mod="comunicacao">
       <div class="sidebar-module-header" onclick="toggleSbMod('comunicacao')"><span class="sm-icon">📢</span><span class="sm-label">Comunicação</span><span class="sm-arrow">▶</span></div>
       <div class="sidebar-items">
         <div class="sidebar-item" data-view="comunicados"       onclick="navegar('comunicados')">Comunicados</div>
@@ -225,7 +225,7 @@
         <div class="sidebar-item" data-view="tv-corporativa"   onclick="navegar('tv-corporativa')">TV Corporativa</div>
       </div>
     </div>
-    <div class="sidebar-module" id="sbmod-cipa" data-sst="true">
+    <div class="sidebar-module" id="sbmod-cipa" data-mod="cipa" data-sst="true">
       <div class="sidebar-module-header" onclick="toggleSbMod('cipa')"><span class="sm-icon">🛡️</span><span class="sm-label">CIPA</span><span class="sm-arrow">▶</span></div>
       <div class="sidebar-items">
         <div class="sidebar-item" data-view="cipa-estrutura"   onclick="navegar('cipa-estrutura')">Estrutura / Integrantes</div>
@@ -234,7 +234,7 @@
         <div class="sidebar-item" data-view="banco-ideias"     onclick="navegar('banco-ideias')">Banco de Ideias</div>
       </div>
     </div>
-    <div class="sidebar-module" id="sbmod-brigada" data-sst="true">
+    <div class="sidebar-module" id="sbmod-brigada" data-mod="brigada" data-sst="true">
       <div class="sidebar-module-header" onclick="toggleSbMod('brigada')"><span class="sm-icon">🚒</span><span class="sm-label">Brigada</span><span class="sm-arrow">▶</span></div>
       <div class="sidebar-items">
         <div class="sidebar-item" data-view="brigada-estrutura"   onclick="navegar('brigada-estrutura')">Estrutura / Brigadistas</div>
@@ -243,7 +243,7 @@
         <div class="sidebar-item" data-view="prontidao-op"        onclick="navegar('prontidao-op')">Prontidão Operacional</div>
       </div>
     </div>
-    <div class="sidebar-module" id="sbmod-relatorios">
+    <div class="sidebar-module" id="sbmod-relatorios" data-mod="relatorios">
       <div class="sidebar-module-header" onclick="toggleSbMod('relatorios')"><span class="sm-icon">📊</span><span class="sm-label">Relatórios</span><span class="sm-arrow">▶</span></div>
       <div class="sidebar-items">
         <div class="sidebar-item" data-view="relatorios"          onclick="navegar('relatorios')">Visão Geral</div>
@@ -253,7 +253,7 @@
         <div class="sidebar-item" data-view="central-evidencias"  onclick="navegar('central-evidencias')">Central de Evidências</div>
       </div>
     </div>
-    <div class="sidebar-module" id="sbmod-ia-insights">
+    <div class="sidebar-module" id="sbmod-ia-insights" data-mod="ia_insights">
       <div class="sidebar-module-header" onclick="toggleSbMod('ia-insights')"><span class="sm-icon">🧠</span><span class="sm-label">IA e Insights</span><span class="sm-arrow">▶</span></div>
       <div class="sidebar-items">
         <div class="sidebar-item" data-view="insights" onclick="navegar('insights')">SafePoint Insights</div>
@@ -266,7 +266,7 @@
         <div class="sidebar-item" data-view="indice-maturidade" onclick="navegar('indice-maturidade')">Índice de Maturidade</div>
       </div>
     </div>
-    <div class="sidebar-module" id="sbmod-config">
+    <div class="sidebar-module" id="sbmod-config" data-mod="config">
       <div class="sidebar-module-header" onclick="toggleSbMod('config')"><span class="sm-icon">⚙️</span><span class="sm-label">Configurações</span><span class="sm-arrow">▶</span></div>
       <div class="sidebar-items">
         <div class="sidebar-item" data-view="config"     onclick="navegar('config')">Geral</div>
