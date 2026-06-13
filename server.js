@@ -196,10 +196,11 @@ function loadDb() {
     saveDb();
   }
   // garantir campos novos em DBs antigos
-  if (!db.checkins)     db.checkins = [];
-  if (!db.activeCodes)  db.activeCodes = [];
-  if (!db.observations) db.observations = [];
-  if (!db.suggestions)  db.suggestions = [];
+  if (!db.checkins)           db.checkins = [];
+  if (!db.activeCodes)        db.activeCodes = [];
+  if (!db.observations)       db.observations = [];
+  if (!db.suggestions)        db.suggestions = [];
+  if (!db.feedbacksAnonimos)  db.feedbacksAnonimos = [];
   if (!db.admins)       db.admins = [];
   if (!db.companies)    db.companies = [];
   if (!db.settings.recompensas)    db.settings.recompensas = [];
@@ -2138,6 +2139,34 @@ route('GET', /^\/api\/reconhecimentos$/, { role: 'gestor' }, async (req, res, m,
   sendJson(res, 200, (db.reconhecimentos || []).filter(r => r.companyId === s.companyId).sort((a, b) => b.timestamp - a.timestamp).slice(0, 50));
 });
 
+route('GET', /^\/api\/reconhecimentos\/meus$/, { role: 'colaborador' }, async (req, res, m, body, s) => {
+  const emp = (db.employees||[]).find(e=>e.id===s.employeeId);
+  if (!emp) return sendJson(res, 404, { error: 'Não encontrado' });
+  const recebidos = (db.reconhecimentos||[]).filter(r=>r.homenageadoId===emp.id && r.companyId===s.companyId).sort((a,b)=>b.timestamp-a.timestamp);
+  const enviados  = (db.reconhecimentos||[]).filter(r=>r.autorId===emp.id && r.companyId===s.companyId).sort((a,b)=>b.timestamp-a.timestamp);
+  sendJson(res, 200, { recebidos, enviados });
+});
+
+route('POST', /^\/api\/feedback-anonimo$/, { role: 'colaborador' }, async (req, res, m, body, s) => {
+  if (!db.feedbacksAnonimos) db.feedbacksAnonimos = [];
+  const fb = {
+    id: nextId(),
+    companyId: s.companyId,
+    tipo: String(body.tipo || 'sugestao').trim(),
+    mensagem: String(body.mensagem || '').trim(),
+    timestamp: Date.now()
+  };
+  if (!fb.mensagem) return sendJson(res, 400, { error: 'Mensagem obrigatória' });
+  db.feedbacksAnonimos.push(fb);
+  saveDb();
+  sendJson(res, 200, { ok: true });
+});
+
+route('GET', /^\/api\/feedback-anonimo$/, { role: 'gestor' }, async (req, res, m, body, s) => {
+  const list = (db.feedbacksAnonimos || []).filter(f => f.companyId === s.companyId).sort((a,b) => b.timestamp - a.timestamp);
+  sendJson(res, 200, list);
+});
+
 route('POST', /^\/api\/reconhecimentos$/, { role: 'gestor' }, async (req, res, m, body, s) => {
   const emp = db.employees.find(e => e.id === Number(body.homenageadoId) && e.companyId === s.companyId);
   if (!emp) return sendJson(res, 400, { error: 'Colaborador não encontrado.' });
@@ -2302,6 +2331,20 @@ route('GET', /^\/api\/meu-painel$/, { role: 'colaborador' }, async (req, res, m,
     { id:'feed',        desc:'Publicar no Mural de Segurança',       pontos:10,  feita: postouFeedHoje },
     { id:'observacao',  desc:'Registrar uma observação de campo',    pontos:25,  feita: registrouObsHoje }
   ];
+  // Safety DNA calculation
+  const totalCheckins = (db.checkins||[]).filter(c=>c.employeeId===emp.id).length;
+  const totalObsDna = (db.observations||[]).filter(o=>o.employeeId===emp.id).length;
+  const totalReconhReceb = (db.reconhecimentos||[]).filter(r=>r.homenageadoId===emp.id).length;
+  const totalReconhEnv = (db.reconhecimentos||[]).filter(r=>r.autorId===emp.id).length;
+  const totalFeed = (db.feed||[]).filter(f=>f.autorId===emp.id && f.tipo==='post').length;
+  const dna = [];
+  if (totalObsDna >= 2)        dna.push({ key:'guardiao',   emoji:'🦅', nome:'Guardião',               desc:'Identifica riscos e contribui para prevenção' });
+  if (totalFeed >= 3)          dna.push({ key:'mentor',     emoji:'🧠', nome:'Mentor',                 desc:'Compartilha conhecimento frequentemente' });
+  if (totalCheckins >= 5)      dna.push({ key:'engajador',  emoji:'🔥', nome:'Engajador',              desc:'Participa ativamente das ações da empresa' });
+  if (pts.total >= 200)        dna.push({ key:'executor',   emoji:'🎯', nome:'Executor',               desc:'Conclui treinamentos e atividades com excelência' });
+  if (totalReconhReceb >= 3)   dna.push({ key:'embaixador', emoji:'👑', nome:'Embaixador da Segurança', desc:'Referência positiva para os demais colaboradores' });
+  if (!dna.length)             dna.push({ key:'iniciante',  emoji:'🌱', nome:'Em Desenvolvimento',     desc:'Continue participando para desbloquear seu perfil' });
+
   sendJson(res, 200, {
     colaborador: { matricula: emp.matricula, nome: emp.nome, setor: emp.setor, funcao: emp.funcao, equipe: emp.equipe, unidade: emp.unidade, empresa: emp.empresa, roles: emp.roles || [] },
     pontos: pts.total, porTipo: pts.byType,
@@ -2316,7 +2359,21 @@ route('GET', /^\/api\/meu-painel$/, { role: 'colaborador' }, async (req, res, m,
     totalSugs: minhasSugs.length,
     sugsAprovadas: minhasSugs.filter(s => s.status === 'aprovada').length,
     checkinPendente: checkinPendente ? { checkinId: checkinPendente.id } : null,
-    missoes, subiu: subiu ? nivel : null
+    missoes, subiu: subiu ? nivel : null,
+    pendencias: {
+      comunicadosNaoLidos: (db.comunicados||[]).filter(c=>c.companyId===s.companyId && !(c.leitosPor||[]).includes(emp.id)).length,
+      pesquisasPendentes: (db.pesquisas||[]).filter(p=>p.companyId===s.companyId && p.ativo && !(p.respostas||[]).find(r=>r.empId===emp.id)).length,
+    },
+    participacao: {
+      reconhecimentosRecebidos: totalReconhReceb,
+      reconhecimentosEnviados: totalReconhEnv,
+      isCipa: (emp.roles||[]).includes('cipa'),
+      isBrigada: (emp.roles||[]).includes('brigada'),
+      cargoCipa: (emp.subRoles||[]).find(r=>r.startsWith('cipa_')) || null,
+      cargoBrigada: (emp.subRoles||[]).find(r=>r.startsWith('brigada_')) || null,
+    },
+    dna,
+    admissao: emp.dataAdmissao || null,
   });
 });
 
