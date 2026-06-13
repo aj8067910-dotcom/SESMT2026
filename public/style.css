@@ -1037,11 +1037,44 @@ hr { border: none; border-top: 1px solid var(--cinza-borda); margin: 16px 0; }
 
 /* Responsive sidebar collapse on small screens */
 @media (max-width: 768px) {
-  .sidebar { position: fixed; top: 60px; left: -248px; height: calc(100vh - 60px); transition: left .25s ease; z-index: 40; }
-  .sidebar.mobile-open { left: 0; }
-  .sidebar-overlay { display: none; position: fixed; inset: 0; top: 60px; background: rgba(0,0,0,.4); z-index: 39; }
+  /* Hide sidebar off-screen by default on mobile */
+  .sidebar {
+    position: fixed;
+    top: 60px;
+    left: -260px;
+    height: calc(100vh - 60px);
+    width: 248px !important;
+    transition: left .28s cubic-bezier(.4,0,.2,1);
+    z-index: 400;
+    box-shadow: none;
+  }
+  .sidebar.mobile-open {
+    left: 0;
+    box-shadow: 4px 0 24px rgba(0,0,0,.45);
+  }
+  /* Show all labels when open on mobile (even if collapsed on desktop) */
+  .sidebar.mobile-open .sm-label,
+  .sidebar.mobile-open .sidebar-brand,
+  .sidebar.mobile-open .sidebar-item,
+  .sidebar.mobile-open .sidebar-module-single span:not(.sm-icon) { display: block !important; }
+  .sidebar.mobile-open .sm-arrow { display: inline !important; }
+  /* Overlay */
+  .sidebar-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    top: 60px;
+    background: rgba(0,0,0,.5);
+    z-index: 399;
+    -webkit-backdrop-filter: blur(2px);
+    backdrop-filter: blur(2px);
+  }
   .sidebar-overlay.visible { display: block; }
-  .main-content { padding: 16px; }
+  /* Main content always full width on mobile */
+  .app-layout { display: block; }
+  .main-content { padding: 12px 10px 80px; width: 100%; }
+  /* Topbar menu button always visible */
+  .topbar-menu-btn { display: flex !important; }
 }
 
 /* ═══════════════════════════════════════════════════════════
@@ -1351,4 +1384,89 @@ hr { border: none; border-top: 1px solid var(--cinza-borda); margin: 16px 0; }
 .sesmt-perg-texto { font-weight:600; }
 
 .badge-azul { background:#dbeafe; color:#1e40af; padding:2px 8px; border-radius:10px; font-size:11px; font-weight:600; }
+
+/* ── SafePoint 3.4 – Employee Experience ─────────────── */
+
+/* Saudação card */
+.colab-saudacao-card { padding:16px; }
+.colab-saudacao-inner { display:flex; align-items:center; gap:14px; }
+.colab-saudacao-avatar { width:52px; height:52px; border-radius:50%; background:var(--azul); color:#fff; display:flex; align-items:center; justify-content:center; font-size:20px; font-weight:800; flex-shrink:0; }
+.colab-saudacao-info { flex:1; }
+.colab-saudacao-text { font-size:18px; font-weight:600; margin-bottom:6px; }
+.colab-saudacao-badges { display:flex; flex-wrap:wrap; gap:6px; }
+.badge-institucional { padding:3px 10px; border-radius:12px; font-size:12px; font-weight:700; }
+.badge-cipa   { background:#dbeafe; color:#1e40af; }
+.badge-brigada{ background:#fee2e2; color:#991b1b; }
+
+/* Pendências */
+.pendencia-item { display:flex; align-items:center; gap:10px; padding:10px; border-radius:8px; cursor:pointer; transition:background .15s; }
+.pendencia-item:hover { background:#f0f9ff; }
+.pend-icon { font-size:20px; }
+.pend-text { flex:1; font-size:14px; }
+.pend-arrow { color:var(--texto-leve); font-size:18px; }
+.badge-count { background:#ef4444; color:#fff; border-radius:10px; padding:1px 7px; font-size:12px; font-weight:700; margin-left:6px; }
+
+/* Participação */
+.participacao-grid { display:grid; grid-template-columns:repeat(2,1fr); gap:12px; margin-top:10px; }
+@media(min-width:500px){ .participacao-grid { grid-template-columns:repeat(4,1fr); } }
+.partic-item { text-align:center; padding:12px 8px; background:#f8fafc; border-radius:10px; }
+.partic-val   { font-size:24px; font-weight:800; color:var(--azul); }
+.partic-label { font-size:11px; color:var(--texto-leve); margin-top:4px; }
+
+/* Safety DNA */
+.dna-badges { display:flex; flex-direction:column; gap:10px; margin-top:10px; }
+.dna-badge  { display:flex; align-items:flex-start; gap:10px; padding:10px; background:#f8fafc; border-radius:10px; }
+.dna-emoji  { font-size:28px; flex-shrink:0; }
+.dna-nome   { font-weight:700; font-size:14px; }
+.dna-desc   { font-size:12px; color:var(--texto-leve); margin-top:2px; }
+.dna-page-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(180px,1fr)); gap:14px; margin-bottom:16px; }
+.dna-page-card { background:#f8fafc; border-radius:12px; padding:20px 14px; text-align:center; border:1px solid var(--cinza-borda); }
+.dna-page-emoji { font-size:40px; margin-bottom:8px; }
+.dna-page-nome  { font-weight:700; font-size:15px; margin-bottom:4px; }
+.dna-page-desc  { font-size:12px; color:var(--texto-leve); }
+.dna-tips { font-size:14px; line-height:2; list-style:none; padding:0; }
+
+/* Feed hashtags & mentions */
+.feed-hashtag { color:#0369a1; font-weight:600; cursor:pointer; }
+.feed-mention  { color:#7c3aed; font-weight:600; cursor:pointer; }
+
+/* Reconhecimento 360° */
+.r360-card { background:#f8fafc; border-radius:10px; padding:14px; margin-bottom:10px; border-left:4px solid #f59e0b; }
+.r360-badge { font-weight:700; margin-bottom:4px; }
+.r360-nome  { font-size:13px; color:var(--texto-leve); }
+.r360-msg   { font-size:14px; margin-top:6px; }
+.r360-data  { margin-top:4px; }
+
+/* Central de Missões */
+.missoes-center-lista { padding:4px 0; }
+.mc-progress-bar-wrap { height:8px; background:var(--cinza-borda); border-radius:4px; overflow:hidden; margin-bottom:6px; }
+.mc-progress-bar { height:100%; background:var(--azul); border-radius:4px; transition:width .4s; }
+.mc-missao-card { display:flex; align-items:flex-start; gap:12px; padding:12px; border-radius:10px; margin-bottom:8px; background:#f8fafc; border:1px solid var(--cinza-borda); }
+.mc-missao-card.concluida { opacity:.6; text-decoration:line-through; }
+.mc-check { font-size:20px; flex-shrink:0; }
+.mc-missao-info { flex:1; }
+.mc-missao-desc { font-size:14px; font-weight:500; margin-bottom:6px; }
+.mc-missao-recomp { display:flex; gap:6px; flex-wrap:wrap; }
+
+/* Minha Jornada */
+.jornada-timeline { padding:8px 0; }
+.jornada-item { display:flex; gap:14px; padding:10px 0; border-bottom:1px solid var(--cinza-borda); }
+.jornada-dot { width:10px; height:10px; border-radius:50%; background:var(--azul); flex-shrink:0; margin-top:5px; }
+.jornada-content { flex:1; }
+.jornada-acao { font-weight:600; font-size:14px; }
+.jornada-pts { color:var(--azul); font-weight:700; font-size:13px; }
+.jornada-data { margin-top:2px; }
+
+/* Feedback Anônimo */
+.fb-anonimo-card { background:#f8fafc; border-radius:10px; padding:14px; margin-bottom:10px; border-left:4px solid #e5e7eb; }
+
+/* Mobile improvements */
+@media(max-width:600px) {
+  .colab-saudacao-text { font-size:16px; }
+  .participacao-grid { grid-template-columns:repeat(2,1fr); }
+  .dna-page-grid { grid-template-columns:1fr 1fr; }
+  .mc-missao-card { flex-direction:column; gap:6px; }
+  .feed-card { border-radius:8px; margin-bottom:10px; }
+  .pillar-bar-label { width:90px; font-size:12px; }
+}
 

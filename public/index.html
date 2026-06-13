@@ -220,6 +220,7 @@
       <div class="sidebar-items">
         <div class="sidebar-item" data-view="comunicados"       onclick="navegar('comunicados')">Comunicados</div>
         <div class="sidebar-item" data-view="pesquisas-gestor"  onclick="navegar('pesquisas-gestor')">Pesquisas</div>
+        <div class="sidebar-item" data-view="feedback-anonimo-gestor" onclick="navegar('feedback-anonimo-gestor')">Feedback Anônimo</div>
         <div class="sidebar-item" data-view="canal-sesmt"      onclick="navegar('canal-sesmt')">Canal Pergunte ao SESMT</div>
         <div class="sidebar-item" data-view="tv-corporativa"   onclick="navegar('tv-corporativa')">TV Corporativa</div>
       </div>
@@ -468,6 +469,18 @@
       <p class="hint">Crie pesquisas de clima, cultura de segurança, COPSOQ e outras. Colaboradores ganham <strong>15 pontos</strong> por resposta.</p>
       <table class="tabela" id="tabela-pesquisas"></table>
       <div id="pesquisa-resultados-area" style="margin-top:18px"></div>
+    </section>
+
+    <!-- Feedback Anônimo (gestor) -->
+    <section id="view-feedback-anonimo-gestor" class="view hidden">
+      <h2>Feedback Anônimo — Consolidado SESMT</h2>
+      <div class="panel">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+          <p class="hint">Feedbacks enviados anonimamente pelos colaboradores.</p>
+          <button class="btn" onclick="carregarFeedbackAnonimo()">🔄 Atualizar</button>
+        </div>
+        <div id="feedback-anonimo-lista"><p class="hint">Carregando...</p></div>
+      </div>
     </section>
 
     <!-- Comunicados (gestor) -->
@@ -1648,6 +1661,8 @@
         <div class="sidebar-item" data-cview="mural"       onclick="navegarColab('mural')">Mural Social</div>
         <div class="sidebar-item" data-cview="comunicados" onclick="navegarColab('comunicados')">Comunicados</div>
         <div class="sidebar-item" data-cview="pesquisas"   onclick="navegarColab('pesquisas')">Pesquisas</div>
+        <div class="sidebar-item" data-cview="feedback-anonimo" onclick="navegarColab('feedback-anonimo')">Feedback Anônimo</div>
+        <div class="sidebar-item" data-cview="canal-lideranca"  onclick="navegarColab('canal-lideranca')">Canal da Liderança</div>
       </div>
     </div>
 
@@ -1684,6 +1699,8 @@
         <div class="sidebar-item" data-cview="quem-e-quem" onclick="navegarColab('quem-e-quem')">Quem é Quem</div>
         <div class="sidebar-item" data-cview="estrutura"   onclick="navegarColab('estrutura')">Estrutura SST</div>
         <div class="sidebar-item" data-cview="historico"   onclick="navegarColab('historico')">Histórico</div>
+        <div class="sidebar-item" data-cview="reconhec-360"  onclick="navegarColab('reconhec-360')">Meus Reconhecimentos</div>
+        <div class="sidebar-item" data-cview="missoes-center" onclick="navegarColab('missoes-center')">Central de Missões</div>
       </div>
     </div>
 
@@ -1697,26 +1714,36 @@
       </div>
     </div>
   </aside>
+  <div class="sidebar-overlay" id="overlay-colab" onclick="closeSidebar('colab')"></div>
 
   <main class="main-content">
 
     <!-- Painel colaborador -->
     <section id="cview-painel" class="cview">
       <div id="colab-nivel-banner" class="nivel-up-banner hidden"></div>
-      <div id="colab-nivel-card" class="nivel-card"></div>
-      <!-- Estrutura de Segurança card fixo -->
-      <div id="estrutura-card-colab" class="estrutura-home-card panel" style="margin-top:14px;cursor:pointer" onclick="navegarColab('estrutura')">
-        <div style="display:flex;align-items:center;gap:12px">
-          <span style="font-size:32px">🛡</span>
-          <div style="flex:1">
-            <div style="font-weight:700;font-size:15px;margin-bottom:2px">Quem Cuida da Sua Segurança</div>
-            <div id="estrutura-card-resumo" class="hint">Carregando estrutura...</div>
-          </div>
-          <span style="font-size:20px;color:#6b7280">›</span>
-        </div>
-      </div>
+
+      <!-- Saudação personalizada -->
+      <div id="colab-saudacao-card" class="colab-saudacao-card panel"></div>
+
+      <!-- Meu Progresso (nível, streak, pontos) -->
+      <div id="colab-nivel-card" class="nivel-card" style="margin-top:14px"></div>
+
+      <!-- Safety DNA -->
+      <div id="colab-dna-card" class="panel" style="margin-top:14px"></div>
+
+      <!-- Missões -->
       <div id="colab-missoes-card" class="missoes-card panel" style="margin-top:14px"></div>
+
+      <!-- Minhas Pendências -->
+      <div id="colab-pendencias-card" class="panel" style="margin-top:14px"></div>
+
+      <!-- Minha Participação -->
+      <div id="colab-participacao-card" class="panel" style="margin-top:14px"></div>
+
+      <!-- KPIs -->
       <div id="colab-cards" class="cards" style="margin-top:14px"></div>
+
+      <!-- Rankings e recompensas -->
       <div class="grid-2" style="margin-top:14px">
         <div class="panel">
           <h3>Pontuação por tipo</h3>
@@ -1730,6 +1757,18 @@
       <div class="panel" style="margin-top:14px">
         <h3>Loja de Recompensas</h3>
         <div id="colab-recompensas" class="recompensas-grid"></div>
+      </div>
+
+      <!-- Estrutura de Segurança -->
+      <div id="estrutura-card-colab" class="estrutura-home-card panel" style="margin-top:14px;cursor:pointer" onclick="navegarColab('estrutura')">
+        <div style="display:flex;align-items:center;gap:12px">
+          <span style="font-size:32px">🛡</span>
+          <div style="flex:1">
+            <div style="font-weight:700;font-size:15px;margin-bottom:2px">Quem Cuida da Sua Segurança</div>
+            <div id="estrutura-card-resumo" class="hint">Carregando estrutura...</div>
+          </div>
+          <span style="font-size:20px;color:#6b7280">›</span>
+        </div>
       </div>
     </section>
 
@@ -1840,7 +1879,89 @@
 
     <!-- Perfil -->
     <section id="cview-perfil" class="cview hidden">
-      <div id="perfil-conteudo"></div>
+      <div class="quiz-tabs" style="margin-bottom:14px">
+        <button class="quiz-tab active" data-perftab="perfil"   onclick="perfTab('perfil')">👤 Perfil</button>
+        <button class="quiz-tab" data-perftab="jornada" onclick="perfTab('jornada')">🗺️ Minha Jornada</button>
+        <button class="quiz-tab" data-perftab="dna"     onclick="perfTab('dna')">🧬 Safety DNA</button>
+      </div>
+      <div id="perftab-perfil"><div id="perfil-conteudo"></div></div>
+      <div id="perftab-jornada" class="hidden"><div id="perfil-jornada"></div></div>
+      <div id="perftab-dna" class="hidden"><div id="perfil-dna"></div></div>
+    </section>
+
+    <!-- Feedback Anônimo -->
+    <section id="cview-feedback-anonimo" class="cview hidden">
+      <h2>Feedback Anônimo</h2>
+      <div class="panel" style="max-width:600px">
+        <p class="hint" style="margin-bottom:16px">Seu feedback é completamente anônimo. Contribua para melhorar o ambiente de trabalho.</p>
+        <label>Tipo de feedback</label>
+        <select id="fb-tipo" class="input">
+          <option value="sugestao">💡 Sugestão</option>
+          <option value="reclamacao">⚠️ Reclamação</option>
+          <option value="duvida">❓ Dúvida</option>
+          <option value="percepcao">💭 Percepção</option>
+          <option value="melhoria">🔧 Oportunidade de Melhoria</option>
+        </select>
+        <label style="margin-top:12px">Mensagem</label>
+        <textarea id="fb-mensagem" class="input" rows="4" placeholder="Compartilhe sua percepção de forma anônima..."></textarea>
+        <button class="btn btn-primary" style="margin-top:12px" onclick="enviarFeedbackAnonimo()">Enviar Anonimamente</button>
+        <p class="hint" style="margin-top:8px;font-size:12px">🔒 Sua identidade não é registrada neste canal.</p>
+      </div>
+    </section>
+
+    <!-- Canal da Liderança -->
+    <section id="cview-canal-lideranca" class="cview hidden">
+      <h2>Canal da Liderança</h2>
+      <div class="panel">
+        <p class="hint">Mensagens e comunicados exclusivos da liderança, gestores e SESMT.</p>
+        <div id="canal-lideranca-lista">
+          <div class="modulo-em-breve">
+            <div class="modulo-em-breve-icon">📡</div>
+            <h3>Canal da Liderança</h3>
+            <p>Em breve você receberá vídeos, áudios e mensagens exclusivas da liderança da empresa aqui.</p>
+            <div class="feature-chips">
+              <span class="chip chip-blue">Vídeos</span>
+              <span class="chip chip-green">Áudios</span>
+              <span class="chip chip-orange">Mensagens</span>
+              <span class="chip chip-purple">Indicadores</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Reconhecimentos 360° -->
+    <section id="cview-reconhec-360" class="cview hidden">
+      <h2>Meus Reconhecimentos</h2>
+      <div class="quiz-tabs" style="margin-bottom:14px">
+        <button class="quiz-tab active" data-r360tab="recebidos" onclick="r360Tab('recebidos')">🏅 Recebidos</button>
+        <button class="quiz-tab" data-r360tab="enviados"  onclick="r360Tab('enviados')">🤝 Enviados</button>
+      </div>
+      <div id="r360-recebidos">
+        <div id="r360-recebidos-lista"><p class="hint">Carregando...</p></div>
+      </div>
+      <div id="r360-enviados" class="hidden">
+        <div id="r360-enviados-lista"><p class="hint">Carregando...</p></div>
+      </div>
+    </section>
+
+    <!-- Central de Missões -->
+    <section id="cview-missoes-center" class="cview hidden">
+      <h2>Central de Missões</h2>
+      <div class="quiz-tabs" style="margin-bottom:14px">
+        <button class="quiz-tab active" data-mctab="diarias"  onclick="mcTab('diarias')">⚡ Diárias</button>
+        <button class="quiz-tab" data-mctab="semanais" onclick="mcTab('semanais')">📅 Semanais</button>
+        <button class="quiz-tab" data-mctab="mensais"  onclick="mcTab('mensais')">🎯 Mensais</button>
+      </div>
+      <div id="mctab-diarias">
+        <div id="mc-diarias-lista" class="missoes-center-lista"></div>
+      </div>
+      <div id="mctab-semanais" class="hidden">
+        <div id="mc-semanais-lista" class="missoes-center-lista"></div>
+      </div>
+      <div id="mctab-mensais" class="hidden">
+        <div id="mc-mensais-lista" class="missoes-center-lista"></div>
+      </div>
     </section>
 
     <!-- Check-in -->

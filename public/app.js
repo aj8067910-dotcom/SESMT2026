@@ -350,7 +350,24 @@ async function iniciar() {
 function toggleSidebar(who) {
   const sb = document.getElementById('sidebar-' + who);
   if (!sb) return;
-  sb.classList.toggle('collapsed');
+  const isMobile = window.innerWidth <= 768;
+  if (isMobile) {
+    const isOpen = sb.classList.toggle('mobile-open');
+    const overlay = document.getElementById('overlay-' + who);
+    if (overlay) overlay.classList.toggle('visible', isOpen);
+    document.body.style.overflow = isOpen ? 'hidden' : '';
+  } else {
+    sb.classList.toggle('collapsed');
+  }
+}
+
+function closeSidebar(who) {
+  const sb = document.getElementById('sidebar-' + who);
+  if (!sb) return;
+  sb.classList.remove('mobile-open');
+  const overlay = document.getElementById('overlay-' + who);
+  if (overlay) overlay.classList.remove('visible');
+  document.body.style.overflow = '';
 }
 
 function toggleSbMod(mod) {
@@ -360,6 +377,7 @@ function toggleSbMod(mod) {
 }
 
 async function navegar(view) {
+  if (window.innerWidth <= 768) closeSidebar('gestor');
   document.querySelectorAll('#app-gestor .sidebar-item, #app-gestor .sidebar-module-single').forEach(b => {
     b.classList.toggle('active', b.dataset.view === view);
   });
@@ -387,6 +405,7 @@ async function navegar(view) {
   if (view === 'permissoes')        await carregarPermissoes();
   if (view === 'governance')        await carregarGovernance();
   if (view === 'auditoria-avancada') await carregarAuditAvancada();
+  if (view === 'feedback-anonimo-gestor') carregarFeedbackAnonimo();
   // SafePoint 3.3 — novas views
   if (view === 'safety-score-corp') await carregarSafetyScoreCorp();
   if (view === 'risk-engine')       await carregarRiskEngine();
@@ -396,6 +415,7 @@ async function navegar(view) {
 }
 
 async function navegarColab(view) {
+  if (window.innerWidth <= 768) closeSidebar('colab');
   document.querySelectorAll('#app-colab .sidebar-item').forEach(b => {
     b.classList.toggle('active', b.dataset.cview === view);
   });
@@ -415,6 +435,10 @@ async function navegarColab(view) {
   if (view === 'observar')     await carregarMinhasObservacoes();
   if (view === 'sugerir')      await carregarMinhasSugestoes();
   if (view === 'historico')    await carregarHistoricoCompleto();
+  if (view === 'feedback-anonimo') { /* just show */ }
+  if (view === 'canal-lideranca')  { /* just show */ }
+  if (view === 'reconhec-360')     await carregarReconhec360();
+  if (view === 'missoes-center')   carregarMissoesCentral();
 }
 
 async function navegarAdmin(view) {
@@ -2045,6 +2069,11 @@ async function carregarPainelColaborador() {
   /* ── Missões diárias ── */
   renderMissoesCard(p.missoes || []);
 
+  renderSaudacaoCard(p);
+  renderDnaCard(p.dna || []);
+  renderPendenciasCard(p.pendencias || {});
+  renderParticipacaoCard(p.participacao || {}, p);
+
   document.getElementById('colab-cards').innerHTML = `
     <div class="card destaque"><div class="num">${p.pontos}</div><div class="rotulo">Meus pontos</div></div>
     <div class="card"><div class="num">${p.posicao ? p.posicao + 'º' : '—'}</div><div class="rotulo">Ranking (de ${p.totalColaboradores})</div></div>
@@ -2128,6 +2157,95 @@ function renderMissoesCard(missoes) {
           <span class="missao-pts">+${m.pontos} pts</span>
         </li>`).join('')}
     </ul>`;
+}
+
+function renderSaudacaoCard(p) {
+  const el = document.getElementById('colab-saudacao-card');
+  if (!el) return;
+  const colab = p.colaborador || {};
+  const nome = (colab.nome || '').split(' ')[0];
+  const hora = new Date().getHours();
+  const saudacao = hora < 12 ? 'Bom dia' : hora < 18 ? 'Boa tarde' : 'Boa noite';
+  const ini = (colab.nome || '?').slice(0,2).toUpperCase();
+  // Badges CIPA/Brigada
+  const part = p.participacao || {};
+  const CARGO_LABELS_CIPA = { cipa_presidente:'Presidente da CIPA', cipa_vice:'Vice-Presidente CIPA', cipa_secretario:'Secretário CIPA', cipa_titular:'Titular CIPA', cipa_suplente:'Suplente CIPA' };
+  const CARGO_LABELS_BRI  = { brigada_coordenador:'Coord. Brigada', brigada_lider:'Líder de Brigada', brigada_brigadista:'Brigadista', brigada_socorrista:'Socorrista' };
+  const badgesCipa = part.cargoCipa ? `<span class="badge-institucional badge-cipa">${CARGO_LABELS_CIPA[part.cargoCipa] || 'CIPA'}</span>` : (part.isCipa ? '<span class="badge-institucional badge-cipa">🛡 CIPA</span>' : '');
+  const badgesBri  = part.cargoBrigada ? `<span class="badge-institucional badge-brigada">${CARGO_LABELS_BRI[part.cargoBrigada] || 'Brigada'}</span>` : (part.isBrigada ? '<span class="badge-institucional badge-brigada">🚒 Brigada</span>' : '');
+
+  // Tempo de empresa
+  let tempoEmp = '';
+  if (p.admissao) {
+    const admDate = new Date(p.admissao);
+    const hoje = new Date();
+    const meses = (hoje.getFullYear() - admDate.getFullYear()) * 12 + (hoje.getMonth() - admDate.getMonth());
+    tempoEmp = meses < 12 ? `${meses} meses na empresa` : `${Math.floor(meses/12)} ano${Math.floor(meses/12)>1?'s':''} na empresa`;
+  }
+
+  el.innerHTML = `
+    <div class="colab-saudacao-inner">
+      <div class="colab-saudacao-avatar">${ini}</div>
+      <div class="colab-saudacao-info">
+        <div class="colab-saudacao-text">${saudacao}, <strong>${esc(nome)}</strong>! 👋</div>
+        <div class="colab-saudacao-badges">${badgesCipa}${badgesBri}</div>
+        ${tempoEmp ? `<div class="hint" style="margin-top:4px">🏢 ${tempoEmp}</div>` : ''}
+      </div>
+    </div>`;
+}
+
+function renderDnaCard(dna) {
+  const el = document.getElementById('colab-dna-card');
+  if (!el || !dna.length) { if(el) el.style.display='none'; return; }
+  el.style.display = '';
+  el.innerHTML = `
+    <h3>🧬 Safety DNA</h3>
+    <div class="dna-badges">
+      ${dna.map(d => `
+        <div class="dna-badge">
+          <span class="dna-emoji">${d.emoji}</span>
+          <div>
+            <div class="dna-nome">${esc(d.nome)}</div>
+            <div class="dna-desc">${esc(d.desc)}</div>
+          </div>
+        </div>`).join('')}
+    </div>`;
+}
+
+function renderPendenciasCard(pend) {
+  const el = document.getElementById('colab-pendencias-card');
+  if (!el) return;
+  const total = (pend.comunicadosNaoLidos||0) + (pend.pesquisasPendentes||0);
+  if (!total) { el.innerHTML = '<div style="display:flex;align-items:center;gap:10px"><span style="font-size:24px">✅</span><div><strong>Tudo em dia!</strong><div class="hint">Você não tem pendências no momento.</div></div></div>'; return; }
+  const items = [];
+  if (pend.comunicadosNaoLidos > 0) items.push(`<div class="pendencia-item" onclick="navegarColab('comunicados')"><span class="pend-icon">📢</span><span class="pend-text">${pend.comunicadosNaoLidos} comunicado${pend.comunicadosNaoLidos>1?'s':''} não lido${pend.comunicadosNaoLidos>1?'s':''}</span><span class="pend-arrow">›</span></div>`);
+  if (pend.pesquisasPendentes > 0) items.push(`<div class="pendencia-item" onclick="navegarColab('pesquisas')"><span class="pend-icon">📋</span><span class="pend-text">${pend.pesquisasPendentes} pesquisa${pend.pesquisasPendentes>1?'s':''} pendente${pend.pesquisasPendentes>1?'s':''}</span><span class="pend-arrow">›</span></div>`);
+  el.innerHTML = `<h3>⏳ Minhas Pendências <span class="badge-count">${total}</span></h3>${items.join('')}`;
+}
+
+function renderParticipacaoCard(part, p) {
+  const el = document.getElementById('colab-participacao-card');
+  if (!el) return;
+  el.innerHTML = `
+    <h3>📊 Minha Participação</h3>
+    <div class="participacao-grid">
+      <div class="partic-item">
+        <div class="partic-val">${p.posicao ? p.posicao+'º' : '–'}</div>
+        <div class="partic-label">Ranking</div>
+      </div>
+      <div class="partic-item">
+        <div class="partic-val">${part.reconhecimentosRecebidos || 0}</div>
+        <div class="partic-label">Reconhecimentos recebidos</div>
+      </div>
+      <div class="partic-item">
+        <div class="partic-val">${part.reconhecimentosEnviados || 0}</div>
+        <div class="partic-label">Reconhecimentos enviados</div>
+      </div>
+      <div class="partic-item">
+        <div class="partic-val">${p.historico ? p.historico.length : 0}</div>
+        <div class="partic-label">Participações</div>
+      </div>
+    </div>`;
 }
 
 function mostrarAvisoPendente(checkinId) {
@@ -2302,6 +2420,13 @@ async function carregarMural() {
   } catch (err) { toast(err.message, 'erro'); }
 }
 
+function renderFeedConteudo(txt) {
+  return esc(txt)
+    .replace(/\n/g, '<br>')
+    .replace(/#(\w+)/g, '<span class="feed-hashtag">#$1</span>')
+    .replace(/@(\w[\w\s]*)/g, '<span class="feed-mention">@$1</span>');
+}
+
 function renderFeedPost(p) {
   const tipoTag = p.tipo === 'reconhecimento' ? '<span class="tag tag-verde">🤝 Reconhecimento</span>'
     : p.tipo === 'conquista' ? '<span class="tag tag-ouro">⭐ Conquista</span>'
@@ -2309,11 +2434,12 @@ function renderFeedPost(p) {
     : '';
   const mr = p.minhasReacoes || {};
   const REACOES = [
-    { key:'like',       emoji:'👍', label:'Curtir',       total: p.totalLikes      || 0 },
-    { key:'aplausos',   emoji:'👏', label:'Palmas',       total: p.totalAplausos   || 0 },
-    { key:'estrela',    emoji:'⭐', label:'Destaque',     total: p.totalEstrelas   || 0 },
-    { key:'seguranca',  emoji:'🛡', label:'Ex. Segurança',total: p.totalSeguranca  || 0 },
-    { key:'inspirador', emoji:'💡', label:'Inspirador',   total: p.totalInspirador || 0 },
+    { key:'aplausos',   emoji:'👏', label:'Excelente',             total: p.totalAplausos   || 0 },
+    { key:'seguranca',  emoji:'🛡', label:'Exemplo de Segurança',  total: p.totalSeguranca  || 0 },
+    { key:'boaideia',   emoji:'💡', label:'Boa Ideia',             total: p.totalBoaideia   || 0 },
+    { key:'inspirador', emoji:'🔥', label:'Inspirador',            total: p.totalInspirador || 0 },
+    { key:'reconhec',   emoji:'🏆', label:'Merece Reconhecimento', total: p.totalReconhec   || 0 },
+    { key:'like',       emoji:'❤️', label:'Gostei',                total: p.totalLikes      || 0 },
   ];
   const total = REACOES.reduce((a, r) => a + r.total, 0);
   const comentarios = p.ultimosComentarios || [];
@@ -2328,7 +2454,7 @@ function renderFeedPost(p) {
           <span class="feed-ts">${tsDataHora(p.timestamp)}</span>
         </div>
       </div>
-      <div class="feed-body">${esc(p.conteudo || '').replace(/\n/g, '<br>')}</div>
+      <div class="feed-body">${renderFeedConteudo(p.conteudo || '')}</div>
       <div class="feed-footer">
         ${REACOES.map(r => `<button class="btn-reacao ${mr[r.key] ? 'ativo' : ''}" onclick="reagirFeed(${p.id},'${r.key}')" title="${r.label}">${r.emoji} ${r.total || ''}</button>`).join('')}
         <button class="btn-reacao" onclick="toggleComentarios(${p.id})" title="Comentar">💬 ${totalComent || ''}</button>
@@ -5535,6 +5661,182 @@ function enviarPerguntaSesmt() {
   }
   document.getElementById('sesmt-pergunta').value = '';
   toast('Pergunta enviada ao SESMT!');
+}
+
+/* ── Reconhecimentos 360° ──────────────────────────────── */
+async function carregarReconhec360() {
+  try {
+    const data = await api('/api/reconhecimentos/meus');
+    renderR360Lista('r360-recebidos-lista', data.recebidos || [], 'recebido');
+    renderR360Lista('r360-enviados-lista',  data.enviados  || [], 'enviado');
+  } catch(e) { console.error(e); }
+}
+
+function renderR360Lista(elId, list, tipo) {
+  const el = document.getElementById(elId);
+  if (!el) return;
+  if (!list.length) { el.innerHTML = `<p class="hint">Nenhum reconhecimento ${tipo} ainda.</p>`; return; }
+  const BADGE_LABELS = {
+    lider:'🦁 Líder de Segurança', colaborador:'🤝 Colaborador Exemplar', cipa:'🛡 Destaque CIPA',
+    brigada:'🚒 Destaque Brigada', inovacao:'💡 Inovação em Segurança', comunicacao:'📣 Comunicação'
+  };
+  el.innerHTML = list.map(r => `
+    <div class="r360-card">
+      <div class="r360-badge">${BADGE_LABELS[r.tipoBadge] || r.badgeLabel || r.tipoBadge || '🏅'}</div>
+      <div class="r360-nome">${esc(tipo === 'recebido' ? (r.gestorNome || r.autorNome || 'SESMT') : (r.homenageadoNome || '–'))}</div>
+      <div class="r360-msg">${esc(r.mensagem || '')}</div>
+      <div class="r360-data hint">${tsDataHora(r.timestamp)}</div>
+    </div>`).join('');
+}
+
+function r360Tab(tab) {
+  document.querySelectorAll('[data-r360tab]').forEach(b => b.classList.toggle('active', b.dataset.r360tab === tab));
+  document.getElementById('r360-recebidos')?.classList.toggle('hidden', tab !== 'recebidos');
+  document.getElementById('r360-enviados')?.classList.toggle('hidden', tab !== 'enviados');
+}
+
+/* ── Central de Missões ───────────────────────────────── */
+function carregarMissoesCentral() {
+  const MISSOES_SEMANAIS = [
+    { desc: 'Participar de 3 DDS esta semana',     pontos: 50,  xp: 30, feita: false },
+    { desc: 'Realizar um treinamento completo',     pontos: 80,  xp: 60, feita: false },
+    { desc: 'Reconhecer um colega',                 pontos: 30,  xp: 20, feita: false },
+    { desc: 'Publicar uma boa prática no mural',    pontos: 40,  xp: 25, feita: false },
+  ];
+  const MISSOES_MENSAIS = [
+    { desc: 'Participar de uma campanha de segurança', pontos: 150, xp: 100, feita: false },
+    { desc: 'Completar uma trilha de aprendizagem',    pontos: 200, xp: 150, feita: false },
+    { desc: 'Participar de ação da CIPA ou Brigada',   pontos: 100, xp:  80, feita: false },
+    { desc: 'Obter nota máxima em um quiz',            pontos: 120, xp:  90, feita: false },
+  ];
+  renderMissoesCentralLista('mc-semanais-lista', MISSOES_SEMANAIS);
+  renderMissoesCentralLista('mc-mensais-lista',  MISSOES_MENSAIS);
+  const dailyEl = document.getElementById('mc-diarias-lista');
+  if (dailyEl) dailyEl.innerHTML = '<p class="hint">Acesse o Painel para ver as missões diárias.</p>';
+}
+
+function renderMissoesCentralLista(elId, missoes) {
+  const el = document.getElementById(elId);
+  if (!el) return;
+  const feitas = missoes.filter(m => m.feita).length;
+  el.innerHTML = `
+    <div class="mc-progress-bar-wrap">
+      <div class="mc-progress-bar" style="width:${missoes.length ? Math.round(feitas/missoes.length*100) : 0}%"></div>
+    </div>
+    <p class="hint" style="margin-bottom:10px">${feitas}/${missoes.length} concluídas</p>
+    ${missoes.map((m) => `
+      <div class="mc-missao-card ${m.feita ? 'concluida' : ''}">
+        <span class="mc-check">${m.feita ? '✅' : '⬜'}</span>
+        <div class="mc-missao-info">
+          <div class="mc-missao-desc">${esc(m.desc)}</div>
+          <div class="mc-missao-recomp"><span class="chip chip-blue">+${m.pontos} pts</span> <span class="chip chip-green">+${m.xp} XP</span></div>
+        </div>
+      </div>`).join('')}`;
+}
+
+function mcTab(tab) {
+  document.querySelectorAll('[data-mctab]').forEach(b => b.classList.toggle('active', b.dataset.mctab === tab));
+  document.getElementById('mctab-diarias')?.classList.toggle('hidden',  tab !== 'diarias');
+  document.getElementById('mctab-semanais')?.classList.toggle('hidden', tab !== 'semanais');
+  document.getElementById('mctab-mensais')?.classList.toggle('hidden',  tab !== 'mensais');
+}
+
+/* ── Perfil Tabs ─────────────────────────────────────── */
+function perfTab(tab) {
+  document.querySelectorAll('[data-perftab]').forEach(b => b.classList.toggle('active', b.dataset.perftab === tab));
+  document.getElementById('perftab-perfil')?.classList.toggle('hidden',  tab !== 'perfil');
+  document.getElementById('perftab-jornada')?.classList.toggle('hidden', tab !== 'jornada');
+  document.getElementById('perftab-dna')?.classList.toggle('hidden',     tab !== 'dna');
+  if (tab === 'jornada') renderMinhaJornada();
+  if (tab === 'dna') renderSafeDNAPage();
+}
+
+function renderMinhaJornada() {
+  const el = document.getElementById('perfil-jornada');
+  if (!el) return;
+  el.innerHTML = `
+    <div class="panel">
+      <h3>🗺️ Minha Jornada</h3>
+      <div id="jornada-timeline" class="jornada-timeline">
+        <p class="hint">Sua jornada de conquistas aparece aqui à medida que você participa das atividades.</p>
+      </div>
+    </div>`;
+  api('/api/meu-painel').then(p => {
+    const el2 = document.getElementById('jornada-timeline');
+    if (!el2 || !p.historico?.length) return;
+    el2.innerHTML = p.historico.slice(0, 20).map(h => `
+      <div class="jornada-item">
+        <div class="jornada-dot"></div>
+        <div class="jornada-content">
+          <div class="jornada-acao">${esc(h.tipo || h.acao || 'Participação')}</div>
+          <div class="jornada-pts">+${h.pontos || 0} pts</div>
+          <div class="hint jornada-data">${tsDataHora(h.timestamp)}</div>
+        </div>
+      </div>`).join('');
+  }).catch(() => {});
+}
+
+function renderSafeDNAPage() {
+  const el = document.getElementById('perfil-dna');
+  if (!el) return;
+  api('/api/meu-painel').then(p => {
+    const dna = p.dna || [];
+    el.innerHTML = `
+      <div class="panel">
+        <h3>🧬 Safety DNA — Seu Perfil de Segurança</h3>
+        <p class="hint" style="margin-bottom:16px">O sistema identifica automaticamente suas características predominantes com base na sua participação.</p>
+        <div class="dna-page-grid">
+          ${dna.map(d => `
+            <div class="dna-page-card">
+              <div class="dna-page-emoji">${d.emoji}</div>
+              <div class="dna-page-nome">${esc(d.nome)}</div>
+              <div class="dna-page-desc">${esc(d.desc)}</div>
+            </div>`).join('')}
+        </div>
+        <div style="margin-top:24px">
+          <h4>Como evoluir seu DNA:</h4>
+          <ul class="dna-tips">
+            <li>🦅 <strong>Guardião</strong> — Registre observações de segurança</li>
+            <li>🧠 <strong>Mentor</strong> — Publique no mural e compartilhe conhecimento</li>
+            <li>🔥 <strong>Engajador</strong> — Participe de DDS e atividades</li>
+            <li>🎯 <strong>Executor</strong> — Complete treinamentos e acumule pontos</li>
+            <li>👑 <strong>Embaixador</strong> — Receba reconhecimentos dos colegas</li>
+          </ul>
+        </div>
+      </div>`;
+  }).catch(() => { el.innerHTML = '<p class="hint">Erro ao carregar.</p>'; });
+}
+
+/* ── Feedback Anônimo (colaborador) ─────────────────── */
+async function enviarFeedbackAnonimo() {
+  const tipo = document.getElementById('fb-tipo')?.value;
+  const mensagem = document.getElementById('fb-mensagem')?.value.trim();
+  if (!mensagem) { toast('Digite sua mensagem.', 'erro'); return; }
+  try {
+    await api('/api/feedback-anonimo', { method: 'POST', body: { tipo, mensagem } });
+    document.getElementById('fb-mensagem').value = '';
+    toast('Feedback enviado anonimamente! Obrigado pela contribuição.', 'ok');
+  } catch(e) { toast(e.message, 'erro'); }
+}
+
+/* ── Feedback Anônimo (gestor) ───────────────────────── */
+async function carregarFeedbackAnonimo() {
+  try {
+    const list = await api('/api/feedback-anonimo');
+    const el = document.getElementById('feedback-anonimo-lista');
+    if (!el) return;
+    if (!list.length) { el.innerHTML = '<p class="hint">Nenhum feedback recebido ainda.</p>'; return; }
+    const TIPO_LABELS = { sugestao:'💡 Sugestão', reclamacao:'⚠️ Reclamação', duvida:'❓ Dúvida', percepcao:'💭 Percepção', melhoria:'🔧 Melhoria' };
+    const TIPO_COLORS = { sugestao:'#dbeafe', reclamacao:'#fee2e2', duvida:'#fef3c7', percepcao:'#f3e8ff', melhoria:'#dcfce7' };
+    el.innerHTML = list.map(f => `
+      <div class="fb-anonimo-card" style="border-left-color:${TIPO_COLORS[f.tipo]||'#e5e7eb'}">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+          <span class="chip" style="background:${TIPO_COLORS[f.tipo]||'#f3f4f6'}">${TIPO_LABELS[f.tipo] || f.tipo}</span>
+          <span class="hint">${tsDataHora(f.timestamp)}</span>
+        </div>
+        <div>${esc(f.mensagem)}</div>
+      </div>`).join('');
+  } catch(e) { console.error(e); }
 }
 
 iniciar().catch(err => {
