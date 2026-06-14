@@ -277,6 +277,8 @@
         <div class="sidebar-item" data-view="config"     onclick="navegar('config')">Geral</div>
         <div class="sidebar-item" data-view="submodulos" onclick="navegar('submodulos')">Módulos / Submódulos</div>
         <div class="sidebar-item" data-view="permissoes" onclick="navegar('permissoes')">Permissões</div>
+        <div class="sidebar-item" data-view="acessos" onclick="navegar('acessos')">🔐 Acessos</div>
+        <div class="sidebar-item" data-view="auditoria" onclick="navegar('auditoria')">📋 Auditoria</div>
         <div class="sidebar-item" data-view="governance" onclick="navegar('governance')">Governança</div>
         <div class="sidebar-item" data-view="auditoria-avancada" onclick="navegar('auditoria-avancada')">Auditoria Avançada</div>
         <div class="sidebar-item" data-view="biblioteca-global" onclick="navegar('biblioteca-global')">Biblioteca Global</div>
@@ -515,7 +517,10 @@
       <div id="qtab-banco" class="qtab-pane">
         <div class="view-head" style="margin-top:14px;margin-bottom:10px">
           <span class="hint" id="banco-count"></span>
-          <button class="btn btn-primary" onclick="abrirNovaQuestao()">+ Nova questão</button>
+          <div style="display:flex;gap:8px">
+            <button class="btn" onclick="importarQuestoesCSV()">📥 Importar CSV</button>
+            <button class="btn btn-primary" onclick="abrirNovaQuestao()">+ Nova questão</button>
+          </div>
         </div>
         <div class="filtros" style="margin-bottom:14px">
           <select id="banco-categoria" onchange="filtrarBanco()">

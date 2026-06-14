@@ -1043,6 +1043,8 @@ route('GET', /^\/api\/me$/, { public: true }, async (req, res) => {
       roles = emp ? (emp.roles || []) : [];
       primeiroAcesso = emp ? !!emp.primeiroAcesso : false;
       termosAceitos = emp ? !!emp.termosAceitos : true;
+      const perfilCompleto = emp ? !!(emp.nome && emp.email && emp.telefone && emp.dataNascimento && emp.contatoEmergencia && emp.termosAceitos) : false;
+      return sendJson(res, 200, { autenticado: true, perfil: 'gestor', nome, branding, adminImpersonando: !!s.adminImpersonating, roles, isEmployee: !!s.isEmployee, primeiroAcesso, termosAceitos, perfilCompleto });
     } else {
       const mgr = s.userId ? db.managers.find(u => u.id === s.userId) : null;
       nome = mgr ? mgr.name : (s.adminImpersonating ? '👀 Admin visitando' : 'Gestor');
@@ -1051,7 +1053,8 @@ route('GET', /^\/api\/me$/, { public: true }, async (req, res) => {
   }
   const emp = db.employees.find(e => e.id === s.employeeId);
   const branding = getCompanyBranding(s.companyId);
-  return sendJson(res, 200, { autenticado: true, perfil: 'colaborador', nome: emp ? emp.nome : '', employeeId: s.employeeId, branding, roles: emp ? (emp.roles || []) : [], primeiroAcesso: emp ? !!emp.primeiroAcesso : false, termosAceitos: emp ? !!emp.termosAceitos : true });
+  const perfilCompleto = emp ? !!(emp.nome && emp.email && emp.telefone && emp.dataNascimento && emp.contatoEmergencia && emp.termosAceitos) : false;
+  return sendJson(res, 200, { autenticado: true, perfil: 'colaborador', nome: emp ? emp.nome : '', employeeId: s.employeeId, branding, roles: emp ? (emp.roles || []) : [], primeiroAcesso: emp ? !!emp.primeiroAcesso : false, termosAceitos: emp ? !!emp.termosAceitos : true, perfilCompleto });
 });
 
 route('POST', /^\/api\/senha$/, { role: 'gestor' }, async (req, res, m, body, s) => {
@@ -2802,6 +2805,53 @@ route('DELETE', /^\/api\/questoes\/(\d+)$/, { role: 'gestor' }, async (req, res,
   db.questoes.splice(idx, 1);
   saveDb();
   sendJson(res, 200, { ok: true });
+});
+
+route('POST', /^\/api\/questoes\/importar$/, { role: 'gestor' }, async (req, res, m, body, s) => {
+  const csvText = String(body.csv || '').trim();
+  if (!csvText) return sendJson(res, 400, { error: 'CSV obrigatório.' });
+  const lines = csvText.split(/\r?\n/);
+  const importados = [];
+  const erros = [];
+  const VALID_DIFS = ['facil', 'medio', 'dificil'];
+  for (let i = 0; i < lines.length; i++) {
+    const raw = lines[i].trim();
+    if (!raw) continue;
+    const parts = raw.split(';').map(p => p.trim());
+    // Skip header row if first column is "pergunta" (case insensitive)
+    if (i === 0 && /^pergunta$/i.test(parts[0])) continue;
+    const [pergunta, opcaoA, opcaoB, opcaoC, opcaoD, correta, categoria, dificuldade] = parts;
+    const linha = i + 1;
+    if (!pergunta) { erros.push({ linha, motivo: 'Pergunta obrigatória.' }); continue; }
+    if (!opcaoA || !opcaoB) { erros.push({ linha, motivo: 'Mínimo 2 opções (A e B) obrigatórias.' }); continue; }
+    const corrUpper = String(correta || '').trim().toUpperCase();
+    const VALID_CORS = ['A', 'B', 'C', 'D'];
+    if (!VALID_CORS.includes(corrUpper)) { erros.push({ linha, motivo: `Coluna "correta" deve ser A, B, C ou D. Recebido: "${correta}"` }); continue; }
+    const opcoes = [
+      { texto: opcaoA, correta: corrUpper === 'A' },
+      { texto: opcaoB, correta: corrUpper === 'B' },
+    ];
+    if (opcaoC) opcoes.push({ texto: opcaoC, correta: corrUpper === 'C' });
+    if (opcaoD) opcoes.push({ texto: opcaoD, correta: corrUpper === 'D' });
+    const opcoesFinal = opcoes.map((o, idx) => ({ id: idx, texto: o.texto, correta: o.correta }));
+    const catFinal = QUIZ_CATEGORIAS.includes(String(categoria || '').trim()) ? String(categoria).trim() : 'Procedimentos Gerais';
+    const dif = VALID_DIFS.includes(String(dificuldade || '').toLowerCase()) ? String(dificuldade).toLowerCase() : 'medio';
+    const q = {
+      id: nextId(), companyId: s.companyId,
+      texto: pergunta,
+      tipo: 'multipla_escolha',
+      opcoes: opcoesFinal,
+      categoria: catFinal,
+      tema: '',
+      dificuldade: dif,
+      stats: { total: 0, acertos: 0 }, criadoEm: Date.now()
+    };
+    if (!db.questoes) db.questoes = [];
+    db.questoes.push(q);
+    importados.push(q);
+  }
+  if (importados.length) saveDb();
+  sendJson(res, 200, { importados: importados.length, erros });
 });
 
 /* ── SafePoint 2.3 — DDS Battle (Quiz Ao Vivo) ──────────────── */

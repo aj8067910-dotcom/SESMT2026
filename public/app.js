@@ -215,11 +215,9 @@ async function loginUnificado(e) {
   try {
     const r = await api('/api/login', { method: 'POST', body: { perfil: 'unificado', codigoEmpresa, matricula, senha } });
     if (r.branding) aplicarBranding(r.branding);
-    if (r.primeiroAcesso || !r.termosAceitos) {
-      await iniciar();
-      abrirPrimeiroAcesso(r.primeiroAcesso, r.termosAceitos);
-    } else {
-      await iniciar();
+    await iniciar();
+    if ((r.primeiroAcesso || !r.termosAceitos) && !r.perfilCompleto) {
+      abrirPrimeiroAcesso(r.primeiroAcesso, r.termosAceitos, r.perfilCompleto);
     }
   } catch (err) { mostrarErroLogin(err.message); }
   return false;
@@ -284,10 +282,18 @@ function paSetStep(n) {
 
 function paVoltarStep(n) { paSetStep(n); }
 
-function abrirPrimeiroAcesso(precisaSenha, termosAceitos) {
+function abrirPrimeiroAcesso(precisaSenha, termosAceitos, perfilCompleto) {
+  // Skip onboarding if profile is complete and terms are accepted
+  if (perfilCompleto && termosAceitos) return;
   _paTermosNecessarios = !termosAceitos;
   document.getElementById('primeiro-acesso-overlay').classList.remove('hidden');
-  paSetStep(termosAceitos ? (precisaSenha ? 4 : 1) : 1);
+  if (!termosAceitos) {
+    paSetStep(1);
+  } else if (precisaSenha) {
+    paSetStep(4);
+  } else {
+    paSetStep(1);
+  }
 }
 
 async function paAceitarTermos() {
@@ -390,8 +396,8 @@ async function iniciar() {
     adaptarSidebarPorTipo(EMPRESA_INFO?.tipoPlataforma || 'sst');
     navegar('dashboard');
     carregarBrandingConfig();
-    if (me.primeiroAcesso || !me.termosAceitos) {
-      abrirPrimeiroAcesso(me.primeiroAcesso, me.termosAceitos);
+    if ((me.primeiroAcesso || !me.termosAceitos) && !me.perfilCompleto) {
+      abrirPrimeiroAcesso(me.primeiroAcesso, me.termosAceitos, me.perfilCompleto);
     }
   } else {
     document.getElementById('colab-nome').textContent = me.nome;
@@ -402,8 +408,8 @@ async function iniciar() {
     await carregarPainelColaborador();
     verificarCheckinPendente();
     // first-access check after rendering app
-    if (me.primeiroAcesso || !me.termosAceitos) {
-      abrirPrimeiroAcesso(me.primeiroAcesso, me.termosAceitos);
+    if ((me.primeiroAcesso || !me.termosAceitos) && !me.perfilCompleto) {
+      abrirPrimeiroAcesso(me.primeiroAcesso, me.termosAceitos, me.perfilCompleto);
     }
   }
 }
@@ -440,6 +446,19 @@ function toggleSbMod(mod) {
 }
 
 async function navegar(view) {
+  // Acessos and Auditoria are sub-tabs inside view-estrutura
+  if (view === 'acessos' || view === 'auditoria') {
+    if (window.innerWidth <= 768) closeSidebar('gestor');
+    document.querySelectorAll('#app-gestor .sidebar-item, #app-gestor .sidebar-module-single').forEach(b => {
+      b.classList.toggle('active', b.dataset.view === view);
+    });
+    document.querySelectorAll('#app-gestor .view').forEach(v => v.classList.add('hidden'));
+    const estruturaView = document.getElementById('view-estrutura');
+    if (estruturaView) estruturaView.classList.remove('hidden');
+    await carregarEstrutura();
+    estruturaTab(view);
+    return;
+  }
   if (window.innerWidth <= 768) closeSidebar('gestor');
   document.querySelectorAll('#app-gestor .sidebar-item, #app-gestor .sidebar-module-single').forEach(b => {
     b.classList.toggle('active', b.dataset.view === view);
@@ -2953,7 +2972,7 @@ function filtrarBanco() {
   let lista = _bancoQuestoes;
   if (cat)   lista = lista.filter(q => q.categoria === cat);
   if (dif)   lista = lista.filter(q => q.dificuldade === dif);
-  if (busca) lista = lista.filter(q => q.pergunta.toLowerCase().includes(busca));
+  if (busca) lista = lista.filter(q => (q.texto || q.pergunta || '').toLowerCase().includes(busca));
   const countEl = document.getElementById('banco-count');
   if (countEl) countEl.textContent = `${lista.length} questão${lista.length !== 1 ? 'ões' : ''} (${_bancoQuestoes.length} total)`;
   const el = document.getElementById('banco-lista');
@@ -2969,7 +2988,7 @@ function filtrarBanco() {
     const pct = q.stats?.total ? Math.round((q.stats.acertos / q.stats.total) * 100) : null;
     return `<div class="questao-card">
       <div class="questao-card-top">
-        <div class="questao-pergunta">${esc(q.pergunta)}</div>
+        <div class="questao-pergunta">${esc(q.texto || q.pergunta || '')}</div>
         <div class="questao-acoes">
           <button class="btn btn-sm" onclick="editarQuestao(${q.id})">✏️</button>
           <button class="btn btn-sm" style="color:#dc2626" onclick="excluirQuestao(${q.id})">🗑️</button>
@@ -3056,6 +3075,44 @@ async function excluirQuestao(id) {
   } catch (err) { toast(err.message, 'erro'); }
 }
 
+function importarQuestoesCSV() {
+  abrirModal('📥 Importar Questões via CSV', `
+    <p class="hint" style="margin-bottom:10px">Cole o CSV abaixo. Formato: <code>pergunta;opcaoA;opcaoB;opcaoC;opcaoD;correta;categoria;dificuldade</code></p>
+    <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:10px;margin-bottom:10px;font-size:12px;font-family:monospace">
+      pergunta;opcaoA;opcaoB;opcaoC;opcaoD;correta;categoria;dificuldade<br>
+      Qual EPI protege os olhos?;Óculos de segurança;Capacete;Luva;Bota;A;EPI;facil<br>
+      NR-35 trata de?;Altura;Espaço Confinado;Ergonomia;;A;NR-35;medio
+    </div>
+    <textarea id="csv-importar" rows="10" style="font-family:monospace;font-size:12px" placeholder="Cole o CSV aqui..."></textarea>
+    <div id="csv-resultado" style="margin-top:10px"></div>
+    <button class="btn btn-primary btn-block" style="margin-top:10px" onclick="confirmarImportarCSV()">📥 Importar</button>
+  `);
+}
+
+async function confirmarImportarCSV() {
+  const csv = document.getElementById('csv-importar')?.value.trim();
+  if (!csv) return toast('Cole o conteúdo CSV no campo.', 'erro');
+  const resEl = document.getElementById('csv-resultado');
+  if (resEl) resEl.innerHTML = '<p class="hint">Importando...</p>';
+  try {
+    const r = await api('/api/questoes/importar', { method: 'POST', body: { csv } });
+    let html = `<div style="padding:10px;background:#f0fdf4;border-radius:6px;color:#166534;font-weight:600">✅ ${r.importados} questão${r.importados !== 1 ? 'ões' : ''} importada${r.importados !== 1 ? 's' : ''} com sucesso!</div>`;
+    if (r.erros && r.erros.length) {
+      html += `<div style="margin-top:8px"><strong>⚠️ ${r.erros.length} linha${r.erros.length !== 1 ? 's' : ''} com erro:</strong><ul style="margin:6px 0 0 16px;font-size:13px">`;
+      html += r.erros.map(e => `<li>Linha ${e.linha}: ${esc(e.motivo)}</li>`).join('');
+      html += '</ul></div>';
+    }
+    if (resEl) resEl.innerHTML = html;
+    if (r.importados > 0) {
+      toast(`${r.importados} questões importadas!`, 'ok');
+      await carregarBancoQuestoes();
+    }
+  } catch (err) {
+    if (resEl) resEl.innerHTML = `<p class="erro">${esc(err.message)}</p>`;
+    toast(err.message, 'erro');
+  }
+}
+
 /* ── DDS Battle (gestor) ── */
 
 async function carregarBattleGestor() {
@@ -3096,15 +3153,27 @@ function criarBattle() {
     <input type="text" id="battle-titulo" placeholder="Ex.: DDS Semanal — Trabalho em Altura">
     <label>Tempo por questão (segundos)</label>
     <input type="number" id="battle-tempo" value="30" min="10" max="120">
+    <label>Filtrar por categoria</label>
+    <select id="battle-cat-filtro" onchange="filtrarQuestoesBattle()" style="margin-bottom:8px">
+      <option value="">Todas as categorias</option>
+      ${[...new Set(_bancoQuestoes.map(q => q.categoria).filter(Boolean))].sort().map(c => `<option value="${esc(c)}">${esc(c)}</option>`).join('')}
+    </select>
     <label>Selecione as questões (máx. 20)</label>
-    <div style="max-height:260px;overflow-y:auto;border:1px solid #e5e7eb;border-radius:8px;padding:8px">
+    <div id="battle-questoes-lista" style="max-height:260px;overflow-y:auto;border:1px solid #e5e7eb;border-radius:8px;padding:8px">
       ${_bancoQuestoes.map(q => `
-        <label style="display:flex;align-items:flex-start;gap:8px;padding:6px 4px;cursor:pointer">
+        <label class="battle-q-item" data-cat="${esc(q.categoria||'')}" style="display:flex;align-items:flex-start;gap:8px;padding:6px 4px;cursor:pointer">
           <input type="checkbox" class="battle-q-check" value="${q.id}" style="margin-top:2px;flex-shrink:0">
-          <span style="font-size:13px">${esc(q.pergunta)}</span>
+          <span style="font-size:13px"><span class="questao-badge cat" style="font-size:11px;margin-right:4px">${esc(q.categoria||'')}</span>${esc(q.texto||q.pergunta||'')}</span>
         </label>`).join('')}
     </div>
     <button class="btn btn-primary btn-block" style="margin-top:14px" onclick="confirmarCriarBattle()">Criar Sessão</button>`);
+}
+
+function filtrarQuestoesBattle() {
+  const cat = document.getElementById('battle-cat-filtro')?.value || '';
+  document.querySelectorAll('#battle-questoes-lista .battle-q-item').forEach(el => {
+    el.style.display = (!cat || el.dataset.cat === cat) ? '' : 'none';
+  });
 }
 
 async function confirmarCriarBattle() {
