@@ -300,6 +300,12 @@ function loadDb() {
   if (!db.flashcardProgress) db.flashcardProgress = [];
   if (!db.academia)          db.academia = [];
   if (!db.cipaEleicao)       db.cipaEleicao = [];
+  // Ciclo Fechado de Aprendizagem — Task A migration
+  if (!db.cicloTarefas)      db.cicloTarefas = [];
+  for (const q of db.questoes) {
+    if (!q.estado) q.estado = 'ativo';
+    if (q.contRespostasAposReforco === undefined) q.contRespostasAposReforco = 0;
+  }
   for (const e of db.employees) {
     if (e.totalQuestoesRespondidas === undefined) e.totalQuestoesRespondidas = 0;
     if (!e.expertBadges)   e.expertBadges = [];
@@ -2856,11 +2862,60 @@ route('POST', /^\/api\/questoes\/importar$/, { role: 'gestor' }, async (req, res
 
 /* ── SafePoint 2.3 — DDS Battle (Quiz Ao Vivo) ──────────────── */
 
+/* GET /api/questoes/sugerir — auto-pick questions by category/difficulty/non-repeat */
+route('GET', /^\/api\/questoes\/sugerir$/, { role: 'gestor' }, async (req, res, m, body, s) => {
+  const url2 = new URL('http://x' + req.url);
+  const categoria       = url2.searchParams.get('categoria') || '';
+  const quantidade      = Math.min(Math.max(Number(url2.searchParams.get('quantidade')) || 10, 1), 20);
+  const dificuldade     = url2.searchParams.get('dificuldade') || 'mix'; // mix|facil|medio|dificil
+  const excluirUltimosN = Math.max(Number(url2.searchParams.get('excluirUltimosN')) || 0, 0);
+
+  // Collect IDs used in the last N battles of this company
+  const usedIds = new Set();
+  if (excluirUltimosN > 0) {
+    const lastN = (db.battleSessions || [])
+      .filter(x => x.companyId === s.companyId)
+      .sort((a, b) => b.criadoEm - a.criadoEm)
+      .slice(0, excluirUltimosN);
+    lastN.forEach(sess => (sess.questoes || []).forEach(id => usedIds.add(id)));
+  }
+
+  let pool = (db.questoes || []).filter(q =>
+    q.companyId === s.companyId &&
+    q.estado !== 'arquivada' &&
+    !usedIds.has(q.id)
+  );
+  if (categoria) pool = pool.filter(q => q.categoria === categoria);
+  if (dificuldade !== 'mix') pool = pool.filter(q => q.dificuldade === dificuldade);
+
+  // Fisher-Yates shuffle and slice
+  for (let i = pool.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [pool[i], pool[j]] = [pool[j], pool[i]];
+  }
+  sendJson(res, 200, pool.slice(0, quantidade));
+});
+
 route('POST', /^\/api\/battle\/sessoes$/, { role: 'gestor' }, async (req, res, m, body, s) => {
   if (!String(body.titulo || '').trim()) return sendJson(res, 400, { error: 'Título obrigatório.' });
   if (!Array.isArray(body.questoesIds) || !body.questoesIds.length) return sendJson(res, 400, { error: 'Selecione ao menos 1 questão.' });
-  const questoesIds = body.questoesIds.map(Number).filter(id => (db.questoes || []).some(q => q.id === id && q.companyId === s.companyId));
-  if (!questoesIds.length) return sendJson(res, 400, { error: 'Questões inválidas.' });
+
+  // Non-repeat filter: exclude questions used in last N battles
+  const excluirUltimosN = Math.max(Number(body.excluirUltimosN) || 0, 0);
+  const usedIds = new Set();
+  if (excluirUltimosN > 0) {
+    const lastN = (db.battleSessions || [])
+      .filter(x => x.companyId === s.companyId)
+      .sort((a, b) => b.criadoEm - a.criadoEm)
+      .slice(0, excluirUltimosN);
+    lastN.forEach(sess => (sess.questoes || []).forEach(id => usedIds.add(id)));
+  }
+
+  const questoesIds = body.questoesIds.map(Number).filter(id =>
+    (db.questoes || []).some(q => q.id === id && q.companyId === s.companyId) &&
+    !usedIds.has(id)
+  );
+  if (!questoesIds.length) return sendJson(res, 400, { error: excluirUltimosN > 0 ? 'Nenhuma questão disponível após aplicar filtro de não-repetição.' : 'Questões inválidas.' });
   const session = {
     id: nextId(), companyId: s.companyId,
     titulo: String(body.titulo).trim(), codigo: generateCode(),

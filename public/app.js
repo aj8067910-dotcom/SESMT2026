@@ -3146,27 +3146,137 @@ async function carregarBattleGestor() {
   } catch (err) { toast(err.message, 'erro'); }
 }
 
+function _battleCategorias() {
+  return [...new Set(_bancoQuestoes.map(q => q.categoria).filter(Boolean))].sort();
+}
+
 function criarBattle() {
   if (!_bancoQuestoes.length) return toast('Crie questões no Banco de Questões primeiro.', 'erro');
+  const cats = _battleCategorias();
   abrirModal('⚡ Criar Sessão DDS Battle', `
     <label>Título da sessão</label>
     <input type="text" id="battle-titulo" placeholder="Ex.: DDS Semanal — Trabalho em Altura">
     <label>Tempo por questão (segundos)</label>
     <input type="number" id="battle-tempo" value="30" min="10" max="120">
-    <label>Filtrar por categoria</label>
-    <select id="battle-cat-filtro" onchange="filtrarQuestoesBattle()" style="margin-bottom:8px">
-      <option value="">Todas as categorias</option>
-      ${[...new Set(_bancoQuestoes.map(q => q.categoria).filter(Boolean))].sort().map(c => `<option value="${esc(c)}">${esc(c)}</option>`).join('')}
+    <label>Não repetir questões dos últimos:</label>
+    <select id="battle-excluir-n" style="margin-bottom:8px">
+      <option value="0">Não restringir</option>
+      <option value="1">1 battle</option>
+      <option value="3">3 battles</option>
+      <option value="5">5 battles</option>
+      <option value="10">10 battles</option>
     </select>
-    <label>Selecione as questões (máx. 20)</label>
-    <div id="battle-questoes-lista" style="max-height:260px;overflow-y:auto;border:1px solid #e5e7eb;border-radius:8px;padding:8px">
-      ${_bancoQuestoes.map(q => `
-        <label class="battle-q-item" data-cat="${esc(q.categoria||'')}" style="display:flex;align-items:flex-start;gap:8px;padding:6px 4px;cursor:pointer">
-          <input type="checkbox" class="battle-q-check" value="${q.id}" style="margin-top:2px;flex-shrink:0">
-          <span style="font-size:13px"><span class="questao-badge cat" style="font-size:11px;margin-right:4px">${esc(q.categoria||'')}</span>${esc(q.texto||q.pergunta||'')}</span>
-        </label>`).join('')}
+    <label>Modo de seleção</label>
+    <div style="display:flex;gap:8px;margin-bottom:12px">
+      <button id="battle-modo-manual" class="btn btn-primary" style="flex:1" onclick="setBattleModo('manual')">Manual</button>
+      <button id="battle-modo-auto" class="btn" style="flex:1;background:#f3f4f6;color:#374151" onclick="setBattleModo('auto')">Automático por categoria</button>
     </div>
-    <button class="btn btn-primary btn-block" style="margin-top:14px" onclick="confirmarCriarBattle()">Criar Sessão</button>`);
+    <div id="battle-painel-manual">
+      <label>Filtrar por categoria</label>
+      <select id="battle-cat-filtro" onchange="filtrarQuestoesBattle()" style="margin-bottom:8px">
+        <option value="">Todas as categorias</option>
+        ${cats.map(c => `<option value="${esc(c)}">${esc(c)}</option>`).join('')}
+      </select>
+      <label>Selecione as questões (máx. 20)</label>
+      <div id="battle-questoes-lista" style="max-height:220px;overflow-y:auto;border:1px solid #e5e7eb;border-radius:8px;padding:8px">
+        ${_bancoQuestoes.map(q => `
+          <label class="battle-q-item" data-cat="${esc(q.categoria||'')}" style="display:flex;align-items:flex-start;gap:8px;padding:6px 4px;cursor:pointer">
+            <input type="checkbox" class="battle-q-check" value="${q.id}" style="margin-top:2px;flex-shrink:0">
+            <span style="font-size:13px"><span class="questao-badge cat" style="font-size:11px;margin-right:4px">${esc(q.categoria||'')}</span>${esc(q.texto||q.pergunta||'')}</span>
+          </label>`).join('')}
+      </div>
+      <button class="btn btn-primary btn-block" style="margin-top:14px" onclick="confirmarCriarBattle()">Criar Sessão</button>
+    </div>
+    <div id="battle-painel-auto" style="display:none">
+      <label>Categoria</label>
+      <select id="battle-auto-cat" style="margin-bottom:8px">
+        <option value="">Todas as categorias</option>
+        ${cats.map(c => `<option value="${esc(c)}">${esc(c)}</option>`).join('')}
+      </select>
+      <label>Quantidade de questões</label>
+      <select id="battle-auto-qtd" style="margin-bottom:8px">
+        <option value="5">5 questões</option>
+        <option value="10" selected>10 questões</option>
+        <option value="15">15 questões</option>
+        <option value="20">20 questões</option>
+      </select>
+      <label>Dificuldade</label>
+      <select id="battle-auto-dif" style="margin-bottom:8px">
+        <option value="mix">Misto (todas as dificuldades)</option>
+        <option value="facil">Somente Fácil</option>
+        <option value="medio">Somente Médio</option>
+        <option value="dificil">Somente Difícil</option>
+      </select>
+      <button class="btn" style="width:100%;background:#f3f4f6;color:#374151;margin-bottom:8px" onclick="gerarQuestoesBattleAuto()">Gerar automaticamente</button>
+      <div id="battle-auto-preview" style="display:none">
+        <label>Questões sugeridas <span id="battle-auto-preview-count"></span></label>
+        <div id="battle-auto-lista" style="max-height:180px;overflow-y:auto;border:1px solid #e5e7eb;border-radius:8px;padding:8px;margin-bottom:8px;font-size:13px"></div>
+      </div>
+      <button class="btn btn-primary btn-block" onclick="confirmarCriarBattleAuto()">Criar Sessão</button>
+    </div>`);
+}
+
+function setBattleModo(modo) {
+  const manual = document.getElementById('battle-painel-manual');
+  const auto   = document.getElementById('battle-painel-auto');
+  const btnM   = document.getElementById('battle-modo-manual');
+  const btnA   = document.getElementById('battle-modo-auto');
+  if (!manual || !auto) return;
+  if (modo === 'manual') {
+    manual.style.display = ''; auto.style.display = 'none';
+    btnM.className = 'btn btn-primary'; btnM.style.flex = '1';
+    btnA.className = 'btn'; btnA.style.cssText = 'flex:1;background:#f3f4f6;color:#374151';
+  } else {
+    manual.style.display = 'none'; auto.style.display = '';
+    btnA.className = 'btn btn-primary'; btnA.style.flex = '1';
+    btnM.className = 'btn'; btnM.style.cssText = 'flex:1;background:#f3f4f6;color:#374151';
+  }
+}
+
+let _battleAutoQuestoes = [];
+
+async function gerarQuestoesBattleAuto() {
+  const cat   = document.getElementById('battle-auto-cat')?.value || '';
+  const qtd   = Number(document.getElementById('battle-auto-qtd')?.value) || 10;
+  const dif   = document.getElementById('battle-auto-dif')?.value || 'mix';
+  const n     = Number(document.getElementById('battle-excluir-n')?.value) || 0;
+  try {
+    const params = new URLSearchParams({ quantidade: qtd, dificuldade: dif, excluirUltimosN: n });
+    if (cat) params.set('categoria', cat);
+    const lista = await api('/api/questoes/sugerir?' + params.toString());
+    _battleAutoQuestoes = lista;
+    const preview = document.getElementById('battle-auto-preview');
+    const listaEl = document.getElementById('battle-auto-lista');
+    const countEl = document.getElementById('battle-auto-preview-count');
+    if (preview) preview.style.display = '';
+    if (countEl) countEl.textContent = `(${lista.length})`;
+    if (listaEl) {
+      if (!lista.length) {
+        listaEl.innerHTML = '<p style="color:#ef4444;text-align:center;padding:8px">Nenhuma questão disponível com esses critérios.</p>';
+      } else {
+        listaEl.innerHTML = lista.map((q, i) => `
+          <div style="padding:4px 0;border-bottom:1px solid #f3f4f6;display:flex;gap:6px;align-items:flex-start">
+            <span style="color:#6b7280;min-width:18px">${i+1}.</span>
+            <span><span class="questao-badge cat" style="font-size:10px;margin-right:4px">${esc(q.categoria||'')}</span>${esc(q.texto||q.pergunta||'')}</span>
+          </div>`).join('');
+      }
+    }
+    if (lista.length) toast(`${lista.length} questão${lista.length !== 1 ? 'ões' : ''} sugerida${lista.length !== 1 ? 's' : ''}.`, 'ok');
+  } catch (err) { toast(err.message, 'erro'); }
+}
+
+async function confirmarCriarBattleAuto() {
+  if (!_battleAutoQuestoes.length) return toast('Clique em "Gerar automaticamente" primeiro.', 'erro');
+  const titulo         = document.getElementById('battle-titulo')?.value.trim() || 'DDS Battle';
+  const tempoPorQuestao = Number(document.getElementById('battle-tempo')?.value) || 30;
+  const excluirUltimosN = Number(document.getElementById('battle-excluir-n')?.value) || 0;
+  const questoesIds    = _battleAutoQuestoes.map(q => q.id);
+  try {
+    const sess = await api('/api/battle/sessoes', { method: 'POST', body: { titulo, questoesIds, tempoPorQuestao, excluirUltimosN } });
+    fecharModal();
+    toast(`Sessão criada! Código: ${sess.codigo}`, 'ok');
+    await abrirBattleSala(sess.id);
+  } catch (err) { toast(err.message, 'erro'); }
 }
 
 function filtrarQuestoesBattle() {
@@ -3179,11 +3289,12 @@ function filtrarQuestoesBattle() {
 async function confirmarCriarBattle() {
   const titulo = document.getElementById('battle-titulo')?.value.trim() || 'DDS Battle';
   const tempoPorQuestao = Number(document.getElementById('battle-tempo')?.value) || 30;
+  const excluirUltimosN = Number(document.getElementById('battle-excluir-n')?.value) || 0;
   const questoesIds = [...document.querySelectorAll('.battle-q-check:checked')].map(c => Number(c.value));
   if (!questoesIds.length) return toast('Selecione ao menos 1 questão.', 'erro');
   if (questoesIds.length > 20) return toast('Máximo 20 questões por sessão.', 'erro');
   try {
-    const sess = await api('/api/battle/sessoes', { method: 'POST', body: { titulo, questoesIds, tempoPorQuestao } });
+    const sess = await api('/api/battle/sessoes', { method: 'POST', body: { titulo, questoesIds, tempoPorQuestao, excluirUltimosN } });
     fecharModal();
     toast(`Sessão criada! Código: ${sess.codigo}`, 'ok');
     await abrirBattleSala(sess.id);
