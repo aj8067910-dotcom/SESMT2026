@@ -363,6 +363,23 @@ async function sair() {
 /* ── Inicialização ── */
 
 async function iniciar() {
+  // Service Worker registration
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('/sw.js').catch(() => {});
+    navigator.serviceWorker.addEventListener('message', e => {
+      if (e.data?.type === 'SYNC_DONE') toast('Sincronização concluída ✅', 'ok');
+    });
+  }
+  window.addEventListener('online', () => {
+    document.getElementById('offline-banner')?.classList.add('hidden');
+    if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+      navigator.serviceWorker.controller.postMessage('SYNC_NOW');
+    }
+  });
+  window.addEventListener('offline', () => {
+    document.getElementById('offline-banner')?.classList.remove('hidden');
+  });
+  if (!navigator.onLine) document.getElementById('offline-banner')?.classList.remove('hidden');
   const me = await api('/api/me');
   document.getElementById('tela-login').classList.toggle('hidden', me.autenticado);
   document.getElementById('app-gestor').classList.add('hidden');
@@ -496,6 +513,8 @@ async function navegar(view) {
   if (view === 'cipa-estrutura')    await carregarCipaEstrutura();
   if (view === 'brigada-estrutura') await carregarBrigadaEstrutura();
   if (view === 'safety-score-ind')  await carregarSafetyScoreInd();
+  if (view === 'certificados-gestor') await carregarCertificados();
+  if (view === 'bbs') await carregarBBS();
 }
 
 async function navegarColab(view) {
@@ -524,6 +543,8 @@ async function navegarColab(view) {
   if (view === 'reconhec-360')       await carregarReconhec360();
   if (view === 'missoes-center')     carregarMissoesCentral();
   if (view === 'feedback-plataforma') await carregarFeedbackPlataformaColab();
+  if (view === 'meus-certificados') await carregarMeusCertificados();
+  if (view === 'bbs') await carregarMinhasBBS();
 }
 
 async function navegarAdmin(view) {
@@ -6443,6 +6464,300 @@ async function carregarMissoesGestor() {
   } catch {
     el.innerHTML = '<p class="hint">Erro ao carregar missões.</p>';
   }
+}
+
+/* ── Geração por IA — Questões ─────────────────────────────── */
+
+async function gerarQuestoesIA() {
+  const prompt = (document.getElementById('ia-quiz-prompt')?.value || '').trim();
+  const quantidade = parseInt(document.getElementById('ia-quiz-qtd')?.value || '5');
+  const categoria = document.getElementById('ia-quiz-cat')?.value || 'Geral';
+  if (!prompt) { toast('Informe o tema das questões.', 'err'); return; }
+  const btn = document.getElementById('btn-gerar-questoes-ia');
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Gerando…'; }
+  try {
+    const r = await api('/api/ia/gerar-questoes', { method: 'POST', body: { prompt, quantidade, categoria } });
+    const el = document.getElementById('ia-questoes-resultado');
+    if (!el) return;
+    if (!r.questoes || !r.questoes.length) { el.innerHTML = '<p class="hint">Nenhuma questão gerada. Tente um prompt diferente.</p>'; return; }
+    el.innerHTML = `
+      <div style="margin-bottom:12px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
+        <strong>${r.questoes.length} questão(ões) gerada(s)</strong>
+        <button class="btn btn-primary btn-sm" onclick="confirmarImportarQuestoesIA(window._questoesGeradas)">✅ Importar todas para o banco</button>
+      </div>
+      ${r.questoes.map((q, i) => `
+        <div class="panel" style="margin-bottom:10px;border-left:4px solid var(--azul)">
+          <p style="font-weight:600;margin-bottom:8px">${i+1}. ${esc(q.texto)}</p>
+          <ul style="margin:0 0 8px 18px">
+            ${(q.opcoes||[]).map(o => `<li style="color:${o.correta?'var(--verde)':'inherit'};font-weight:${o.correta?'700':'400'}">${esc(o.texto)}${o.correta?' ✓':''}</li>`).join('')}
+          </ul>
+          <p class="hint" style="font-size:12px">Dificuldade: ${esc(q.dificuldade||'')} ${q.explicacao?'| '+esc(q.explicacao):''}</p>
+        </div>`).join('')}`;
+    window._questoesGeradas = r.questoes;
+  } catch(e) { toast('Erro: ' + e.message, 'err'); }
+  finally { if (btn) { btn.disabled = false; btn.textContent = '🤖 Gerar questões'; } }
+}
+
+async function confirmarImportarQuestoesIA(questoes) {
+  if (!questoes || !questoes.length) return;
+  const cat = document.getElementById('ia-quiz-cat')?.value || 'Geral';
+  let importadas = 0;
+  for (const q of questoes) {
+    try {
+      await api('/api/questoes', { method: 'POST', body: {
+        texto: q.texto, opcoes: q.opcoes, dificuldade: q.dificuldade || 'fácil',
+        explicacao: q.explicacao || '', categoria: cat, geradoPorIA: true
+      } });
+      importadas++;
+    } catch { /* ignore individual failures */ }
+  }
+  toast(`${importadas} questão(ões) importada(s) com sucesso!`, 'ok');
+  document.getElementById('ia-questoes-resultado').innerHTML = `<p class="hint" style="color:var(--verde);font-weight:600">✅ ${importadas} questão(ões) adicionada(s) ao banco de questões.</p>`;
+}
+
+/* ── Geração por IA — DDS ────────────────────────────────────── */
+
+async function gerarDDSIA() {
+  const prompt = (document.getElementById('ia-dds-prompt')?.value || '').trim();
+  if (!prompt) { toast('Informe o tema do DDS.', 'err'); return; }
+  const btn = document.getElementById('btn-gerar-dds-ia');
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Gerando…'; }
+  try {
+    const r = await api('/api/ia/gerar-dds', { method: 'POST', body: { prompt } });
+    preencherDDSGeradoPorIA(r.dds);
+    toast('DDS gerado com sucesso! Revise e salve.', 'ok');
+  } catch(e) { toast('Erro: ' + e.message, 'err'); }
+  finally { if (btn) { btn.disabled = false; btn.textContent = '🤖 Gerar DDS'; } }
+}
+
+function preencherDDSGeradoPorIA(dds) {
+  if (!dds) return;
+  const temaEl = document.getElementById('novo-evento-tema');
+  const descEl = document.getElementById('novo-evento-desc');
+  const tipoEl = document.getElementById('novo-evento-tipo');
+  if (temaEl) temaEl.value = dds.tema || '';
+  if (descEl) descEl.value = dds.descricao || '';
+  if (tipoEl) tipoEl.value = 'DDS';
+  const el = document.getElementById('ia-dds-resultado');
+  if (el) el.innerHTML = `<div style="padding:12px;background:#f0fdf4;border-radius:8px;border-left:4px solid var(--verde);margin-top:10px">
+    <strong>✅ DDS gerado!</strong> Os campos foram preenchidos automaticamente.
+    ${dds.nr ? `<br><span class="hint">NR relacionada: ${esc(dds.nr)}</span>` : ''}
+    ${dds.topicos && dds.topicos.length ? `<br><span class="hint">Tópicos: ${dds.topicos.map(esc).join(', ')}</span>` : ''}
+  </div>`;
+}
+
+/* ── Certificados — Gestor ────────────────────────────────────── */
+
+async function carregarCertificados() {
+  const el = document.getElementById('certificados-lista');
+  if (!el) return;
+  el.innerHTML = '<p class="hint">Carregando…</p>';
+  // Populate employee select
+  const empSel = document.getElementById('cert-empId');
+  if (empSel && !empSel.options.length) {
+    try {
+      const emps = await api('/api/colaboradores');
+      empSel.innerHTML = '<option value="">Selecione o colaborador…</option>' +
+        (emps || []).map(e => `<option value="${e.id}">${esc(e.nome)} (${esc(e.matricula)})</option>`).join('');
+    } catch { /* ignore */ }
+  }
+  try {
+    const list = await api('/api/certificados');
+    if (!list.length) { el.innerHTML = '<p class="hint">Nenhum certificado emitido ainda.</p>'; return; }
+    el.innerHTML = `<table class="tabela">
+      <thead><tr><th>Colaborador</th><th>Título</th><th>Data</th><th>Validade</th><th>Código</th><th>Ações</th></tr></thead>
+      <tbody>${list.map(c => `<tr>
+        <td>${esc(c.nomeColaborador)}</td>
+        <td>${esc(c.titulo)}</td>
+        <td>${dataBr(c.dataEmissao)}</td>
+        <td>${c.validade ? dataBr(c.validade) : '<span class="hint">Sem validade</span>'}</td>
+        <td><code style="font-size:12px;background:#f3f4f6;padding:2px 6px;border-radius:4px">${esc(c.codigoVerificacao)}</code></td>
+        <td><button class="btn btn-sm btn-danger" onclick="excluirCertificado(${c.id})">Excluir</button></td>
+      </tr>`).join('')}</tbody>
+    </table>`;
+  } catch(e) { el.innerHTML = `<p class="hint erro">Erro: ${esc(e.message)}</p>`; }
+}
+
+async function verificarCertificadoPublico() {
+  const codigo = (document.getElementById('cert-codigo-verificar')?.value || '').trim().toUpperCase();
+  const el = document.getElementById('cert-verificacao-resultado');
+  if (!el) return;
+  if (!codigo) { el.innerHTML = '<p class="hint erro">Informe o código de verificação.</p>'; return; }
+  el.innerHTML = '<p class="hint">Verificando…</p>';
+  try {
+    const r = await api(`/api/verificar-certificado/${encodeURIComponent(codigo)}`);
+    if (r.valido) {
+      el.innerHTML = `<div style="padding:14px;background:#f0fdf4;border-radius:8px;border-left:4px solid var(--verde)">
+        <p style="margin:0 0 4px;font-weight:700;color:var(--verde)">✅ Certificado válido!</p>
+        <p style="margin:0 0 2px"><strong>${esc(r.nome)}</strong> — ${esc(r.titulo)}</p>
+        <p class="hint" style="margin:0">Empresa: ${esc(r.empresa)} | Emitido em: ${dataBr(r.dataEmissao)} | Por: ${esc(r.emitidoPor)}</p>
+        ${r.validade ? `<p class="hint" style="margin:2px 0 0">Válido até: ${dataBr(r.validade)}</p>` : ''}
+      </div>`;
+    } else {
+      el.innerHTML = '<p class="hint erro">Certificado não encontrado.</p>';
+    }
+  } catch(e) {
+    el.innerHTML = `<p class="hint erro">Certificado não encontrado ou código inválido.</p>`;
+  }
+}
+
+async function emitirCertificado() {
+  const empId = document.getElementById('cert-empId')?.value;
+  const titulo = document.getElementById('cert-titulo')?.value?.trim();
+  const descricao = document.getElementById('cert-descricao')?.value?.trim() || '';
+  const dataEmissao = document.getElementById('cert-dataEmissao')?.value || '';
+  const validade = document.getElementById('cert-validade')?.value || '';
+  const cargaHoraria = document.getElementById('cert-cargaHoraria')?.value || '';
+  if (!empId || !titulo) { toast('Colaborador e título são obrigatórios.', 'err'); return; }
+  try {
+    const c = await api('/api/certificados', { method: 'POST', body: { employeeId: empId, titulo, descricao, dataEmissao, validade: validade || null, cargaHoraria: cargaHoraria || null } });
+    toast(`Certificado emitido! Código: ${c.codigoVerificacao}`, 'ok');
+    await carregarCertificados();
+    // Reset form
+    ['cert-empId','cert-titulo','cert-descricao','cert-dataEmissao','cert-validade','cert-cargaHoraria'].forEach(id => {
+      const el = document.getElementById(id); if (el) el.value = '';
+    });
+  } catch(e) { toast('Erro: ' + e.message, 'err'); }
+}
+
+async function excluirCertificado(id) {
+  if (!confirm('Excluir este certificado?')) return;
+  try {
+    await api(`/api/certificados/${id}`, { method: 'DELETE' });
+    toast('Certificado excluído.', 'ok');
+    await carregarCertificados();
+  } catch(e) { toast('Erro: ' + e.message, 'err'); }
+}
+
+/* ── Certificados — Colaborador ─────────────────────────────── */
+
+async function carregarMeusCertificados() {
+  const el = document.getElementById('meus-certs-lista');
+  if (!el) return;
+  el.innerHTML = '<p class="hint">Carregando…</p>';
+  try {
+    const list = await api('/api/meus-certificados');
+    if (!list.length) { el.innerHTML = '<p class="hint">Você ainda não possui certificados emitidos.</p>'; return; }
+    el.innerHTML = list.map(c => `
+      <div class="panel" style="margin-bottom:12px;border-left:4px solid var(--azul)">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:8px">
+          <div>
+            <h4 style="margin:0 0 4px">${esc(c.titulo)}</h4>
+            <p class="hint" style="margin:0">Emitido por: ${esc(c.emitidoPor)} &bull; ${dataBr(c.dataEmissao)}</p>
+            ${c.validade ? `<p class="hint" style="margin:0">Validade: ${dataBr(c.validade)}</p>` : ''}
+            ${c.descricao ? `<p style="margin:8px 0 0;font-size:13px">${esc(c.descricao)}</p>` : ''}
+          </div>
+          <div style="text-align:right">
+            <div style="font-size:11px;color:#6b7280;margin-bottom:4px">Código de verificação</div>
+            <code style="font-size:15px;font-weight:700;background:#f0f9ff;padding:4px 10px;border-radius:6px;border:1px solid var(--azul);color:var(--azul)">${esc(c.codigoVerificacao)}</code>
+          </div>
+        </div>
+      </div>`).join('');
+  } catch(e) { el.innerHTML = `<p class="hint erro">Erro: ${esc(e.message)}</p>`; }
+}
+
+/* ── BBS — Gestor ────────────────────────────────────────────── */
+
+async function carregarBBS() {
+  const el = document.getElementById('bbs-lista');
+  const statsEl = document.getElementById('bbs-stats');
+  if (!el) return;
+  el.innerHTML = '<p class="hint">Carregando…</p>';
+  try {
+    const [list, stats] = await Promise.all([
+      api('/api/bbs'),
+      api('/api/bbs/stats')
+    ]);
+    if (statsEl) {
+      statsEl.innerHTML = `
+        <div class="cards" style="margin-bottom:16px">
+          <div class="card"><div class="card-num">${stats.total}</div><div class="card-label">Total</div></div>
+          <div class="card" style="border-top:4px solid var(--verde)"><div class="card-num">${stats.seguros}</div><div class="card-label">Comportamentos Seguros</div></div>
+          <div class="card" style="border-top:4px solid #ef4444"><div class="card-num">${stats.riscos}</div><div class="card-label">Comportamentos de Risco</div></div>
+          <div class="card" style="border-top:4px solid #f59e0b"><div class="card-num">${stats.abertos}</div><div class="card-label">Abertos</div></div>
+          <div class="card" style="border-top:4px solid var(--azul)"><div class="card-num">${stats.encerrados}</div><div class="card-label">Encerrados</div></div>
+        </div>`;
+    }
+    if (!list.length) { el.innerHTML = '<p class="hint">Nenhuma observação BBS registrada ainda.</p>'; return; }
+    el.innerHTML = list.map(o => `
+      <div class="panel" style="margin-bottom:10px;border-left:4px solid ${o.tipo==='seguro'?'var(--verde)':'#ef4444'}">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:6px">
+          <div>
+            <span style="font-size:11px;font-weight:700;padding:2px 8px;border-radius:12px;background:${o.tipo==='seguro'?'#dcfce7':'#fee2e2'};color:${o.tipo==='seguro'?'#166534':'#991b1b'}">${o.tipo==='seguro'?'✅ Comportamento Seguro':'⚠️ Comportamento de Risco'}</span>
+            <span style="font-size:11px;margin-left:8px;padding:2px 8px;border-radius:12px;background:#f3f4f6">${esc(o.status)}</span>
+          </div>
+          <span class="hint" style="font-size:11px">${tsDataHora(o.timestamp)}</span>
+        </div>
+        <p style="margin:8px 0 4px;font-weight:600">${esc(o.comportamento)}</p>
+        <p class="hint" style="margin:0;font-size:12px">Por: ${esc(o.observadorNome)} ${o.local?'| Local: '+esc(o.local):''} ${o.departamento?'| Depto: '+esc(o.departamento):''}</p>
+        ${o.respostaGestor ? `<p style="margin:6px 0 0;padding:8px;background:#f9fafb;border-radius:6px;font-size:12px"><strong>Resposta gestor:</strong> ${esc(o.respostaGestor)}</p>` : ''}
+        <div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap">
+          <select onchange="atualizarStatusBBS(${o.id}, this.value)" style="font-size:12px;padding:4px 8px;border-radius:6px;border:1px solid var(--cinza-borda)">
+            <option value="aberta" ${o.status==='aberta'?'selected':''}>Aberta</option>
+            <option value="tratada" ${o.status==='tratada'?'selected':''}>Tratada</option>
+            <option value="encerrada" ${o.status==='encerrada'?'selected':''}>Encerrada</option>
+          </select>
+          <button class="btn btn-sm btn-danger" onclick="excluirBBS(${o.id})">Excluir</button>
+        </div>
+      </div>`).join('');
+  } catch(e) { el.innerHTML = `<p class="hint erro">Erro: ${esc(e.message)}</p>`; }
+}
+
+async function atualizarStatusBBS(id, status) {
+  try {
+    await api(`/api/bbs/${id}`, { method: 'PUT', body: { status } });
+    toast('Status atualizado.', 'ok');
+    await carregarBBS();
+  } catch(e) { toast('Erro: ' + e.message, 'err'); }
+}
+
+async function excluirBBS(id) {
+  if (!confirm('Excluir esta observação BBS?')) return;
+  try {
+    await api(`/api/bbs/${id}`, { method: 'DELETE' });
+    toast('Observação excluída.', 'ok');
+    await carregarBBS();
+  } catch(e) { toast('Erro: ' + e.message, 'err'); }
+}
+
+/* ── BBS — Colaborador ───────────────────────────────────────── */
+
+async function registrarBBS() {
+  const tipo = document.getElementById('bbs-tipo')?.value;
+  const comportamento = document.getElementById('bbs-comportamento')?.value?.trim();
+  const local = document.getElementById('bbs-local')?.value?.trim() || '';
+  const departamento = document.getElementById('bbs-depto')?.value?.trim() || '';
+  const contexto = document.getElementById('bbs-contexto')?.value?.trim() || '';
+  const acaoImediata = document.getElementById('bbs-acao')?.value?.trim() || '';
+  if (!comportamento) { toast('Descreva o comportamento observado.', 'err'); return; }
+  try {
+    await api('/api/bbs', { method: 'POST', body: { tipo, comportamento, local, departamento, contexto, acaoImediata } });
+    toast('Observação BBS registrada! Pontos adicionados.', 'ok');
+    ['bbs-comportamento','bbs-local','bbs-depto','bbs-contexto','bbs-acao'].forEach(id => {
+      const el = document.getElementById(id); if (el) el.value = '';
+    });
+    await carregarMinhasBBS();
+  } catch(e) { toast('Erro: ' + e.message, 'err'); }
+}
+
+async function carregarMinhasBBS() {
+  const el = document.getElementById('minhas-bbs-lista');
+  if (!el) return;
+  el.innerHTML = '<p class="hint">Carregando…</p>';
+  try {
+    const list = await api('/api/bbs/minhas');
+    if (!list.length) { el.innerHTML = '<p class="hint">Você ainda não registrou observações BBS.</p>'; return; }
+    el.innerHTML = list.map(o => `
+      <div class="panel" style="margin-bottom:8px;border-left:4px solid ${o.tipo==='seguro'?'var(--verde)':'#ef4444'}">
+        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:4px">
+          <span style="font-size:11px;font-weight:700;padding:2px 8px;border-radius:12px;background:${o.tipo==='seguro'?'#dcfce7':'#fee2e2'};color:${o.tipo==='seguro'?'#166534':'#991b1b'}">${o.tipo==='seguro'?'✅ Seguro':'⚠️ Risco'}</span>
+          <span class="hint" style="font-size:11px">${tsDataHora(o.timestamp)}</span>
+        </div>
+        <p style="margin:6px 0 2px">${esc(o.comportamento)}</p>
+        <p class="hint" style="margin:0;font-size:11px">Status: ${esc(o.status)} ${o.local?'| '+esc(o.local):''}</p>
+        ${o.respostaGestor ? `<p style="margin:4px 0 0;font-size:12px;color:var(--azul)">Resposta: ${esc(o.respostaGestor)}</p>` : ''}
+      </div>`).join('');
+  } catch(e) { el.innerHTML = `<p class="hint erro">Erro: ${esc(e.message)}</p>`; }
 }
 
 iniciar().catch(err => {

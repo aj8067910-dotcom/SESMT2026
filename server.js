@@ -159,6 +159,13 @@ function gerarCodigoEmpresa() {
   return code;
 }
 
+function gerarCodigoCertificado() {
+  const CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  let code = '';
+  for (let i = 0; i < 10; i++) code += CHARS[crypto.randomInt(CHARS.length)];
+  return code.slice(0,5) + '-' + code.slice(5);
+}
+
 function hashPassword(password, salt) {
   salt = salt || crypto.randomBytes(16).toString('hex');
   const hash = crypto.scryptSync(password, salt, 32).toString('hex');
@@ -302,6 +309,8 @@ function loadDb() {
   if (!db.cipaEleicao)       db.cipaEleicao = [];
   // Ciclo Fechado de Aprendizagem — Task A migration
   if (!db.cicloTarefas)      db.cicloTarefas = [];
+  if (!db.certificados)      db.certificados = [];
+  if (!db.observacoesBBS)    db.observacoesBBS = [];
   for (const q of db.questoes) {
     if (!q.estado) q.estado = 'ativo';
     if (q.contRespostasAposReforco === undefined) q.contRespostasAposReforco = 0;
@@ -2584,12 +2593,16 @@ route('GET', /^\/api\/meu-painel$/, { role: 'colaborador' }, async (req, res, m,
   const totalReconhReceb = (db.reconhecimentos||[]).filter(r=>r.homenageadoId===emp.id).length;
   const totalReconhEnv = (db.reconhecimentos||[]).filter(r=>r.autorId===emp.id).length;
   const totalFeed = (db.feed||[]).filter(f=>f.autorId===emp.id && f.tipo==='post').length;
+  const totalBBS = (db.observacoesBBS||[]).filter(o=>o.observadorId===emp.id).length;
+  const totalBBSSeguro = (db.observacoesBBS||[]).filter(o=>o.observadorId===emp.id && o.tipo==='seguro').length;
   const dna = [];
   if (totalObsDna >= 2)        dna.push({ key:'guardiao',   emoji:'🦅', nome:'Guardião',               desc:'Identifica riscos e contribui para prevenção' });
   if (totalFeed >= 3)          dna.push({ key:'mentor',     emoji:'🧠', nome:'Mentor',                 desc:'Compartilha conhecimento frequentemente' });
   if (totalCheckins >= 5)      dna.push({ key:'engajador',  emoji:'🔥', nome:'Engajador',              desc:'Participa ativamente das ações da empresa' });
   if (pts.total >= 200)        dna.push({ key:'executor',   emoji:'🎯', nome:'Executor',               desc:'Conclui treinamentos e atividades com excelência' });
   if (totalReconhReceb >= 3)   dna.push({ key:'embaixador', emoji:'👑', nome:'Embaixador da Segurança', desc:'Referência positiva para os demais colaboradores' });
+  if (totalBBS >= 5)           dna.push({ key:'agente_bbs', emoji:'🔍', nome:'Agente de Campo',        desc:'Registra comportamentos sistematicamente via BBS' });
+  if (totalBBSSeguro >= 3)     dna.push({ key:'reforco_pos',emoji:'✅', nome:'Reforço Positivo',       desc:'Reconhece e registra comportamentos seguros da equipe' });
   if (!dna.length)             dna.push({ key:'iniciante',  emoji:'🌱', nome:'Em Desenvolvimento',     desc:'Continue participando para desbloquear seu perfil' });
 
   sendJson(res, 200, {
@@ -2602,7 +2615,7 @@ route('GET', /^\/api\/meu-painel$/, { role: 'colaborador' }, async (req, res, m,
     maiorStreak: emp.maiorStreak || 0,
     historico,
     top10: ranking.slice(0, 10),
-    totalObs: minhaObs, totalDDS: myCheckins.length,
+    totalObs: minhaObs, totalDDS: myCheckins.length, totalBBS,
     totalSugs: minhasSugs.length,
     sugsAprovadas: minhasSugs.filter(s => s.status === 'aprovada').length,
     checkinPendente: checkinPendente ? { checkinId: checkinPendente.id } : null,
@@ -3763,6 +3776,241 @@ route('GET', /^\/api\/exportar\/colaboradores$/, { role: 'gestor' }, async (req,
   }
   res.writeHead(200, { 'Content-Type': 'text/csv; charset=utf-8', 'Content-Disposition': 'attachment; filename="colaboradores_sesmt.csv"' });
   res.end('﻿' + lines.join('\n'));
+});
+
+/* ── Geração por IA ─────────────────────────────────────────── */
+
+route('POST', /^\/api\/ia\/gerar-questoes$/, { role: 'gestor' }, async (req, res, m, body, s) => {
+  const comp = db.companies.find(c => c.id === s.companyId);
+  const iaKey = (comp && comp.iaApiKey) || process.env.ANTHROPIC_API_KEY || '';
+  const prompt = String(body.prompt || '').trim().slice(0, 500);
+  const quantidade = Math.min(10, Math.max(1, parseInt(body.quantidade) || 5));
+  const categoria = String(body.categoria || 'Geral').slice(0, 60);
+  if (!prompt) return sendJson(res, 400, { error: 'Prompt obrigatório.' });
+
+  const systemPrompt = `Você é um especialista em SST (Saúde e Segurança do Trabalho) que cria questões de quiz. Gere questões em JSON válido seguindo EXATAMENTE este formato de array:
+[{"texto":"pergunta aqui","opcoes":[{"texto":"opção A","correta":false},{"texto":"opção B","correta":true},{"texto":"opção C","correta":false},{"texto":"opção D","correta":false}],"dificuldade":"fácil","explicacao":"breve explicação da resposta"}]
+- Exatamente 4 opções por questão, exatamente 1 correta.
+- dificuldade: "fácil", "médio" ou "difícil"
+- Responda APENAS com o JSON, sem texto antes ou depois.`;
+
+  const userMsg = `Categoria: ${categoria}\nTema: ${prompt}\nGere ${quantidade} questões de múltipla escolha sobre SST.`;
+
+  if (!iaKey) {
+    return sendJson(res, 200, { questoes: [
+      { texto: `Sobre ${prompt}: qual é a medida preventiva mais importante?`, opcoes: [
+        { texto: 'Usar EPI adequado', correta: true }, { texto: 'Ignorar os riscos', correta: false },
+        { texto: 'Trabalhar mais rápido', correta: false }, { texto: 'Nenhuma medida', correta: false }
+      ], dificuldade: 'fácil', explicacao: 'O uso correto de EPIs é sempre a medida base de proteção.' }
+    ], model: 'local-fallback' });
+  }
+
+  const payload = JSON.stringify({
+    model: 'claude-3-haiku-20240307', max_tokens: 2048,
+    system: systemPrompt, messages: [{ role: 'user', content: userMsg }]
+  });
+  const opts2 = {
+    hostname: 'api.anthropic.com', port: 443, path: '/v1/messages', method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'x-api-key': iaKey, 'anthropic-version': '2023-06-01', 'Content-Length': Buffer.byteLength(payload) }
+  };
+  try {
+    const respText = await new Promise((resolve, reject) => {
+      const req2 = https.request(opts2, r2 => { let d = ''; r2.on('data', c => d += c); r2.on('end', () => resolve(d)); });
+      req2.on('error', reject);
+      req2.setTimeout(30000, () => { req2.destroy(); reject(new Error('Timeout')); });
+      req2.write(payload); req2.end();
+    });
+    const data = JSON.parse(respText);
+    if (data.error) return sendJson(res, 502, { error: data.error.message || 'Erro na IA.' });
+    const text = data.content && data.content[0] ? data.content[0].text.trim() : '[]';
+    const jsonMatch = text.match(/\[[\s\S]*\]/);
+    const questoes = jsonMatch ? JSON.parse(jsonMatch[0]) : [];
+    sendJson(res, 200, { questoes: questoes.slice(0, quantidade), model: data.model || '' });
+  } catch(e) { sendJson(res, 502, { error: 'Erro ao gerar questões: ' + e.message }); }
+});
+
+route('POST', /^\/api\/ia\/gerar-dds$/, { role: 'gestor' }, async (req, res, m, body, s) => {
+  const comp = db.companies.find(c => c.id === s.companyId);
+  const iaKey = (comp && comp.iaApiKey) || process.env.ANTHROPIC_API_KEY || '';
+  const prompt = String(body.prompt || '').trim().slice(0, 500);
+  if (!prompt) return sendJson(res, 400, { error: 'Prompt obrigatório.' });
+
+  if (!iaKey) {
+    return sendJson(res, 200, { dds: { tema: prompt, descricao: `Assunto: ${prompt}\n\nOrientações gerais de segurança do trabalho relacionadas ao tema. Complete com informações específicas da sua empresa.`, tipo: 'DDS', pontos: 10 }, model: 'local-fallback' });
+  }
+
+  const systemPrompt = `Você é um especialista em SST. Crie conteúdo para um DDS (Diálogo Diário de Segurança) em JSON:
+{"tema":"título curto do DDS","descricao":"conteúdo completo do DDS (use \\n para quebras de linha, máx 600 chars)","topicos":["tópico 1","tópico 2","tópico 3"],"nr":"NR relevante se houver, senão null"}
+Responda APENAS com o JSON, sem texto adicional.`;
+
+  const payload = JSON.stringify({
+    model: 'claude-3-haiku-20240307', max_tokens: 1024,
+    system: systemPrompt, messages: [{ role: 'user', content: `Tema do DDS: ${prompt}` }]
+  });
+  const opts2 = {
+    hostname: 'api.anthropic.com', port: 443, path: '/v1/messages', method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'x-api-key': iaKey, 'anthropic-version': '2023-06-01', 'Content-Length': Buffer.byteLength(payload) }
+  };
+  try {
+    const respText = await new Promise((resolve, reject) => {
+      const req2 = https.request(opts2, r2 => { let d = ''; r2.on('data', c => d += c); r2.on('end', () => resolve(d)); });
+      req2.on('error', reject); req2.setTimeout(25000, () => { req2.destroy(); reject(new Error('Timeout')); });
+      req2.write(payload); req2.end();
+    });
+    const data = JSON.parse(respText);
+    if (data.error) return sendJson(res, 502, { error: data.error.message || 'Erro na IA.' });
+    const text = data.content && data.content[0] ? data.content[0].text.trim() : '{}';
+    const jsonMatch = text.match(/\{[\s\S]*\}/);
+    const dds = jsonMatch ? JSON.parse(jsonMatch[0]) : { tema: prompt, descricao: text };
+    sendJson(res, 200, { dds, model: data.model || '' });
+  } catch(e) { sendJson(res, 502, { error: 'Erro ao gerar DDS: ' + e.message }); }
+});
+
+/* ── Certificação Auditável ──────────────────────────────────── */
+
+route('GET', /^\/api\/verificar-certificado\/([A-Z0-9\-]+)$/, { public: true }, async (req, res, m) => {
+  const codigo = m[1].toUpperCase();
+  const cert = (db.certificados || []).find(c => c.codigoVerificacao === codigo);
+  if (!cert) return sendJson(res, 404, { error: 'Certificado não encontrado.' });
+  const emp = db.employees.find(e => e.id === cert.employeeId);
+  const comp = db.companies.find(c => c.id === cert.companyId);
+  sendJson(res, 200, {
+    valido: true, nome: cert.nomeColaborador, empresa: comp?.nome || '',
+    titulo: cert.titulo, descricao: cert.descricao,
+    dataEmissao: cert.dataEmissao, validade: cert.validade || null,
+    codigoVerificacao: cert.codigoVerificacao, emitidoPor: cert.emitidoPor
+  });
+});
+
+route('GET', /^\/api\/certificados$/, { role: 'gestor' }, async (req, res, m, body, s) => {
+  const url2 = new URL('http://x' + req.url);
+  const empId = url2.searchParams.get('empId') ? Number(url2.searchParams.get('empId')) : null;
+  let list = (db.certificados || []).filter(c => c.companyId === s.companyId);
+  if (empId) list = list.filter(c => c.employeeId === empId);
+  list = list.sort((a, b) => b.criadoEm - a.criadoEm);
+  sendJson(res, 200, list);
+});
+
+route('POST', /^\/api\/certificados$/, { role: 'gestor' }, async (req, res, m, body, s) => {
+  const empId = Number(body.employeeId);
+  const emp = db.employees.find(e => e.id === empId && e.companyId === s.companyId);
+  if (!emp) return sendJson(res, 404, { error: 'Colaborador não encontrado.' });
+  const titulo = String(body.titulo || '').trim();
+  if (!titulo) return sendJson(res, 400, { error: 'Título obrigatório.' });
+  const gestor = db.employees.find(e => e.id === s.employeeId) || db.admins.find(a => a.id === s.userId);
+  let codigo;
+  do { codigo = gerarCodigoCertificado(); } while ((db.certificados||[]).some(c => c.codigoVerificacao === codigo));
+  const cert = {
+    id: nextId(), companyId: s.companyId, employeeId: empId,
+    nomeColaborador: emp.nome, titulo,
+    descricao: String(body.descricao || '').trim(),
+    dataEmissao: String(body.dataEmissao || todayStr()),
+    validade: body.validade ? String(body.validade) : null,
+    cargaHoraria: body.cargaHoraria ? Number(body.cargaHoraria) : null,
+    emitidoPor: gestor ? gestor.nome : 'SafePoint',
+    codigoVerificacao: codigo, criadoEm: Date.now()
+  };
+  db.certificados.push(cert);
+  saveDb();
+  sendJson(res, 200, cert);
+});
+
+route('DELETE', /^\/api\/certificados\/(\d+)$/, { role: 'gestor' }, async (req, res, m, body, s) => {
+  const idx = (db.certificados || []).findIndex(c => c.id === Number(m[1]) && c.companyId === s.companyId);
+  if (idx < 0) return sendJson(res, 404, { error: 'Certificado não encontrado.' });
+  db.certificados.splice(idx, 1);
+  saveDb();
+  sendJson(res, 200, { ok: true });
+});
+
+route('GET', /^\/api\/meus-certificados$/, { role: 'colaborador' }, async (req, res, m, body, s) => {
+  const list = (db.certificados || [])
+    .filter(c => c.companyId === s.companyId && c.employeeId === s.employeeId)
+    .sort((a, b) => b.criadoEm - a.criadoEm);
+  sendJson(res, 200, list);
+});
+
+/* ── Observação Comportamental (BBS) ────────────────────────── */
+
+route('GET', /^\/api\/bbs$/, { role: 'gestor' }, async (req, res, m, body, s) => {
+  const url2 = new URL('http://x' + req.url);
+  const tipo = url2.searchParams.get('tipo') || '';
+  const status = url2.searchParams.get('status') || '';
+  let list = (db.observacoesBBS || []).filter(o => o.companyId === s.companyId);
+  if (tipo) list = list.filter(o => o.tipo === tipo);
+  if (status) list = list.filter(o => o.status === status);
+  list = list.sort((a, b) => b.timestamp - a.timestamp).slice(0, 200);
+  sendJson(res, 200, list);
+});
+
+route('POST', /^\/api\/bbs$/, { role: 'any' }, async (req, res, m, body, s) => {
+  const TIPOS_BBS = ['seguro', 'risco'];
+  const tipo = TIPOS_BBS.includes(body.tipo) ? body.tipo : 'risco';
+  const comportamento = String(body.comportamento || '').trim().slice(0, 500);
+  if (!comportamento) return sendJson(res, 400, { error: 'Descrição do comportamento obrigatória.' });
+  const emp = db.employees.find(e => e.id === s.employeeId);
+  const fotoRaw = String(body.foto || '');
+  const foto = fotoRaw.startsWith('data:image/') && fotoRaw.length < 500000 ? fotoRaw : null;
+  const obs = {
+    id: nextId(), companyId: s.companyId, observadorId: s.employeeId,
+    observadorNome: emp ? emp.nome : 'Anônimo',
+    observadoId: body.observadoId ? Number(body.observadoId) : null,
+    local: String(body.local || '').trim().slice(0, 200),
+    departamento: String(body.departamento || '').trim().slice(0, 100),
+    tipo, comportamento,
+    contexto: String(body.contexto || '').trim().slice(0, 300),
+    acaoImediata: String(body.acaoImediata || '').trim().slice(0, 300),
+    foto, timestamp: Date.now(), status: 'aberta',
+    respostaGestor: null, respostaDem: null
+  };
+  db.observacoesBBS.push(obs);
+  if (emp) {
+    const pts = tipo === 'seguro' ? 15 : 25;
+    db.pontosExtras.push({ id: nextId(), empId: emp.id, companyId: s.companyId, tipo: 'bbs', descricao: `🔍 Observação BBS — ${tipo === 'seguro' ? 'Comportamento Seguro' : 'Comportamento de Risco'} registrado`, pontos: pts, timestamp: Date.now() });
+  }
+  saveDb();
+  sendJson(res, 200, obs);
+});
+
+route('PUT', /^\/api\/bbs\/(\d+)$/, { role: 'gestor' }, async (req, res, m, body, s) => {
+  const obs = (db.observacoesBBS || []).find(o => o.id === Number(m[1]) && o.companyId === s.companyId);
+  if (!obs) return sendJson(res, 404, { error: 'Observação não encontrada.' });
+  if (body.status) obs.status = ['aberta','tratada','encerrada'].includes(body.status) ? body.status : obs.status;
+  if (body.respostaGestor !== undefined) obs.respostaGestor = String(body.respostaGestor).trim().slice(0, 500);
+  obs.atualizadoEm = Date.now();
+  saveDb();
+  sendJson(res, 200, obs);
+});
+
+route('DELETE', /^\/api\/bbs\/(\d+)$/, { role: 'gestor' }, async (req, res, m, body, s) => {
+  const idx = (db.observacoesBBS || []).findIndex(o => o.id === Number(m[1]) && o.companyId === s.companyId);
+  if (idx < 0) return sendJson(res, 404, { error: 'Observação não encontrada.' });
+  db.observacoesBBS.splice(idx, 1);
+  saveDb();
+  sendJson(res, 200, { ok: true });
+});
+
+route('GET', /^\/api\/bbs\/minhas$/, { role: 'colaborador' }, async (req, res, m, body, s) => {
+  const list = (db.observacoesBBS || [])
+    .filter(o => o.companyId === s.companyId && o.observadorId === s.employeeId)
+    .sort((a, b) => b.timestamp - a.timestamp);
+  sendJson(res, 200, list);
+});
+
+route('GET', /^\/api\/bbs\/stats$/, { role: 'gestor' }, async (req, res, m, body, s) => {
+  const list = (db.observacoesBBS || []).filter(o => o.companyId === s.companyId);
+  const seguros = list.filter(o => o.tipo === 'seguro').length;
+  const riscos = list.filter(o => o.tipo === 'risco').length;
+  const abertos = list.filter(o => o.status === 'aberta').length;
+  const tratados = list.filter(o => o.status === 'tratada').length;
+  const encerrados = list.filter(o => o.status === 'encerrada').length;
+  const contadores = {};
+  for (const o of list) {
+    if (!o.observadorNome) continue;
+    contadores[o.observadorNome] = (contadores[o.observadorNome] || 0) + 1;
+  }
+  const topReportadores = Object.entries(contadores).sort((a,b)=>b[1]-a[1]).slice(0,5).map(([nome,total])=>({nome,total}));
+  sendJson(res, 200, { total: list.length, seguros, riscos, abertos, tratados, encerrados, topReportadores });
 });
 
 /* ── Arquivos estáticos ──────────────────────────────────────── */

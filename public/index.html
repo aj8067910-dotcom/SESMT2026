@@ -8,6 +8,8 @@
 </head>
 <body>
 
+<div id="offline-banner" class="hidden" style="position:fixed;top:0;left:0;right:0;z-index:9999;background:#1e3a5f;color:#fff;text-align:center;padding:8px;font-size:13px;font-weight:600">📡 Modo offline — os dados serão sincronizados ao reconectar</div>
+
 <!-- ═══════════════ LOGIN ═══════════════ -->
 <div id="tela-login" class="login-wrap hidden">
   <div class="login-card">
@@ -218,6 +220,7 @@
         <div class="sidebar-item" data-view="tendencias-desvios"  onclick="navegar('tendencias-desvios')">Tendências de Desvios</div>
         <div class="sidebar-item" data-view="evidencias-op"       onclick="navegar('evidencias-op')">Evidências Operacionais</div>
         <div class="sidebar-item" data-view="quase-acidentes"     onclick="navegar('quase-acidentes')">Quase Acidentes</div>
+        <div class="sidebar-item" data-view="bbs"                 onclick="navegar('bbs')">Observação BBS</div>
       </div>
     </div>
     <div class="sidebar-module" id="sbmod-comunicacao" data-mod="comunicacao">
@@ -274,6 +277,7 @@
     <div class="sidebar-module" id="sbmod-config" data-mod="config">
       <div class="sidebar-module-header" onclick="toggleSbMod('config')"><span class="sm-icon">⚙️</span><span class="sm-label">Configurações</span><span class="sm-arrow">▶</span></div>
       <div class="sidebar-items">
+        <div class="sidebar-item" data-view="certificados-gestor" onclick="navegar('certificados-gestor')">🎓 Certificados</div>
         <div class="sidebar-item" data-view="config"     onclick="navegar('config')">Geral</div>
         <div class="sidebar-item" data-view="submodulos" onclick="navegar('submodulos')">Módulos / Submódulos</div>
         <div class="sidebar-item" data-view="permissoes" onclick="navegar('permissoes')">Permissões</div>
@@ -768,6 +772,130 @@
           <button class="btn btn-primary" onclick="iaEnviar()">Enviar →</button>
         </div>
         <p class="hint" style="margin-top:8px;font-size:11px">⚠️ A IA pode cometer erros. Sempre consulte profissionais habilitados para decisões de segurança. Configure a chave da API nas configurações.</p>
+      </div>
+
+      <!-- IA Gerar Questões -->
+      <div class="panel" style="max-width:800px;margin:16px auto 0">
+        <h3>🧠 Gerar Questões de Quiz com IA</h3>
+        <p class="hint" style="margin-bottom:12px">Descreva o tema e a IA criará questões de múltipla escolha sobre SST prontas para importar ao banco de questões.</p>
+        <div class="linha-2" style="margin-bottom:10px">
+          <div>
+            <label>Tema / prompt</label>
+            <input type="text" id="ia-quiz-prompt" placeholder="Ex.: uso correto de EPI em altura" style="width:100%">
+          </div>
+          <div>
+            <label>Quantidade</label>
+            <select id="ia-quiz-qtd">
+              <option value="3">3</option>
+              <option value="5" selected>5</option>
+              <option value="8">8</option>
+              <option value="10">10</option>
+            </select>
+          </div>
+        </div>
+        <div style="margin-bottom:12px">
+          <label>Categoria</label>
+          <select id="ia-quiz-cat">
+            <option>Geral</option><option>EPI</option><option>NR-05</option><option>NR-06</option>
+            <option>NR-10</option><option>NR-12</option><option>NR-18</option><option>NR-33</option>
+            <option>NR-35</option><option>Ergonomia</option><option>Primeiros Socorros</option>
+            <option>Incêndio</option><option>Trabalho em Altura</option><option>Espaço Confinado</option>
+          </select>
+        </div>
+        <button class="btn btn-primary" id="btn-gerar-questoes-ia" onclick="gerarQuestoesIA()">🤖 Gerar questões</button>
+        <div id="ia-questoes-resultado" style="margin-top:14px"></div>
+      </div>
+
+      <!-- IA Gerar DDS -->
+      <div class="panel" style="max-width:800px;margin:16px auto 0">
+        <h3>📋 Gerar DDS com IA</h3>
+        <p class="hint" style="margin-bottom:12px">Descreva o tema e a IA criará o conteúdo completo do DDS, preenchendo automaticamente o formulário de nova atividade.</p>
+        <label>Tema do DDS</label>
+        <input type="text" id="ia-dds-prompt" placeholder="Ex.: cuidados ao operar empilhadeira" style="width:100%;margin-bottom:10px">
+        <button class="btn btn-primary" id="btn-gerar-dds-ia" onclick="gerarDDSIA()">🤖 Gerar DDS</button>
+        <div id="ia-dds-resultado"></div>
+      </div>
+    </section>
+
+    <!-- Certificados Gestor -->
+    <section id="view-certificados-gestor" class="view hidden">
+      <div class="view-head" style="margin-bottom:14px">
+        <h2>🎓 Certificados Auditáveis</h2>
+      </div>
+      <p class="hint" style="margin-bottom:16px">Emita certificados digitais com código de verificação único. Colaboradores podem verificar a autenticidade em qualquer momento.</p>
+
+      <!-- Formulário de emissão -->
+      <div class="panel" style="margin-bottom:16px">
+        <h3>Emitir Novo Certificado</h3>
+        <div class="grid-2" style="gap:12px;margin-bottom:12px">
+          <div>
+            <label>Colaborador *</label>
+            <select id="cert-empId" style="width:100%"></select>
+          </div>
+          <div>
+            <label>Título do Certificado *</label>
+            <input type="text" id="cert-titulo" placeholder="Ex.: Treinamento NR-35 — Trabalho em Altura" style="width:100%">
+          </div>
+        </div>
+        <div style="margin-bottom:12px">
+          <label>Descrição / Conteúdo programático</label>
+          <textarea id="cert-descricao" rows="2" placeholder="Descreva o conteúdo abordado no treinamento..." style="width:100%"></textarea>
+        </div>
+        <div class="grid-2" style="gap:12px;margin-bottom:12px">
+          <div>
+            <label>Data de emissão</label>
+            <input type="date" id="cert-dataEmissao" style="width:100%">
+          </div>
+          <div>
+            <label>Validade (opcional)</label>
+            <input type="date" id="cert-validade" style="width:100%">
+          </div>
+        </div>
+        <div style="margin-bottom:14px">
+          <label>Carga horária (horas)</label>
+          <input type="number" id="cert-cargaHoraria" min="1" max="999" placeholder="Ex.: 8" style="width:140px">
+        </div>
+        <button class="btn btn-primary" onclick="emitirCertificado()">🎓 Emitir Certificado</button>
+      </div>
+
+      <!-- Verificador público -->
+      <div class="panel" style="margin-bottom:16px;background:#f0f9ff;border:1px solid #bae6fd">
+        <h3>🔍 Verificar Certificado</h3>
+        <p class="hint" style="margin-bottom:10px">Insira o código de verificação para confirmar a autenticidade de um certificado.</p>
+        <div style="display:flex;gap:8px;align-items:center">
+          <input type="text" id="cert-codigo-verificar" placeholder="Ex.: ABCDE-12345" style="text-transform:uppercase;letter-spacing:2px;font-weight:700;flex:1;max-width:240px" oninput="this.value=this.value.toUpperCase()">
+          <button class="btn btn-primary" onclick="verificarCertificadoPublico()">Verificar</button>
+        </div>
+        <div id="cert-verificacao-resultado" style="margin-top:12px"></div>
+      </div>
+
+      <!-- Lista de certificados -->
+      <div class="panel">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+          <h3 style="margin:0">Certificados Emitidos</h3>
+          <button class="btn btn-sm" onclick="carregarCertificados()">↺ Atualizar</button>
+        </div>
+        <div id="certificados-lista"><p class="hint">Carregando…</p></div>
+      </div>
+    </section>
+
+    <!-- BBS Gestor -->
+    <section id="view-bbs" class="view hidden">
+      <div class="view-head" style="margin-bottom:14px">
+        <h2>🔍 Observação Comportamental (BBS)</h2>
+      </div>
+      <p class="hint" style="margin-bottom:16px">Behavior-Based Safety: registre e acompanhe observações de comportamentos seguros e de risco no ambiente de trabalho.</p>
+
+      <!-- Stats -->
+      <div id="bbs-stats"></div>
+
+      <!-- Lista -->
+      <div class="panel">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px">
+          <h3 style="margin:0">Observações Registradas</h3>
+          <button class="btn btn-sm" onclick="carregarBBS()">↺ Atualizar</button>
+        </div>
+        <div id="bbs-lista"><p class="hint">Carregando…</p></div>
       </div>
     </section>
 
@@ -1740,6 +1868,8 @@
         <div class="sidebar-item" data-cview="feedback-anonimo"    onclick="navegarColab('feedback-anonimo')">Feedback Anônimo</div>
         <div class="sidebar-item" data-cview="canal-lideranca"     onclick="navegarColab('canal-lideranca')">Canal da Liderança</div>
         <div class="sidebar-item" data-cview="feedback-plataforma" onclick="navegarColab('feedback-plataforma')">📣 Avalie a Plataforma</div>
+        <div class="sidebar-item" data-cview="meus-certificados" onclick="navegarColab('meus-certificados')">🎓 Meus Certificados</div>
+        <div class="sidebar-item" data-cview="bbs" onclick="navegarColab('bbs')">🔍 Observação BBS</div>
       </div>
     </div>
 
@@ -2119,6 +2249,65 @@
       <div class="panel">
         <h3>Histórico completo de participações</h3>
         <table class="tabela" id="colab-historico"></table>
+      </div>
+    </section>
+
+    <!-- Meus Certificados (Colab) -->
+    <section id="cview-meus-certificados" class="cview hidden">
+      <div class="view-head" style="margin-bottom:14px">
+        <h2>🎓 Meus Certificados</h2>
+      </div>
+      <p class="hint" style="margin-bottom:16px">Seus certificados digitais emitidos pela empresa. Use o código de verificação para comprovar a autenticidade.</p>
+      <div id="meus-certs-lista"><p class="hint">Carregando…</p></div>
+    </section>
+
+    <!-- BBS Colaborador -->
+    <section id="cview-bbs" class="cview hidden">
+      <div class="view-head" style="margin-bottom:14px">
+        <h2>🔍 Observação Comportamental (BBS)</h2>
+      </div>
+      <p class="hint" style="margin-bottom:16px">Registre comportamentos seguros e de risco que você observou. Você ganha pontos por cada observação!</p>
+
+      <!-- Formulário de registro -->
+      <div class="panel" style="margin-bottom:14px">
+        <h3>Registrar Nova Observação</h3>
+        <div style="margin-bottom:12px">
+          <label>Tipo de comportamento *</label>
+          <select id="bbs-tipo" style="width:100%">
+            <option value="seguro">✅ Comportamento Seguro</option>
+            <option value="risco">⚠️ Comportamento de Risco</option>
+          </select>
+        </div>
+        <div style="margin-bottom:12px">
+          <label>Descrição do comportamento observado *</label>
+          <textarea id="bbs-comportamento" rows="3" placeholder="Descreva o que você observou de forma clara e objetiva..." style="width:100%"></textarea>
+        </div>
+        <div class="grid-2" style="gap:10px;margin-bottom:12px">
+          <div>
+            <label>Local</label>
+            <input type="text" id="bbs-local" placeholder="Ex.: Almoxarifado, Linha 3..." style="width:100%">
+          </div>
+          <div>
+            <label>Departamento</label>
+            <input type="text" id="bbs-depto" placeholder="Ex.: Manutenção, Produção..." style="width:100%">
+          </div>
+        </div>
+        <div style="margin-bottom:12px">
+          <label>Contexto (opcional)</label>
+          <textarea id="bbs-contexto" rows="2" placeholder="Qual era a situação? O que estava acontecendo?" style="width:100%"></textarea>
+        </div>
+        <div style="margin-bottom:14px">
+          <label>Ação imediata tomada (opcional)</label>
+          <textarea id="bbs-acao" rows="2" placeholder="Alguma intervenção foi feita?" style="width:100%"></textarea>
+        </div>
+        <button class="btn btn-primary" onclick="registrarBBS()">📤 Enviar Observação</button>
+        <p class="hint" style="margin-top:8px;font-size:12px">🏆 Comportamento seguro: +15 pontos | Comportamento de risco: +25 pontos</p>
+      </div>
+
+      <!-- Minhas observações -->
+      <div class="panel">
+        <h3>Minhas Observações</h3>
+        <div id="minhas-bbs-lista"><p class="hint">Carregando…</p></div>
       </div>
     </section>
 
