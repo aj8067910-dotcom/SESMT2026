@@ -1075,6 +1075,10 @@ async function carregarDashboard() {
     obsHtml += `<tr><td>${esc(o.nomeColaborador)}</td><td>${tipoObsTag(o.tipo)}</td><td>${critTag(o.criticidade)}</td></tr>`;
   }
   document.getElementById('dash-obs').innerHTML = obsHtml;
+
+  // Ciclo de Aprendizagem + Missões (non-blocking)
+  carregarCicloTarefas();
+  carregarMissoesGestor();
 }
 
 function renderICS(el, ics) {
@@ -2982,10 +2986,19 @@ function filtrarBanco() {
     return;
   }
   const difLabel = { facil:'🟢 Fácil', medio:'🟡 Médio', dificil:'🔴 Difícil' };
+  const estadoBadge = {
+    fragil:   '<span class="questao-badge" style="background:#fee2e2;color:#b91c1c;border:1px solid #fca5a5">🔴 Frágil</span>',
+    dominada: '<span class="questao-badge" style="background:#dcfce7;color:#15803d;border:1px solid #86efac">✅ Dominada</span>',
+    arquivada:'<span class="questao-badge" style="background:#f1f5f9;color:#64748b;border:1px solid #cbd5e1">📦 Arquivada</span>',
+    ativo:    ''
+  };
+  // hide archived questions from active bank
+  lista = lista.filter(q => q.estado !== 'arquivada');
   el.innerHTML = lista.map(q => {
     const corrIdx = (q.opcoes || []).findIndex(o => o.correta);
     const corrTxt  = corrIdx >= 0 ? q.opcoes[corrIdx].texto : '';
     const pct = q.stats?.total ? Math.round((q.stats.acertos / q.stats.total) * 100) : null;
+    const estadoHtml = estadoBadge[q.estado || 'ativo'] || '';
     return `<div class="questao-card">
       <div class="questao-card-top">
         <div class="questao-pergunta">${esc(q.texto || q.pergunta || '')}</div>
@@ -2997,6 +3010,7 @@ function filtrarBanco() {
       <div class="questao-badges">
         <span class="questao-badge cat">${esc(q.categoria || '')}</span>
         <span class="questao-badge ${q.dificuldade || 'facil'}">${difLabel[q.dificuldade] || '🟢 Fácil'}</span>
+        ${estadoHtml}
       </div>
       <div class="questao-stats">
         ✅ Correta: <strong>${esc(corrTxt)}</strong>
@@ -6356,6 +6370,79 @@ async function responderFeedbackPlataforma(pergId, resposta) {
     </div>`;
     toast('Feedback enviado! Obrigado pela contribuição.', 'ok');
   } catch(e) { toast(e.message, 'erro'); }
+}
+
+/* ── Ciclo Fechado de Aprendizagem ── */
+
+async function carregarCicloTarefas() {
+  const el = document.getElementById('ciclo-tarefas-lista');
+  if (!el) return;
+  try {
+    const tarefas = await api('/api/ciclo/tarefas');
+    if (!tarefas.length) {
+      el.innerHTML = '<p class="hint">Nenhuma tarefa pendente de reforço.</p>';
+      return;
+    }
+    const agora = Date.now();
+    el.innerHTML = tarefas.map(t => {
+      const diasRestantes = Math.max(0, Math.ceil((t.prazo - agora) / 86400000));
+      const urgente = diasRestantes <= 3;
+      const texto = t.questaoTexto || '';
+      const textoExibido = texto.length > 80 ? texto.slice(0, 80) + '…' : texto;
+      return `<div style="background:${urgente ? '#fff7ed' : '#f8fafc'};border:1px solid ${urgente ? '#fed7aa' : '#e2e8f0'};border-radius:10px;padding:12px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:flex-start;gap:12px">
+        <div style="flex:1;min-width:0">
+          <div style="font-weight:600;font-size:13px;margin-bottom:4px">📚 ${esc(textoExibido)}</div>
+          <div class="hint" style="font-size:12px">Categoria: ${esc(t.categoria || '—')}</div>
+        </div>
+        <div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px;flex-shrink:0">
+          <span style="font-size:12px;font-weight:600;color:${urgente ? '#dc2626' : '#6b7280'}">${diasRestantes}d restantes</span>
+          <button class="btn btn-sm" style="font-size:11px;padding:4px 10px" onclick="concluirTarefaCiclo(${t.id})">✅ Concluir</button>
+        </div>
+      </div>`;
+    }).join('');
+  } catch {
+    el.innerHTML = '<p class="hint">Erro ao carregar tarefas.</p>';
+  }
+}
+
+async function concluirTarefaCiclo(id) {
+  try {
+    await api('/api/ciclo/tarefas/' + id + '/concluir', { method: 'POST', body: {} });
+    toast('Tarefa concluída!', 'ok');
+    carregarCicloTarefas();
+  } catch(e) { toast(e.message, 'erro'); }
+}
+
+/* ── Missões do Gestor ── */
+
+async function carregarMissoesGestor() {
+  const el = document.getElementById('gestor-missoes-lista');
+  if (!el) return;
+  try {
+    const missoes = await api('/api/gestor/missoes');
+    if (!missoes.length) {
+      el.innerHTML = '<p class="hint">Nenhuma missão disponível hoje.</p>';
+      return;
+    }
+    el.innerHTML = missoes.map(m => {
+      const prog = m.progresso;
+      const concluida = m.concluida || (prog && prog.atual >= prog.meta);
+      const pct = concluida ? 100 : prog ? Math.min(99, Math.round((prog.atual / prog.meta) * 100)) : 0;
+      const progressoLabel = prog ? `${prog.atual}/${prog.meta}` : '';
+      return `<div style="background:${concluida ? '#f0fdf4' : '#f8fafc'};border:1px solid ${concluida ? '#bbf7d0' : '#e2e8f0'};border-radius:10px;padding:12px;margin-bottom:8px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+          <div style="font-weight:600;font-size:13px">${esc(m.titulo)}</div>
+          ${concluida ? '<span style="font-size:12px;color:#15803d;font-weight:700">✅ Concluída</span>' : progressoLabel ? `<span style="font-size:12px;color:#6b7280">${progressoLabel}</span>` : ''}
+        </div>
+        <div class="hint" style="font-size:12px;margin-bottom:8px">${esc(m.descricao)}</div>
+        <div style="background:#e2e8f0;border-radius:99px;height:6px;overflow:hidden">
+          <div style="background:${concluida ? '#16a34a' : 'var(--azul)'};width:${pct}%;height:100%;border-radius:99px;transition:width 0.4s"></div>
+        </div>
+      </div>`;
+    }).join('');
+  } catch {
+    el.innerHTML = '<p class="hint">Erro ao carregar missões.</p>';
+  }
 }
 
 iniciar().catch(err => {

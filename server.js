@@ -823,6 +823,72 @@ function battleEstado(session, empId) {
   };
 }
 
+/* ── Ciclo Fechado de Aprendizagem — engine ───────────────────── */
+
+async function processarCicloBattle(battleId, companyId) {
+  const session = (db.battleSessions || []).find(x => x.id === battleId && x.companyId === companyId);
+  if (!session) return;
+
+  // Map questaoId -> list of { empId, correta }
+  const questaoRespostas = {};
+  for (const part of session.participantes) {
+    for (let qi = 0; qi < session.questoes.length; qi++) {
+      const qId = session.questoes[qi];
+      const resp = (part.respostas || []).find(r => r.questaoIdx === qi);
+      if (!questaoRespostas[qId]) questaoRespostas[qId] = [];
+      if (resp !== undefined) {
+        questaoRespostas[qId].push({ empId: part.empId, correta: resp.correta });
+      }
+    }
+  }
+
+  for (const [qIdStr, respostas] of Object.entries(questaoRespostas)) {
+    const qId = Number(qIdStr);
+    const questao = (db.questoes || []).find(x => x.id === qId && x.companyId === companyId);
+    if (!questao) continue;
+    if (!respostas.length) continue;
+
+    const pctAcerto = Math.round((respostas.filter(r => r.correta).length / respostas.length) * 100);
+    const opcaoCorreta = (questao.opcoes || []).find(o => o.correta);
+    const backText = opcaoCorreta ? opcaoCorreta.texto : '';
+
+    if (pctAcerto === 100) {
+      // Dominada
+      questao.estado = 'dominada';
+      questao.agendarArquivamentoEm = Date.now() + 15 * 24 * 3600000;
+      // Retention flashcard for all participants
+      for (const part of session.participantes) {
+        db.flashcards.push({
+          id: nextId(), companyId, employeeId: part.empId, questaoId: qId,
+          front: questao.texto, back: backText, categoria: questao.categoria,
+          estado: 'pendente', criadoEm: Date.now(), ciclo: true, tipo: 'retencao'
+        });
+      }
+    } else if (pctAcerto < 70) {
+      // Frágil
+      questao.estado = 'fragil';
+      questao.contRespostasAposReforco = 0;
+      // Flashcards for employees who got it wrong
+      const errados = respostas.filter(r => !r.correta).map(r => r.empId);
+      for (const empId of errados) {
+        db.flashcards.push({
+          id: nextId(), companyId, employeeId: empId, questaoId: qId,
+          front: questao.texto, back: backText, categoria: questao.categoria,
+          estado: 'pendente', criadoEm: Date.now(), ciclo: true, tipo: 'reforco'
+        });
+      }
+      // Gestor ciclo task
+      db.cicloTarefas.push({
+        id: nextId(), companyId, tipo: 'reforco_fragil', questaoId: qId,
+        questaoTexto: questao.texto.slice(0, 80), categoria: questao.categoria,
+        prazo: Date.now() + 15 * 24 * 3600000, status: 'pendente',
+        criadaEm: Date.now(), battleId
+      });
+    }
+  }
+  saveDb();
+}
+
 function calcKnowledgeScore(companyId) {
   const questoes = (db.questoes || []).filter(q => q.companyId === companyId && q.stats && q.stats.total > 0);
   if (!questoes.length) return { score: 0, nivel: 'Sem dados', txAcerto: 0 };
@@ -3015,6 +3081,8 @@ route('POST', /^\/api\/battle\/sessoes\/(\d+)\/avancar$/, { role: 'gestor' }, as
       }
     }
     saveDb();
+    // Ciclo Fechado de Aprendizagem — analisar resultados da battle
+    processarCicloBattle(session.id, s.companyId).catch(() => {});
     return sendJson(res, 200, { ok: true, finalizado: true, ranking: battleRanking(session) });
   }
   session.questaoIniciadaEm = Date.now();
@@ -3042,6 +3110,11 @@ route('POST', /^\/api\/battle\/sessoes\/(\d+)\/responder$/, { role: 'colaborador
   if (correta) part.acertos = (part.acertos || 0) + 1;
   q.stats = q.stats || { total: 0, acertos: 0 };
   q.stats.total++; if (correta) q.stats.acertos++;
+  // Ciclo — reteste tracking
+  if (q.estado === 'fragil') {
+    q.contRespostasAposReforco = (q.contRespostasAposReforco || 0) + 1;
+    if (q.contRespostasAposReforco >= 3) q.estado = 'ativo';
+  }
   saveDb();
   sendJson(res, 200, { ok: true, correta, pontos: pts, pontosTotal: part.pontos });
 });
@@ -3112,6 +3185,56 @@ route('POST', /^\/api\/flashcards\/(\d+)\/responder$/, { role: 'colaborador' }, 
     tipo: 'flashcard', descricao: `🃏 Flashcard: ${card.frente.slice(0, 40)}`, pontos: 5, timestamp: Date.now() });
   saveDb();
   sendJson(res, 200, { ok: true, nivel: prog.nivel, proxima: prog.proxima });
+});
+
+/* ── Ciclo Fechado de Aprendizagem — Rotas ────────────────────── */
+
+route('GET', /^\/api\/ciclo\/tarefas$/, { role: 'gestor' }, async (req, res, m, body, s) => {
+  const tarefas = (db.cicloTarefas || [])
+    .filter(t => t.companyId === s.companyId && t.status === 'pendente')
+    .sort((a, b) => a.prazo - b.prazo);
+  sendJson(res, 200, tarefas);
+});
+
+route('POST', /^\/api\/ciclo\/tarefas\/(\d+)\/concluir$/, { role: 'gestor' }, async (req, res, m, body, s) => {
+  const tarefa = (db.cicloTarefas || []).find(t => t.id === Number(m[1]) && t.companyId === s.companyId);
+  if (!tarefa) return sendJson(res, 404, { error: 'Tarefa não encontrada.' });
+  tarefa.status = 'concluida';
+  tarefa.concluidaEm = Date.now();
+  saveDb();
+  sendJson(res, 200, { ok: true });
+});
+
+route('GET', /^\/api\/gestor\/missoes$/, { role: 'gestor' }, async (req, res, m, body, s) => {
+  const hoje = todayStr();
+  const companyId = s.companyId;
+  const emps = db.employees.filter(e => e.companyId === companyId && e.ativo !== false);
+  const empIds = new Set(emps.map(e => e.id));
+
+  // Missão 1: criar DDS hoje
+  const ddsCriados = db.events.some(ev =>
+    ev.companyId === companyId && ev.tipo === 'DDS' && ev.data === hoje
+  );
+
+  // Missão 2: engajar equipe (>= 70% com checkin hoje)
+  const checkinsHoje = new Set(
+    db.checkins.filter(c => empIds.has(c.employeeId) && c.timestamp && c.timestamp.startsWith(hoje)).map(c => c.employeeId)
+  ).size;
+  const metaEngajar = Math.ceil(emps.length * 0.7);
+  const engajou = emps.length > 0 && checkinsHoje >= metaEngajar;
+
+  // Missão 3: microlearning (manual via cicloTarefas)
+  const microConcluido = (db.cicloTarefas || []).some(t =>
+    t.companyId === companyId && t.tipo === 'microlearning' && t.status === 'concluida' &&
+    t.criadaEm && t.criadaEm >= new Date(hoje + 'T00:00:00').getTime()
+  );
+
+  sendJson(res, 200, [
+    { tipo: 'criar_dds', titulo: 'Criar um DDS hoje', descricao: 'Registre um DDS para a equipe', concluida: ddsCriados, pontos: 50 },
+    { tipo: 'engajar_equipe', titulo: 'Engajar a equipe', descricao: 'Meta: 70% dos colaboradores ativos hoje', concluida: engajou, pontos: 100,
+      progresso: { atual: checkinsHoje, meta: metaEngajar } },
+    { tipo: 'microlearning', titulo: 'Criar microlearning', descricao: 'Produza um conteúdo de microlearning', concluida: microConcluido, pontos: 75 }
+  ]);
 });
 
 /* ── SafePoint 2.3 — Analytics de Aprendizagem ──────────────── */
