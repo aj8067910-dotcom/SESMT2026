@@ -3001,7 +3001,7 @@ function _formQuestaoHtml(q) {
   const corrIdx = q ? (q.opcoes || []).findIndex(o => o.correta) : 0;
   return `
     <label>Pergunta *</label>
-    <textarea id="q-pergunta" rows="3" placeholder="Ex.: Qual EPI protege contra ruído acima de 85 dB?">${esc(q?.pergunta || '')}</textarea>
+    <textarea id="q-pergunta" rows="3" placeholder="Ex.: Qual EPI protege contra ruído acima de 85 dB?">${esc(q?.texto || q?.pergunta || '')}</textarea>
     ${[0,1,2,3].map(i => `
     <label>Opção ${String.fromCharCode(65+i)}${i<2?' *':''}</label>
     <input type="text" id="q-op-${i}" placeholder="${i<2?'Obrigatória':'Opcional'}" value="${esc(q?.opcoes?.[i]?.texto||'')}">
@@ -3031,7 +3031,7 @@ async function salvarQuestao(id) {
   const textos   = [0,1,2,3].map(i => document.getElementById('q-op-'+i)?.value.trim()||'');
   if (!pergunta || !textos[0] || !textos[1]) return toast('Preencha pergunta e ao menos 2 opções.', 'erro');
   const opcoes = textos.filter(Boolean).map((texto, i) => ({ texto, correta: i === corrIdx }));
-  const body = { pergunta, opcoes,
+  const body = { texto: pergunta, opcoes,
     categoria:   document.getElementById('q-categoria')?.value,
     dificuldade: document.getElementById('q-dificuldade')?.value };
   try {
