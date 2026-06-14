@@ -4552,12 +4552,16 @@ async function removerRolePrompt(empId) {
 /* ── DDS Battle (colaborador) ── */
 
 let _battleColabSessaoId = null;
+let _battleMinhaUltimaResposta = null;
+let _battleUltimaQuestaoNum = -1;
 
 async function carregarBattleColab() {
   const el = document.getElementById('battle-colab-area');
   if (!el) return;
   pararPollBattle();
   _battleColabSessaoId = null;
+  _battleMinhaUltimaResposta = null;
+  _battleUltimaQuestaoNum = -1;
   el.innerHTML = `
     <div class="battle-join-card">
       <div style="font-size:48px;margin-bottom:12px">⚡</div>
@@ -4597,47 +4601,53 @@ function renderBattleSalaColab(s) {
         </div>
       </div>`;
   } else if (s.status === 'ativa') {
-    if (!s.questaoAtualObj) return;
-    const q = s.questaoAtualObj;
+    const q = s.questao;  // server returns 'questao', not 'questaoAtualObj'
+    if (!q) return;
     if (s.mostrandoResultado) {
-      const ci = q.respostaCorreta ?? 0;
-      const minha = s.minhaResposta;
-      const acertei = minha === ci;
+      // resultado: server puts correct answer in s.resultadoQuestao
+      const res = s.resultadoQuestao || {};
+      const ci = res.respostaCorreta ?? 0;
+      const minha = _battleMinhaUltimaResposta;
+      const acertei = minha !== null && minha === ci;
+      const opcaoCorretaTexto = res.opcoes ? (res.opcoes[ci] || '') : (q.opcoes[ci]?.texto || '');
       el.innerHTML = `
         <div class="battle-play-wrap">
           <div style="text-align:center;margin-bottom:16px">
             <div style="font-size:13px;color:#93c5fd">Questão ${s.questaoAtual}/${s.totalQuestoes}</div>
-            <div style="font-size:18px;font-weight:700;margin:8px 0">${esc(q.pergunta)}</div>
+            <div style="font-size:18px;font-weight:700;margin:8px 0">${esc(q.texto)}</div>
           </div>
-          <div style="text-align:center;font-size:32px;margin-bottom:10px">${acertei?'✅':'❌'}</div>
-          <div style="text-align:center;font-size:15px;font-weight:600;color:${acertei?'#4ade80':'#f87171'};margin-bottom:10px">
-            ${acertei?`Correto! +${s.mesPontos||0} pts nesta rodada`:'Incorreto!'}
+          <div style="text-align:center;font-size:32px;margin-bottom:10px">${minha===null?'⏱️':acertei?'✅':'❌'}</div>
+          <div style="text-align:center;font-size:15px;font-weight:600;color:${minha===null?'#93c5fd':acertei?'#4ade80':'#f87171'};margin-bottom:10px">
+            ${minha===null?'Tempo esgotado!':acertei?'Correto!':'Incorreto!'}
           </div>
           <div style="text-align:center;font-size:13px;color:#93c5fd">
-            Resposta correta: <strong style="color:#fff">${letras[ci]}) ${esc(q.opcoes[ci]?.texto||'')}</strong>
+            Resposta correta: <strong style="color:#fff">${letras[ci]}) ${esc(opcaoCorretaTexto)}</strong>
           </div>
-          <div style="text-align:center;margin-top:14px;color:#93c5fd;font-size:13px">
-            Aguardando próxima questão...
-          </div>
-          <div style="text-align:center;margin-top:10px;font-size:22px;font-weight:700;color:#fbbf24">
-            ${s.mesPontos||0} pts
-          </div>
+          ${res.txAcerto !== undefined ? `<div style="text-align:center;font-size:12px;color:#93c5fd;margin-top:6px">Taxa de acerto da turma: <strong style="color:#fbbf24">${res.txAcerto}%</strong></div>` : ''}
+          <div style="text-align:center;margin-top:14px;color:#93c5fd;font-size:13px">Aguardando próxima questão...</div>
+          <div style="text-align:center;margin-top:10px;font-size:22px;font-weight:700;color:#fbbf24">${s.mesPontos||0} pts</div>
         </div>`;
     } else {
-      const jaRespondeu = s.minhaResposta !== undefined && s.minhaResposta !== null;
-      const pct = Math.max(0, Math.round(((s.tempoPorQuestao-(s.tempoDecorrido||0))/s.tempoPorQuestao)*100));
+      // reset resposta local apenas quando a questão muda
+      if (s.questaoAtual !== _battleUltimaQuestaoNum) {
+        _battleMinhaUltimaResposta = null;
+        _battleUltimaQuestaoNum = s.questaoAtual;
+      }
+      const jaRespondeu = !!s.jaRespondeu;
+      const elapsed = q.iniciadaEm ? Math.floor((Date.now() - q.iniciadaEm) / 1000) : 0;
+      const pct = q.tempoPorQuestao ? Math.max(0, Math.round(((q.tempoPorQuestao - elapsed) / q.tempoPorQuestao) * 100)) : 100;
       el.innerHTML = `
         <div class="battle-play-wrap">
           <div style="text-align:center;margin-bottom:12px">
             <div style="font-size:13px;color:#93c5fd">Questão ${s.questaoAtual}/${s.totalQuestoes}</div>
-            <div style="font-size:19px;font-weight:700;margin-top:8px">${esc(q.pergunta)}</div>
+            <div style="font-size:19px;font-weight:700;margin-top:8px">${esc(q.texto)}</div>
           </div>
           <div class="battle-timer-bar-wrap"><div class="battle-timer-bar" style="width:${pct}%"></div></div>
           <div style="margin-top:14px">
             ${(q.opcoes||[]).map((op, i) => `
-              <button class="battle-opcao-btn-colab${s.minhaResposta===i?' selecionada':''}"
+              <button class="battle-opcao-btn-colab${_battleMinhaUltimaResposta===i?' selecionada':''}"
                 style="background:${cores[i]}"
-                onclick="responderBattle(${s.id},${i})"
+                onclick="responderBattle(${_battleColabSessaoId},${i})"
                 ${jaRespondeu?'disabled':''}>
                 <span style="font-weight:800;font-size:17px">${letras[i]}</span>
                 ${esc(op.texto)}
@@ -4661,9 +4671,13 @@ function renderBattleSalaColab(s) {
 }
 
 async function responderBattle(sessaoId, opcao) {
+  _battleMinhaUltimaResposta = opcao;
   try {
     await api(`/api/battle/sessoes/${sessaoId}/responder`, { method: 'POST', body: { opcao } });
-  } catch (err) { toast(err.message, 'erro'); }
+  } catch (err) {
+    _battleMinhaUltimaResposta = null;
+    toast(err.message, 'erro');
+  }
 }
 
 /* ── Flashcards (colaborador) ── */
