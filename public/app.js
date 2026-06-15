@@ -519,6 +519,7 @@ async function navegar(view) {
   if (view === 'safety-score-ind')  await carregarSafetyScoreInd();
   if (view === 'certificados-gestor') await carregarCertificados();
   if (view === 'bbs') await carregarBBS();
+  if (view === 'microlearning') await carregarMicrolearningGestor();
 }
 
 async function navegarColab(view) {
@@ -549,6 +550,7 @@ async function navegarColab(view) {
   if (view === 'feedback-plataforma') await carregarFeedbackPlataformaColab();
   if (view === 'meus-certificados') await carregarMeusCertificados();
   if (view === 'bbs') await carregarMinhasBBS();
+  if (view === 'microlearning') await carregarMicrolearningColab();
 }
 
 async function navegarAdmin(view) {
@@ -2951,6 +2953,167 @@ async function salvarComunicado() {
     fecharModal();
     toast('Comunicado publicado!', 'ok');
     await carregarComunicadosGestor();
+  } catch (err) { toast(err.message, 'erro'); }
+}
+
+/* ── Microlearning (gestor) ── */
+
+async function carregarMicrolearningGestor() {
+  const el = document.getElementById('microlearning-lista');
+  if (!el) return;
+  try {
+    const list = await api('/api/microlearnings');
+    if (!list.length) {
+      el.innerHTML = '<p class="hint" style="text-align:center;padding:24px">Nenhum microlearning criado ainda. Clique em "+ Criar Microlearning" para começar.</p>';
+      return;
+    }
+    el.innerHTML = list.map(ml => `
+      <div class="panel" style="margin-bottom:12px">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:8px">
+          <div style="flex:1;min-width:200px">
+            <strong>${esc(ml.titulo)}</strong>
+            <span class="tag" style="margin-left:8px">${ml.tipo === 'video' ? '🎬 Vídeo' : '📄 Texto'}</span>
+            <span class="hint" style="margin-left:8px">⏱ ${ml.duracaoMin} min · ⭐ ${ml.pontos} pts · ✅ ${ml.totalConclusoes || 0} concluíram</span>
+            ${ml.descricao ? `<p style="margin-top:6px;color:var(--texto-sec);font-size:0.9em">${esc(ml.descricao)}</p>` : ''}
+          </div>
+          <div style="display:flex;gap:6px">
+            <button class="btn btn-sm" onclick="editarMicrolearning(${ml.id})">Editar</button>
+            <button class="btn btn-sm btn-perigo" onclick="excluirMicrolearning(${ml.id})">Excluir</button>
+          </div>
+        </div>
+      </div>`).join('');
+  } catch (err) { toast(err.message, 'erro'); }
+}
+
+function _microlearningFormHtml(ml) {
+  ml = ml || {};
+  return `
+    <label>Título *</label>
+    <input type="text" id="ml-titulo" value="${esc(ml.titulo || '')}" placeholder="Ex.: Uso correto do protetor auricular">
+    <label>Descrição (resumo curto)</label>
+    <input type="text" id="ml-descricao" value="${esc(ml.descricao || '')}" placeholder="Aparece na listagem do colaborador">
+    <div style="display:flex;gap:10px;flex-wrap:wrap">
+      <div style="flex:1;min-width:120px"><label>Tipo</label>
+        <select id="ml-tipo" onchange="_mlToggleTipo()">
+          <option value="texto" ${ml.tipo !== 'video' ? 'selected' : ''}>Texto</option>
+          <option value="video" ${ml.tipo === 'video' ? 'selected' : ''}>Vídeo</option>
+        </select></div>
+      <div style="flex:1;min-width:100px"><label>Duração (min)</label>
+        <input type="number" id="ml-duracao" min="1" max="60" value="${ml.duracaoMin || 3}"></div>
+      <div style="flex:1;min-width:100px"><label>Pontos</label>
+        <input type="number" id="ml-pontos" min="0" max="200" value="${ml.pontos != null ? ml.pontos : 10}"></div>
+    </div>
+    <div id="ml-video-wrap" style="${ml.tipo === 'video' ? '' : 'display:none'}">
+      <label>Link do vídeo (YouTube, etc.)</label>
+      <input type="text" id="ml-link" value="${esc(ml.linkVideo || '')}" placeholder="https://...">
+    </div>
+    <label>Conteúdo do treinamento</label>
+    <textarea id="ml-conteudo" style="min-height:140px" placeholder="Texto do microlearning. Para vídeo, descreva os pontos-chave aqui.">${esc(ml.conteudo || '')}</textarea>
+    <button class="btn btn-primary btn-block" style="margin-top:14px" onclick="salvarMicrolearning(${ml.id || 'null'})">${ml.id ? 'Salvar alterações' : 'Criar microlearning'}</button>`;
+}
+
+function _mlToggleTipo() {
+  const tipo = document.getElementById('ml-tipo').value;
+  const w = document.getElementById('ml-video-wrap');
+  if (w) w.style.display = tipo === 'video' ? '' : 'none';
+}
+
+function abrirNovoMicrolearning() {
+  abrirModal('⚡ Novo Microlearning', _microlearningFormHtml(null));
+}
+
+async function editarMicrolearning(id) {
+  try {
+    const list = await api('/api/microlearnings');
+    const ml = list.find(x => x.id === id);
+    if (!ml) return toast('Microlearning não encontrado.', 'erro');
+    abrirModal('⚡ Editar Microlearning', _microlearningFormHtml(ml));
+  } catch (err) { toast(err.message, 'erro'); }
+}
+
+async function salvarMicrolearning(id) {
+  const titulo = document.getElementById('ml-titulo').value.trim();
+  if (!titulo) return toast('Título é obrigatório.', 'erro');
+  const tipo = document.getElementById('ml-tipo').value;
+  const conteudo = document.getElementById('ml-conteudo').value.trim();
+  const linkEl = document.getElementById('ml-link');
+  const linkVideo = linkEl ? linkEl.value.trim() : '';
+  if (!conteudo && !linkVideo) return toast('Informe o conteúdo ou o link do vídeo.', 'erro');
+  const body = {
+    titulo,
+    descricao: document.getElementById('ml-descricao').value.trim(),
+    tipo, conteudo, linkVideo,
+    duracaoMin: Number(document.getElementById('ml-duracao').value) || 3,
+    pontos: Number(document.getElementById('ml-pontos').value) || 10
+  };
+  try {
+    if (id) await api('/api/microlearnings/' + id, { method: 'PUT', body });
+    else await api('/api/microlearnings', { method: 'POST', body });
+    fecharModal();
+    toast(id ? 'Microlearning atualizado!' : 'Microlearning criado!', 'ok');
+    await carregarMicrolearningGestor();
+  } catch (err) { toast(err.message, 'erro'); }
+}
+
+async function excluirMicrolearning(id) {
+  if (!confirm('Excluir este microlearning?')) return;
+  try {
+    await api('/api/microlearnings/' + id, { method: 'DELETE' });
+    toast('Microlearning excluído.', 'ok');
+    await carregarMicrolearningGestor();
+  } catch (err) { toast(err.message, 'erro'); }
+}
+
+/* ── Microlearning (colaborador) ── */
+
+async function carregarMicrolearningColab() {
+  const el = document.getElementById('microlearning-colab-lista');
+  if (!el) return;
+  try {
+    const list = await api('/api/microlearnings');
+    if (!list.length) {
+      el.innerHTML = '<p class="hint" style="text-align:center;padding:24px">Nenhum microlearning disponível no momento.</p>';
+      return;
+    }
+    el.innerHTML = list.map(ml => `
+      <div class="panel" style="margin-bottom:12px">
+        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
+          <div style="flex:1;min-width:200px">
+            <strong>${esc(ml.titulo)}</strong>
+            <span class="hint" style="margin-left:8px">⏱ ${ml.duracaoMin} min · ⭐ ${ml.pontos} pts</span>
+            ${ml.descricao ? `<p style="margin-top:4px;color:var(--texto-sec);font-size:0.9em">${esc(ml.descricao)}</p>` : ''}
+          </div>
+          ${ml.concluido
+            ? '<span class="tag tag-verde">✓ Concluído</span>'
+            : `<button class="btn btn-primary btn-sm" onclick="abrirMicrolearningColab(${ml.id})">Iniciar</button>`}
+        </div>
+      </div>`).join('');
+  } catch (err) { toast(err.message, 'erro'); }
+}
+
+async function abrirMicrolearningColab(id) {
+  try {
+    const list = await api('/api/microlearnings');
+    const ml = list.find(x => x.id === id);
+    if (!ml) return toast('Microlearning não encontrado.', 'erro');
+    const video = (ml.tipo === 'video' && ml.linkVideo)
+      ? `<p style="margin:10px 0"><a class="btn btn-sm" href="${esc(ml.linkVideo)}" target="_blank" rel="noopener">▶ Abrir vídeo</a></p>` : '';
+    abrirModal('⚡ ' + esc(ml.titulo), `
+      <p class="hint">⏱ ${ml.duracaoMin} min · ⭐ ${ml.pontos} pts</p>
+      ${video}
+      <div style="white-space:pre-wrap;line-height:1.5;margin:12px 0">${esc(ml.conteudo || '')}</div>
+      ${ml.concluido
+        ? '<p class="tag tag-verde">✓ Você já concluiu</p>'
+        : `<button class="btn btn-primary btn-block" onclick="concluirMicrolearning(${ml.id})">✓ Concluir e ganhar ${ml.pontos} pts</button>`}`);
+  } catch (err) { toast(err.message, 'erro'); }
+}
+
+async function concluirMicrolearning(id) {
+  try {
+    const r = await api('/api/microlearnings/' + id + '/concluir', { method: 'POST' });
+    fecharModal();
+    toast(`Concluído! +${r.pontos} pts`, 'ok');
+    await carregarMicrolearningColab();
   } catch (err) { toast(err.message, 'erro'); }
 }
 
@@ -5742,7 +5905,7 @@ const COLAB_VIEW_MODULO = {
   mural: 'cultura', comunicados: 'comunicacao', pesquisas: 'comunicacao',
   'feedback-anonimo': 'comunicacao', 'canal-lideranca': 'comunicacao',
   'feedback-plataforma': 'comunicacao', 'meus-certificados': 'aprendizagem', bbs: 'seguranca_op',
-  quiz: 'aprendizagem', academia: 'aprendizagem',
+  quiz: 'aprendizagem', academia: 'aprendizagem', microlearning: 'aprendizagem',
   checkin: 'seguranca_op', observar: 'seguranca_op', sugerir: 'seguranca_op', eleicao: 'cipa',
   'quem-e-quem': 'pessoas', estrutura: 'pessoas', historico: 'pessoas',
   'reconhec-360': 'cultura', 'missoes-center': 'cultura',

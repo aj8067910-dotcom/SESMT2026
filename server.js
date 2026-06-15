@@ -3185,6 +3185,82 @@ route('POST', /^\/api\/battle\/sessoes\/(\d+)\/responder$/, { role: 'colaborador
   sendJson(res, 200, { ok: true, correta, pontos: pts, pontosTotal: part.pontos });
 });
 
+/* ── Microlearning (pílulas de treinamento de 1 a 5 min) ─────── */
+
+route('GET', /^\/api\/microlearnings$/, { role: 'any' }, async (req, res, m, body, s) => {
+  const list = (db.microlearnings || [])
+    .filter(x => x.companyId === s.companyId)
+    .sort((a, b) => b.criadoEm - a.criadoEm);
+  if (s.role === 'colaborador') {
+    return sendJson(res, 200, list.filter(x => x.ativo !== false).map(x => {
+      const { conclusoes, ...rest } = x;
+      return { ...rest, concluido: (conclusoes || []).includes(s.employeeId), totalConclusoes: (conclusoes || []).length };
+    }));
+  }
+  sendJson(res, 200, list.map(x => ({ ...x, totalConclusoes: (x.conclusoes || []).length })));
+});
+
+route('POST', /^\/api\/microlearnings$/, { role: 'gestor' }, async (req, res, m, body, s) => {
+  const titulo = String(body.titulo || '').trim();
+  const conteudo = String(body.conteudo || '').trim();
+  const linkVideo = String(body.linkVideo || '').trim();
+  if (!titulo) return sendJson(res, 400, { error: 'Título é obrigatório.' });
+  if (!conteudo && !linkVideo) return sendJson(res, 400, { error: 'Informe o conteúdo ou o link do vídeo.' });
+  const ml = {
+    id: nextId(), companyId: s.companyId, titulo,
+    descricao: String(body.descricao || '').trim(),
+    conteudo,
+    tipo: body.tipo === 'video' ? 'video' : 'texto',
+    linkVideo,
+    categoria: QUIZ_CATEGORIAS.includes(body.categoria) ? body.categoria : 'Procedimentos Gerais',
+    duracaoMin: Math.min(Math.max(Number(body.duracaoMin) || 3, 1), 60),
+    pontos: Math.max(0, Number(body.pontos) || 10),
+    ativo: true, conclusoes: [], criadoEm: Date.now(), criadoPor: s.userId
+  };
+  if (!db.microlearnings) db.microlearnings = [];
+  db.microlearnings.push(ml);
+  saveDb();
+  sendJson(res, 201, ml);
+});
+
+route('PUT', /^\/api\/microlearnings\/(\d+)$/, { role: 'gestor' }, async (req, res, m, body, s) => {
+  const ml = (db.microlearnings || []).find(x => x.id === Number(m[1]) && x.companyId === s.companyId);
+  if (!ml) return sendJson(res, 404, { error: 'Microlearning não encontrado.' });
+  if (body.titulo !== undefined && String(body.titulo).trim()) ml.titulo = String(body.titulo).trim();
+  if (body.descricao !== undefined) ml.descricao = String(body.descricao).trim();
+  if (body.conteudo !== undefined) ml.conteudo = String(body.conteudo).trim();
+  if (body.tipo !== undefined) ml.tipo = body.tipo === 'video' ? 'video' : 'texto';
+  if (body.linkVideo !== undefined) ml.linkVideo = String(body.linkVideo).trim();
+  if (body.categoria !== undefined && QUIZ_CATEGORIAS.includes(body.categoria)) ml.categoria = body.categoria;
+  if (body.duracaoMin !== undefined) ml.duracaoMin = Math.min(Math.max(Number(body.duracaoMin) || ml.duracaoMin, 1), 60);
+  if (body.pontos !== undefined) ml.pontos = Math.max(0, Number(body.pontos) || 0);
+  if (body.ativo !== undefined) ml.ativo = !!body.ativo;
+  saveDb();
+  sendJson(res, 200, ml);
+});
+
+route('DELETE', /^\/api\/microlearnings\/(\d+)$/, { role: 'gestor' }, async (req, res, m, body, s) => {
+  const idx = (db.microlearnings || []).findIndex(x => x.id === Number(m[1]) && x.companyId === s.companyId);
+  if (idx === -1) return sendJson(res, 404, { error: 'Microlearning não encontrado.' });
+  db.microlearnings.splice(idx, 1);
+  saveDb();
+  sendJson(res, 200, { ok: true });
+});
+
+route('POST', /^\/api\/microlearnings\/(\d+)\/concluir$/, { role: 'colaborador' }, async (req, res, m, body, s) => {
+  const ml = (db.microlearnings || []).find(x => x.id === Number(m[1]) && x.companyId === s.companyId && x.ativo !== false);
+  if (!ml) return sendJson(res, 404, { error: 'Microlearning não encontrado.' });
+  ml.conclusoes = ml.conclusoes || [];
+  if (!ml.conclusoes.includes(s.employeeId)) {
+    ml.conclusoes.push(s.employeeId);
+    if (!db.pontosExtras) db.pontosExtras = [];
+    db.pontosExtras.push({ id: nextId(), empId: s.employeeId, companyId: s.companyId,
+      tipo: 'microlearning', descricao: `⚡ Microlearning: ${ml.titulo.slice(0, 40)}`, pontos: ml.pontos || 10, timestamp: Date.now() });
+    saveDb();
+  }
+  sendJson(res, 200, { ok: true, pontos: ml.pontos || 10 });
+});
+
 /* ── SafePoint 2.3 — Flashcards ─────────────────────────────── */
 
 route('GET', /^\/api\/flashcards$/, { role: 'gestor' }, async (req, res, m, body, s) => {

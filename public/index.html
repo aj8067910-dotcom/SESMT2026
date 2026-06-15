@@ -1196,19 +1196,12 @@
 
     <!-- Microlearning -->
     <section id="view-microlearning" class="view hidden">
-      <h2>Microlearning</h2>
-      <div class="panel">
-        <div class="modulo-em-breve">
-          <div class="modulo-em-breve-icon">⚡</div>
-          <h3>Microlearning</h3>
-          <p>Treinamentos de 1 a 5 minutos projetados para máximo impacto em mínimo tempo. Ideal para operações com pouca disponibilidade.</p>
-          <div class="feature-chips">
-            <span class="chip chip-blue">Vídeos Curtos</span>
-            <span class="chip chip-green">Flashcards</span>
-            <span class="chip chip-purple">Quizzes Rápidos</span>
-          </div>
-        </div>
+      <div class="view-head">
+        <h2>Microlearning</h2>
+        <button class="btn btn-primary" onclick="abrirNovoMicrolearning()">+ Criar Microlearning</button>
       </div>
+      <p class="hint" style="margin-bottom:14px">Pílulas de treinamento de 1 a 5 minutos. O colaborador acessa e conclui na área de Aprendizado, ganhando pontos.</p>
+      <div id="microlearning-lista"></div>
     </section>
 
     <!-- Comunidades -->
@@ -1880,6 +1873,7 @@
       </div>
       <div class="sidebar-items">
         <div class="sidebar-item" data-cview="quiz"    onclick="navegarColab('quiz')">Quiz &amp; DDS</div>
+        <div class="sidebar-item" data-cview="microlearning" onclick="navegarColab('microlearning')">⚡ Microlearning</div>
         <div class="sidebar-item" data-cview="academia" onclick="navegarColab('academia')">Academia SST</div>
       </div>
     </div>
@@ -2075,6 +2069,13 @@
       <h3 style="margin-bottom:14px">🎓 Academia SST</h3>
       <p class="hint" style="margin-bottom:14px">Conteúdos educativos de SST publicados pelo seu SESMT.</p>
       <div id="academia-colab-lista"></div>
+    </section>
+
+    <!-- Microlearning (colaborador) -->
+    <section id="cview-microlearning" class="cview hidden">
+      <h3 style="margin-bottom:14px">⚡ Microlearning</h3>
+      <p class="hint" style="margin-bottom:14px">Pílulas de treinamento de 1 a 5 minutos. Conclua e ganhe pontos.</p>
+      <div id="microlearning-colab-lista"></div>
     </section>
 
     <!-- Eleição CIPA (colaborador) -->
