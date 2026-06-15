@@ -1,5 +1,5 @@
 'use strict';
-const CACHE = 'safepoint-v3';
+const CACHE = 'safepoint-v4';
 const STATIC_HTML = ['/', '/index.html'];
 const QUEUE_DB_NAME = 'sp-offline-queue';
 const QUEUE_STORE = 'requests';

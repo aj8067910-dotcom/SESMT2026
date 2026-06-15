@@ -422,6 +422,10 @@ async function iniciar() {
     const badgesEl = document.getElementById('colab-role-badges');
     if (badgesEl) badgesEl.innerHTML = renderRoleBadgesMini(me.roles || []);
     document.getElementById('app-colab').classList.remove('hidden');
+    try {
+      const sc = await api('/api/empresa/submodulos');
+      aplicarConfigModulosColab(sc.submodulos);
+    } catch {}
     await carregarPainelColaborador();
     verificarCheckinPendente();
     // first-access check after rendering app
@@ -3612,26 +3616,45 @@ function renderComparativo(list) {
     </div>`).join('');
 }
 
-/* ── Polling battle ── */
+/* ── Battle: sincronização ao vivo via SSE (push instantâneo, sem delay) ── */
+
+let _battleES = null;          // EventSource da sessão atual
+let _battleLastState = null;   // último estado recebido (para animar a barra de tempo)
 
 function iniciarPollBattle(id, role) {
   pararPollBattle();
-  _pollBattleOnce(id, role);
-  _battlePollTimer = setInterval(() => _pollBattleOnce(id, role), 1000);
-}
-function pararPollBattle() {
-  if (_battlePollTimer) { clearInterval(_battlePollTimer); _battlePollTimer = null; }
-}
-async function _pollBattleOnce(id, role) {
-  try {
-    const s = await api(`/api/battle/sessoes/${id}`);
+  _battleES = new EventSource(`/api/battle/sessoes/${id}/stream`);
+  _battleES.onmessage = (ev) => {
+    let s; try { s = JSON.parse(ev.data); } catch { return; }
+    _battleLastState = s;
     if (role === 'gestor') renderBattleSalaGestor(s);
     else renderBattleSalaColab(s);
     if (s.status === 'finalizada') {
       pararPollBattle();
       if (role === 'colab') _battleColabSessaoId = null;
     }
-  } catch { /* silent */ }
+  };
+  _battleES.onerror = () => { /* o navegador reconecta o EventSource automaticamente */ };
+  // ticker local só para animar a barra de tempo entre eventos (NÃO consulta o servidor)
+  _battlePollTimer = setInterval(_atualizarBarraTempoBattle, 250);
+}
+
+function pararPollBattle() {
+  if (_battleES) { _battleES.close(); _battleES = null; }
+  if (_battlePollTimer) { clearInterval(_battlePollTimer); _battlePollTimer = null; }
+  _battleLastState = null;
+}
+
+function _atualizarBarraTempoBattle() {
+  const s = _battleLastState;
+  if (!s || s.status !== 'ativa' || s.mostrandoResultado) return;
+  // gestor: s.questaoIniciadaEm / s.tempoPorQuestao ; colaborador: s.questao.iniciadaEm / s.questao.tempoPorQuestao
+  const iniciadaEm = s.questaoIniciadaEm || (s.questao && s.questao.iniciadaEm);
+  const tempoTotal = s.tempoPorQuestao || (s.questao && s.questao.tempoPorQuestao);
+  if (!iniciadaEm || !tempoTotal) return;
+  const elapsed = (Date.now() - iniciadaEm) / 1000;
+  const pct = Math.max(0, Math.min(100, Math.round(((tempoTotal - elapsed) / tempoTotal) * 100)));
+  document.querySelectorAll('.battle-timer-bar').forEach(b => { b.style.width = pct + '%'; });
 }
 
 /* ── Histórico completo ── */
@@ -5602,6 +5625,13 @@ const MODULO_NOMES = {
   relatorios:'Relatórios', ia_insights:'IA e Insights', config:'Configurações',
 };
 
+/* Fonte única de nome de módulo: garante que MODULOS_LABELS (tela do admin master,
+ * cadastro de empresa) use exatamente o mesmo nome de MODULO_NOMES (gestor/colaborador)
+ * para qualquer chave em comum. Evita divergências como "Brigada" x "Brigada de Emergência". */
+for (const k of Object.keys(MODULO_NOMES)) {
+  if (MODULOS_LABELS[k] !== undefined) MODULOS_LABELS[k] = MODULO_NOMES[k];
+}
+
 const PERMISSION_LABELS = {
   criar_dds:'Criar DDS', editar_dds:'Editar DDS', excluir_dds:'Excluir DDS',
   criar_quiz:'Criar Quiz', gerenciar_pontos:'Gerenciar Pontos',
@@ -5694,6 +5724,42 @@ function aplicarConfigModulos(submodulos, moduleNames) {
     const labelEl = sbEl.querySelector('.sm-label') || sbEl.querySelector('span:last-child');
     if (labelEl) labelEl.textContent = nome || MODULO_NOMES[mod];
   }
+}
+
+/* Mapeia cada item do menu do COLABORADOR (data-cview) para a chave do módulo
+ * controlado pelo admin master. Itens sem mapeamento ficam sempre visíveis
+ * (ex.: "perfil"). */
+const COLAB_VIEW_MODULO = {
+  painel: 'dashboard',
+  mural: 'cultura', comunicados: 'comunicacao', pesquisas: 'comunicacao',
+  'feedback-anonimo': 'comunicacao', 'canal-lideranca': 'comunicacao',
+  'feedback-plataforma': 'comunicacao', 'meus-certificados': 'aprendizagem', bbs: 'seguranca_op',
+  quiz: 'aprendizagem', academia: 'aprendizagem',
+  checkin: 'seguranca_op', observar: 'seguranca_op', sugerir: 'seguranca_op', eleicao: 'cipa',
+  'quem-e-quem': 'pessoas', estrutura: 'pessoas', historico: 'pessoas',
+  'reconhec-360': 'cultura', 'missoes-center': 'cultura',
+};
+
+/* Aplica as licenças de módulo ao menu do colaborador: módulo desativado
+ * pelo admin master (_modulo === false) some do menu — igual ao gestor. */
+function aplicarConfigModulosColab(submodulos) {
+  if (!submodulos) return;
+  const moduloAtivo = (modKey) => {
+    if (!modKey) return true;
+    const modData = submodulos[modKey] || {};
+    return modData._modulo !== false;
+  };
+  document.querySelectorAll('#sidebar-colab .sidebar-item[data-cview]').forEach(item => {
+    const v = item.getAttribute('data-cview');
+    item.style.display = moduloAtivo(COLAB_VIEW_MODULO[v]) ? '' : 'none';
+  });
+  // esconde a seção inteira quando todos os seus itens estão ocultos
+  document.querySelectorAll('#sidebar-colab .sidebar-module').forEach(sec => {
+    const itens = sec.querySelectorAll('.sidebar-item[data-cview]');
+    if (!itens.length) return;
+    const algumVisivel = [...itens].some(it => it.style.display !== 'none');
+    sec.style.display = algumVisivel ? '' : 'none';
+  });
 }
 
 /* ── SafePoint 3.2 – Permissões ── */

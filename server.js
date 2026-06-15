@@ -832,6 +832,36 @@ function battleEstado(session, empId) {
   };
 }
 
+/* Estado do battle conforme o perfil — fonte única usada pelo GET e pelo SSE. */
+function buildBattleState(session, role, employeeId) {
+  if (role === 'gestor') {
+    const qi = session.questaoAtual;
+    const q = (db.questoes || []).find(x => x.id === session.questoes[qi]);
+    const respostasQ = session.participantes.map(p => {
+      const r = (p.respostas || []).find(r => r.questaoIdx === qi);
+      return r ? { empId: p.empId, nome: p.nome, correta: r.correta, tempo: r.tempo } : null;
+    }).filter(Boolean);
+    return { ...session, questaoAtualObj: q || null, respostasQuestaoAtual: respostasQ,
+      ranking: battleRanking(session),
+      taxaAcerto: respostasQ.length ? Math.round((respostasQ.filter(r => r.correta).length / respostasQ.length) * 100) : null };
+  }
+  return battleEstado(session, employeeId);
+}
+
+/* ── DDS Battle — sincronização ao vivo via SSE (push instantâneo) ── */
+const battleSseClients = new Set(); // { res, sessionId, role, employeeId }
+
+function battleBroadcast(sessionId) {
+  const session = (db.battleSessions || []).find(x => x.id === sessionId);
+  for (const c of battleSseClients) {
+    if (c.sessionId !== sessionId) continue;
+    try {
+      const estado = session ? buildBattleState(session, c.role, c.employeeId) : { status: 'finalizada' };
+      c.res.write(`data: ${JSON.stringify(estado)}\n\n`);
+    } catch (e) { battleSseClients.delete(c); }
+  }
+}
+
 /* ── Ciclo Fechado de Aprendizagem — engine ───────────────────── */
 
 async function processarCicloBattle(battleId, companyId) {
@@ -3020,18 +3050,25 @@ route('GET', /^\/api\/battle\/sessoes$/, { role: 'gestor' }, async (req, res, m,
 route('GET', /^\/api\/battle\/sessoes\/(\d+)$/, { role: 'any' }, async (req, res, m, body, s) => {
   const session = (db.battleSessions || []).find(x => x.id === Number(m[1]) && x.companyId === s.companyId);
   if (!session) return sendJson(res, 404, { error: 'Sessão não encontrada.' });
-  if (s.role === 'gestor') {
-    const qi = session.questaoAtual;
-    const q = (db.questoes || []).find(x => x.id === session.questoes[qi]);
-    const respostasQ = session.participantes.map(p => {
-      const r = (p.respostas || []).find(r => r.questaoIdx === qi);
-      return r ? { empId: p.empId, nome: p.nome, correta: r.correta, tempo: r.tempo } : null;
-    }).filter(Boolean);
-    return sendJson(res, 200, { ...session, questaoAtualObj: q || null, respostasQuestaoAtual: respostasQ,
-      ranking: battleRanking(session),
-      taxaAcerto: respostasQ.length ? Math.round((respostasQ.filter(r => r.correta).length / respostasQ.length) * 100) : null });
-  }
-  sendJson(res, 200, battleEstado(session, s.employeeId));
+  sendJson(res, 200, buildBattleState(session, s.role, s.employeeId));
+});
+
+/* Stream SSE: empurra o estado do battle no instante em que ele muda (sem delay). */
+route('GET', /^\/api\/battle\/sessoes\/(\d+)\/stream$/, { role: 'any' }, async (req, res, m, body, s) => {
+  const session = (db.battleSessions || []).find(x => x.id === Number(m[1]) && x.companyId === s.companyId);
+  if (!session) return sendJson(res, 404, { error: 'Sessão não encontrada.' });
+  res.writeHead(200, {
+    'Content-Type': 'text/event-stream; charset=utf-8',
+    'Cache-Control': 'no-cache, no-transform',
+    'Connection': 'keep-alive',
+    'X-Accel-Buffering': 'no'
+  });
+  res.write('retry: 2000\n\n');
+  const client = { res, sessionId: session.id, role: s.role, employeeId: s.employeeId };
+  battleSseClients.add(client);
+  try { res.write(`data: ${JSON.stringify(buildBattleState(session, s.role, s.employeeId))}\n\n`); } catch (e) {}
+  const keep = setInterval(() => { try { res.write(': keep-alive\n\n'); } catch (e) {} }, 25000);
+  req.on('close', () => { clearInterval(keep); battleSseClients.delete(client); });
 });
 
 route('POST', /^\/api\/battle\/entrar$/, { role: 'colaborador' }, async (req, res, m, body, s) => {
@@ -3043,6 +3080,7 @@ route('POST', /^\/api\/battle\/entrar$/, { role: 'colaborador' }, async (req, re
   if (!session.participantes.find(p => p.empId === emp.id)) {
     session.participantes.push({ empId: emp.id, nome: emp.nome, pontos: 0, acertos: 0, respostas: [] });
     saveDb();
+    battleBroadcast(session.id); // gestor vê o novo participante na hora
   }
   sendJson(res, 200, { ok: true, sessaoId: session.id, titulo: session.titulo, status: session.status });
 });
@@ -3064,6 +3102,7 @@ route('POST', /^\/api\/battle\/sessoes\/(\d+)\/iniciar$/, { role: 'gestor' }, as
   session.status = 'ativa'; session.questaoAtual = 0;
   session.questaoIniciadaEm = Date.now(); session.mostrandoResultado = false;
   saveDb();
+  battleBroadcast(session.id);
   sendJson(res, 200, { ok: true });
 });
 
@@ -3085,6 +3124,7 @@ route('POST', /^\/api\/battle\/sessoes\/(\d+)\/avancar$/, { role: 'gestor' }, as
       txAcerto: respostas.length ? Math.round((acertos / respostas.length) * 100) : 0
     };
     saveDb();
+    battleBroadcast(session.id);
     return sendJson(res, 200, { ok: true, mostrandoResultado: true, resultado: session.ultimoResultado });
   }
   // Avançar para próxima questão
@@ -3104,12 +3144,14 @@ route('POST', /^\/api\/battle\/sessoes\/(\d+)\/avancar$/, { role: 'gestor' }, as
       }
     }
     saveDb();
+    battleBroadcast(session.id);
     // Ciclo Fechado de Aprendizagem — analisar resultados da battle
     processarCicloBattle(session.id, s.companyId).catch(() => {});
     return sendJson(res, 200, { ok: true, finalizado: true, ranking: battleRanking(session) });
   }
   session.questaoIniciadaEm = Date.now();
   saveDb();
+  battleBroadcast(session.id);
   sendJson(res, 200, { ok: true, questaoAtual: session.questaoAtual });
 });
 
@@ -3139,6 +3181,7 @@ route('POST', /^\/api\/battle\/sessoes\/(\d+)\/responder$/, { role: 'colaborador
     if (q.contRespostasAposReforco >= 3) q.estado = 'ativo';
   }
   saveDb();
+  battleBroadcast(session.id); // placar do gestor atualiza no instante da resposta
   sendJson(res, 200, { ok: true, correta, pontos: pts, pontosTotal: part.pontos });
 });
 
@@ -3636,7 +3679,7 @@ function contarVotos(eleicao) {
 
 /* ── SafePoint 3.2 — Submódulos ─────────────────────────────── */
 
-route('GET', /^\/api\/empresa\/submodulos$/, { role: 'gestor' }, async (req, res, m, body, s) => {
+route('GET', /^\/api\/empresa\/submodulos$/, { role: 'any' }, async (req, res, m, body, s) => {
   const comp = db.companies.find(c => c.id === s.companyId);
   if (!comp) return sendJson(res, 404, { error: 'Empresa não encontrada.' });
   sendJson(res, 200, { submodulos: comp.submodulos || DEFAULT_SUBMODULOS, labels: SUBMODULO_LABELS, moduleNames: comp.moduleNames || {} });
