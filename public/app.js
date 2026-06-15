@@ -3409,16 +3409,20 @@ function renderBattleSalaGestor(s) {
   } else if (s.status === 'ativa') {
     const q = s.questaoAtualObj;
     if (!q) return;
-    const pct = Math.max(0, Math.round(((s.tempoPorQuestao-(s.tempoDecorrido||0))/s.tempoPorQuestao)*100));
+    // gestor: session is spread, so questaoAtual is 0-indexed and questoes is the ID array
+    const numAtual = s.questaoAtual + 1;
+    const numTotal = s.questoes?.length || '?';
+    const elapsed = s.questaoIniciadaEm ? Math.floor((Date.now() - s.questaoIniciadaEm) / 1000) : 0;
+    const pct = s.tempoPorQuestao ? Math.max(0, Math.round(((s.tempoPorQuestao - elapsed) / s.tempoPorQuestao) * 100)) : 100;
     if (s.mostrandoResultado) {
       const ci = (q.opcoes||[]).findIndex(o=>o.correta);
       el.innerHTML = `<div class="battle-sala-wrap">
         <div class="battle-sala-header">
-          <div class="battle-sala-titulo">Questão ${s.questaoAtual}/${s.totalQuestoes}</div>
+          <div class="battle-sala-titulo">Questão ${numAtual}/${numTotal}</div>
           <button class="btn" style="background:rgba(255,255,255,.15);color:#fff" onclick="fecharBattleSala()">✕</button>
         </div>
         <div class="battle-resultado-wrap">
-          <div class="battle-correta-label">✅ ${letras[ci]}) ${esc(q.opcoes[ci]?.texto||'')}</div>
+          <div class="battle-correta-label">✅ ${letras[ci >= 0 ? ci : 0]}) ${esc(q.opcoes[ci >= 0 ? ci : 0]?.texto||'')}</div>
           <h3 style="margin-bottom:12px">Top 5</h3>
           <div class="battle-ranking-preview">
             ${(s.ranking||[]).slice(0,5).map((r,i)=>`
@@ -3430,21 +3434,25 @@ function renderBattleSalaGestor(s) {
           </div>
         </div>
         <button class="btn btn-primary btn-block" style="margin-top:18px;font-size:16px" onclick="avancarBattle(${s.id})">
-          ${s.questaoAtual>=s.totalQuestoes?'🏆 Finalizar Battle':'▶ Próxima Questão'}
+          ${numAtual >= numTotal ? '🏆 Finalizar Battle' : '▶ Próxima Questão'}
         </button>
       </div>`;
     } else {
+      // Count responses for current question (qi is 0-indexed = s.questaoAtual)
       const rc = {};
-      (s.participantes||[]).forEach(p => { const r=p.respostas?.[s.questaoAtual-1]; if(r!==undefined) rc[r]=(rc[r]||0)+1; });
+      (s.participantes||[]).forEach(p => {
+        const r = (p.respostas||[]).find(r => r.questaoIdx === s.questaoAtual);
+        if (r !== undefined) rc[r.opcao] = (rc[r.opcao] || 0) + 1;
+      });
       const total = Object.values(rc).reduce((a,b)=>a+b,0);
       el.innerHTML = `<div class="battle-sala-wrap">
         <div class="battle-sala-header">
-          <div class="battle-sala-titulo">Questão ${s.questaoAtual}/${s.totalQuestoes}</div>
+          <div class="battle-sala-titulo">Questão ${numAtual}/${numTotal}</div>
           <button class="btn" style="background:rgba(255,255,255,.15);color:#fff" onclick="fecharBattleSala()">✕</button>
         </div>
         <div class="battle-pergunta-wrap">
-          <div class="battle-pergunta-num">Questão ${s.questaoAtual} de ${s.totalQuestoes}</div>
-          <div class="battle-pergunta-texto">${esc(q.pergunta)}</div>
+          <div class="battle-pergunta-num">Questão ${numAtual} de ${numTotal}</div>
+          <div class="battle-pergunta-texto">${esc(q.texto)}</div>
         </div>
         <div class="battle-timer-bar-wrap"><div class="battle-timer-bar" style="width:${pct}%"></div></div>
         <div style="text-align:center;font-size:13px;color:#93c5fd;margin-bottom:10px">${total}/${(s.participantes||[]).length} responderam</div>
@@ -3619,7 +3627,10 @@ async function _pollBattleOnce(id, role) {
     const s = await api(`/api/battle/sessoes/${id}`);
     if (role === 'gestor') renderBattleSalaGestor(s);
     else renderBattleSalaColab(s);
-    if (s.status === 'finalizada') pararPollBattle();
+    if (s.status === 'finalizada') {
+      pararPollBattle();
+      if (role === 'colab') _battleColabSessaoId = null;
+    }
   } catch { /* silent */ }
 }
 
@@ -4558,6 +4569,23 @@ let _battleUltimaQuestaoNum = -1;
 async function carregarBattleColab() {
   const el = document.getElementById('battle-colab-area');
   if (!el) return;
+
+  // Se já está em poll ativo, não reinicia (aba voltou ao foco)
+  if (_battleColabSessaoId && _battlePollTimer) return;
+
+  // Verifica se há sessão ativa no servidor para este colaborador
+  try {
+    const minha = await api('/api/battle/minha-sessao');
+    if (minha.sessaoId) {
+      _battleColabSessaoId = minha.sessaoId;
+      _battleMinhaUltimaResposta = null;
+      _battleUltimaQuestaoNum = -1;
+      iniciarPollBattle(minha.sessaoId, 'colab');
+      return;
+    }
+  } catch {}
+
+  // Nenhuma sessão ativa — mostrar formulário de entrada
   pararPollBattle();
   _battleColabSessaoId = null;
   _battleMinhaUltimaResposta = null;

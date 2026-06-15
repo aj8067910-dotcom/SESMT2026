@@ -3047,6 +3047,16 @@ route('POST', /^\/api\/battle\/entrar$/, { role: 'colaborador' }, async (req, re
   sendJson(res, 200, { ok: true, sessaoId: session.id, titulo: session.titulo, status: session.status });
 });
 
+route('GET', /^\/api\/battle\/minha-sessao$/, { role: 'colaborador' }, async (req, res, m, body, s) => {
+  const sessao = (db.battleSessions || []).find(x =>
+    x.companyId === s.companyId &&
+    ['aguardando', 'ativa'].includes(x.status) &&
+    x.participantes.some(p => p.empId === s.employeeId)
+  );
+  if (!sessao) return sendJson(res, 200, { sessaoId: null });
+  sendJson(res, 200, { sessaoId: sessao.id, titulo: sessao.titulo, status: sessao.status });
+});
+
 route('POST', /^\/api\/battle\/sessoes\/(\d+)\/iniciar$/, { role: 'gestor' }, async (req, res, m, body, s) => {
   const session = (db.battleSessions || []).find(x => x.id === Number(m[1]) && x.companyId === s.companyId);
   if (!session) return sendJson(res, 404, { error: 'Sessão não encontrada.' });
