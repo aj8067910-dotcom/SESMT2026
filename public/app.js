@@ -3617,7 +3617,7 @@ function renderComparativo(list) {
 function iniciarPollBattle(id, role) {
   pararPollBattle();
   _pollBattleOnce(id, role);
-  _battlePollTimer = setInterval(() => _pollBattleOnce(id, role), 2000);
+  _battlePollTimer = setInterval(() => _pollBattleOnce(id, role), 1000);
 }
 function pararPollBattle() {
   if (_battlePollTimer) { clearInterval(_battlePollTimer); _battlePollTimer = null; }
@@ -4630,7 +4630,14 @@ function renderBattleSalaColab(s) {
       </div>`;
   } else if (s.status === 'ativa') {
     const q = s.questao;  // server returns 'questao', not 'questaoAtualObj'
-    if (!q) return;
+    if (!q) {
+      el.innerHTML = `<div class="battle-play-wrap" style="text-align:center">
+        <div style="font-size:36px;margin-bottom:10px">⚡</div>
+        <div style="font-size:16px;font-weight:700;color:#fbbf24">Battle iniciada!</div>
+        <div style="font-size:13px;color:#93c5fd;margin-top:8px">Carregando questão...</div>
+      </div>`;
+      return;
+    }
     if (s.mostrandoResultado) {
       // resultado: server puts correct answer in s.resultadoQuestao
       const res = s.resultadoQuestao || {};

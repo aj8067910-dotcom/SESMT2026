@@ -1,6 +1,6 @@
 'use strict';
-const CACHE = 'safepoint-v2';
-const STATIC = ['/', '/index.html', '/app.js', '/style.css', '/logo.svg'];
+const CACHE = 'safepoint-v3';
+const STATIC_HTML = ['/', '/index.html'];
 const QUEUE_DB_NAME = 'sp-offline-queue';
 const QUEUE_STORE = 'requests';
 
@@ -45,7 +45,8 @@ async function replayQueue() {
 }
 
 self.addEventListener('install', e => {
-  e.waitUntil(caches.open(CACHE).then(c => c.addAll(STATIC)).then(() => self.skipWaiting()));
+  // Only pre-cache HTML; JS/CSS always fetched fresh from network
+  e.waitUntil(caches.open(CACHE).then(c => c.addAll(STATIC_HTML)).then(() => self.skipWaiting()));
 });
 
 self.addEventListener('activate', e => {
@@ -57,30 +58,49 @@ self.addEventListener('activate', e => {
 
 self.addEventListener('fetch', e => {
   const url = new URL(e.request.url);
-  if (e.request.method === 'GET' && !url.pathname.startsWith('/api/')) {
-    e.respondWith(caches.match(e.request).then(cached => cached || fetch(e.request).then(resp => {
-      const clone = resp.clone();
-      caches.open(CACHE).then(c => c.put(e.request, clone));
-      return resp;
-    })));
+  if (e.request.method !== 'GET' && !['POST','PUT','DELETE'].includes(e.request.method)) return;
+
+  if (url.pathname.startsWith('/api/')) {
+    if (e.request.method === 'GET') {
+      // Network-first for API reads
+      e.respondWith(fetch(e.request).catch(() => caches.match(e.request)));
+    } else {
+      // Queue writes when offline
+      e.respondWith(
+        e.request.clone().text().then(bodyText =>
+          fetch(e.request).catch(async () => {
+            await enqueueRequest(e.request.url, e.request.method, bodyText, e.request.headers);
+            return new Response(JSON.stringify({ ok: true, queued: true, offline: true }), {
+              status: 200, headers: { 'Content-Type': 'application/json' }
+            });
+          })
+        )
+      );
+    }
     return;
   }
-  if (e.request.method === 'GET' && url.pathname.startsWith('/api/')) {
-    e.respondWith(fetch(e.request).catch(() => caches.match(e.request)));
-    return;
-  }
-  if (['POST', 'PUT', 'DELETE'].includes(e.request.method) && url.pathname.startsWith('/api/')) {
-    e.respondWith(
-      e.request.clone().text().then(bodyText =>
-        fetch(e.request).catch(async () => {
-          await enqueueRequest(e.request.url, e.request.method, bodyText, e.request.headers);
-          return new Response(JSON.stringify({ ok: true, queued: true, offline: true }), {
-            status: 200, headers: { 'Content-Type': 'application/json' }
-          });
-        })
-      )
-    );
-    return;
+
+  if (e.request.method === 'GET') {
+    const isJSorCSS = url.pathname.endsWith('.js') || url.pathname.endsWith('.css');
+    if (isJSorCSS) {
+      // Network-first for JS/CSS — always get fresh code; cache only as offline fallback
+      e.respondWith(
+        fetch(e.request).then(resp => {
+          const clone = resp.clone();
+          caches.open(CACHE).then(c => c.put(e.request, clone));
+          return resp;
+        }).catch(() => caches.match(e.request))
+      );
+    } else {
+      // Cache-first for HTML/images/svg
+      e.respondWith(
+        caches.match(e.request).then(cached => cached || fetch(e.request).then(resp => {
+          const clone = resp.clone();
+          caches.open(CACHE).then(c => c.put(e.request, clone));
+          return resp;
+        }))
+      );
+    }
   }
 });
 
