@@ -3155,6 +3155,14 @@ async function confirmarImportarCSV() {
 /* ── DDS Battle (gestor) ── */
 
 async function carregarBattleGestor() {
+  // Ao (re)entrar na aba, sempre volta para a LISTA de sessões — evita reabrir
+  // direto numa sala/resultado de uma sessão antiga que ficou aberta.
+  pararPollBattle();
+  _battleSessaoAtiva = null;
+  const main = document.getElementById('battle-gestor-main');
+  const sala = document.getElementById('battle-sala');
+  if (main) main.classList.remove('hidden');
+  if (sala) { sala.classList.add('hidden'); sala.innerHTML = ''; }
   const el = document.getElementById('battle-sessoes-lista');
   if (!el) return;
   try {
