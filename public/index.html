@@ -18,6 +18,7 @@
     <div class="login-tabs">
       <button id="tab-gestor" class="login-tab active" onclick="trocarAbaLogin('gestor')">Gestor</button>
       <button id="tab-colab" class="login-tab" onclick="trocarAbaLogin('colaborador')">Colaborador</button>
+      <button id="tab-admin" class="login-tab" onclick="trocarAbaLogin('admin')">Admin Master</button>
     </div>
 
     <form id="form-login-gestor" onsubmit="return loginGestor(event)">
@@ -35,6 +36,15 @@
       <p class="hint">Acesso de visualização: consulte seus pontos, histórico e posição no ranking.</p>
     </form>
 
+    <form id="form-login-admin" class="hidden" onsubmit="return loginAdmin(event)">
+      <label>Usuário</label>
+      <input type="text" id="login-admin-usuario" autocomplete="username" required>
+      <label>Senha</label>
+      <input type="password" id="login-admin-senha" autocomplete="current-password" required>
+      <button type="submit" class="btn btn-primary btn-block">Entrar como Admin Master</button>
+      <p class="hint">Controle de licenças/módulos do sistema.</p>
+    </form>
+
     <p id="login-erro" class="erro hidden"></p>
   </div>
 </div>
@@ -43,13 +53,7 @@
 <div id="app-gestor" class="hidden">
   <header class="topbar">
     <div class="topbar-title">🦺 SESMT 2026 <span class="badge">Gestor</span></div>
-    <nav class="topbar-nav">
-      <button data-view="dashboard" class="nav-btn active" onclick="navegar('dashboard')">Painel</button>
-      <button data-view="eventos" class="nav-btn" onclick="navegar('eventos')">Atividades</button>
-      <button data-view="colaboradores" class="nav-btn" onclick="navegar('colaboradores')">Colaboradores</button>
-      <button data-view="ranking" class="nav-btn" onclick="navegar('ranking')">Ranking</button>
-      <button data-view="config" class="nav-btn" onclick="navegar('config')">Configurações</button>
-    </nav>
+    <nav class="topbar-nav" id="gestor-nav"></nav>
     <div class="topbar-user">
       <span id="gestor-nome"></span>
       <button class="btn btn-sm" onclick="sair()">Sair</button>
@@ -114,6 +118,15 @@
       <table class="tabela" id="tabela-ranking"></table>
     </section>
 
+    <!-- DDS Battle (console do gestor) -->
+    <section id="view-ddsbattle" class="view hidden">
+      <div class="view-head">
+        <h2>⚡ DDS Battle <span class="hint" style="font-weight:400">— quiz de segurança ao vivo</span></h2>
+        <span id="battle-status-badge" class="badge"></span>
+      </div>
+      <div id="battle-gestor"></div>
+    </section>
+
     <!-- Configurações -->
     <section id="view-config" class="view hidden">
       <h2>Configurações</h2>
@@ -148,6 +161,7 @@
     </div>
   </header>
   <main class="container">
+    <div id="colab-battle"></div>
     <div id="colab-cards" class="cards"></div>
     <div class="grid-2">
       <div class="panel">
@@ -162,6 +176,38 @@
     <div class="panel">
       <h3>Meu histórico de participação</h3>
       <table class="tabela" id="colab-historico"></table>
+    </div>
+  </main>
+</div>
+
+<!-- ===================== APP ADMIN MASTER ===================== -->
+<div id="app-admin" class="hidden">
+  <header class="topbar">
+    <div class="topbar-title">🦺 SESMT 2026 <span class="badge badge-roxo">Admin Master</span></div>
+    <div class="topbar-user">
+      <span id="admin-nome"></span>
+      <button class="btn btn-sm" onclick="sair()">Sair</button>
+    </div>
+  </header>
+  <main class="container">
+    <h2>Licenças de acesso aos módulos</h2>
+    <p class="hint">Ative ou desative módulos do sistema. Ao desativar, o módulo <b>desaparece do menu</b> do gestor/colaborador e fica <b>bloqueado no servidor</b>. Módulos essenciais (Painel e Configurações) ficam sempre ativos.</p>
+    <div class="grid-2">
+      <div class="panel">
+        <h3>Módulos</h3>
+        <div id="admin-modulos"></div>
+        <button class="btn btn-primary" style="margin-top:14px" onclick="salvarModulos()">Salvar licenças</button>
+      </div>
+      <div class="panel">
+        <h3>Alterar senha do admin master</h3>
+        <form onsubmit="return alterarSenhaAdmin(event)">
+          <label>Senha atual</label>
+          <input type="password" id="admin-senha-atual" required>
+          <label>Nova senha (mín. 6 caracteres)</label>
+          <input type="password" id="admin-senha-nova" required minlength="6">
+          <button class="btn btn-primary" type="submit">Alterar senha</button>
+        </form>
+      </div>
     </div>
   </main>
 </div>

@@ -197,3 +197,66 @@ body {
 .ponto-linha { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
 .ponto-linha span { flex: 1; font-size: 14px; }
 .ponto-linha input { width: 80px; text-align: center; }
+
+/* ---------- Admin master / licenças ---------- */
+.badge-roxo { background: #6d3bd1; }
+.lic-linha {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 11px 12px; border: 1px solid var(--cinza-borda); border-radius: 10px; margin-bottom: 8px;
+}
+.lic-linha.lic-core { background: #f7f9fc; }
+.lic-nome { font-weight: 600; font-size: 14.5px; }
+.lic-nome small { color: var(--texto-suave); font-weight: 400; }
+.switch { position: relative; display: inline-block; width: 46px; height: 26px; flex: 0 0 auto; }
+.switch input { opacity: 0; width: 0; height: 0; }
+.switch .slider {
+  position: absolute; inset: 0; background: #c4ccd6; border-radius: 26px; transition: .2s; cursor: pointer;
+}
+.switch .slider::before {
+  content: ""; position: absolute; height: 20px; width: 20px; left: 3px; top: 3px;
+  background: #fff; border-radius: 50%; transition: .2s;
+}
+.switch input:checked + .slider { background: var(--verde); }
+.switch input:checked + .slider::before { transform: translateX(20px); }
+.switch input:disabled + .slider { opacity: .55; cursor: not-allowed; }
+
+/* ---------- DDS Battle ---------- */
+.pergunta-draft { border: 1px solid var(--cinza-borda); border-radius: 10px; padding: 12px; margin-bottom: 12px; }
+.pergunta-draft > input { width: 100%; padding: 9px; border: 1px solid var(--cinza-borda); border-radius: 8px; margin-bottom: 8px; }
+.pergunta-draft-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+.op-draft { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+.op-draft input[type="text"] { flex: 1; padding: 7px; border: 1px solid var(--cinza-borda); border-radius: 7px; }
+.op-draft input[type="radio"] { width: 18px; height: 18px; flex: 0 0 auto; }
+
+.battle-stage { text-align: center; }
+.battle-stage h3 { font-size: 19px; }
+.battle-contador { font-size: 52px; font-weight: 800; color: var(--azul); line-height: 1; margin-top: 8px; }
+.battle-q-head { font-size: 13px; color: var(--texto-suave); font-weight: 700; margin-bottom: 6px; display: flex; gap: 10px; align-items: center; justify-content: center; }
+.battle-enunciado { font-size: 21px; color: var(--texto); margin: 6px 0 16px; }
+.ops-ao-vivo { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 8px; }
+@media (max-width: 560px) { .ops-ao-vivo { grid-template-columns: 1fr; } }
+.op-ao-vivo {
+  background: #eef3fa; border: 2px solid transparent; border-radius: 10px; padding: 14px; font-size: 15px;
+  font-weight: 600; text-align: left; display: flex; align-items: center; gap: 10px;
+}
+.op-ao-vivo.op-correta { background: #e3f5ea; border-color: var(--verde); color: var(--verde); }
+.op-letra {
+  display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px;
+  background: var(--azul); color: #fff; border-radius: 6px; font-weight: 800; flex: 0 0 auto; font-size: 13px;
+}
+
+/* battle colaborador */
+.battle-colab { margin-bottom: 16px; }
+.destaque-battle { border: 2px solid var(--laranja); }
+.ops-colab { display: grid; gap: 10px; }
+.op-colab {
+  width: 100%; text-align: left; background: #fff; border: 2px solid var(--cinza-borda); border-radius: 12px;
+  padding: 16px; font-size: 16px; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 12px;
+}
+.op-colab:hover:not(:disabled) { border-color: var(--azul); background: #f3f8ff; }
+.op-colab:disabled { cursor: default; opacity: .85; }
+.op-colab.op-escolhida { border-color: var(--azul); background: #eaf2ff; }
+.op-colab.op-correta { border-color: var(--verde); background: #e3f5ea; color: var(--verde); }
+.op-colab.op-errada { border-color: var(--vermelho); background: #fbeaea; color: var(--vermelho); }
+.battle-acerto { color: var(--verde); font-weight: 800; font-size: 17px; margin-top: 12px; text-align: center; }
+.battle-erro-msg { color: var(--vermelho); font-weight: 800; font-size: 17px; margin-top: 12px; text-align: center; }

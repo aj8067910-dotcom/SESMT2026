@@ -35,6 +35,56 @@ const DEFAULT_POINTS = {
   'Sala de Orientação': 1
 };
 
+/*
+ * Registro ÚNICO de módulos do sistema. É a única fonte do nome de cada módulo:
+ * usado no menu do gestor, na tela do colaborador e na tela do admin master.
+ * Assim o nome NUNCA diverge entre os perfis.
+ *   - core: true  => módulo não pode ser desligado (evita travar o sistema).
+ *   - licenciavel  => aparece na tela de licenças do admin master.
+ */
+const MODULES = [
+  { id: 'dashboard',     nome: 'Painel',         core: true  },
+  { id: 'eventos',       nome: 'Atividades',     core: false },
+  { id: 'colaboradores', nome: 'Colaboradores',  core: false },
+  { id: 'ranking',       nome: 'Ranking',        core: false },
+  { id: 'ddsbattle',     nome: 'DDS Battle',     core: false },
+  { id: 'config',        nome: 'Configurações',  core: true  }
+];
+const MODULE_IDS = MODULES.map(m => m.id);
+
+function defaultModuleState() {
+  const s = {};
+  for (const m of MODULES) s[m.id] = true; // tudo licenciado por padrão
+  return s;
+}
+
+function isModuleActive(id) {
+  const def = MODULES.find(m => m.id === id);
+  if (!def) return true;            // rota sem módulo associado
+  if (def.core) return true;        // core sempre ativo
+  return db.settings.modules[id] !== false;
+}
+
+/* Lista de módulos visível para um perfil (nome vem sempre daqui). */
+function modulesForRole(role) {
+  return MODULES.map(m => ({
+    id: m.id,
+    nome: m.nome,
+    core: m.core,
+    ativo: m.core ? true : db.settings.modules[m.id] !== false
+  })).filter(m => role === 'admin' ? true : m.ativo);
+}
+
+/* Mapeia um caminho de API para o módulo a que pertence (para bloqueio no servidor). */
+function moduleForPath(p) {
+  if (p.startsWith('/api/colaboradores')) return 'colaboradores';
+  if (p.startsWith('/api/eventos')) return 'eventos';
+  if (p === '/api/ranking' || p.startsWith('/api/exportar/ranking')) return 'ranking';
+  if (p.startsWith('/api/battle')) return 'ddsbattle';
+  if (p === '/api/dashboard') return 'dashboard';
+  return null; // login, me, config, senha, modulos, meu-painel: sem bloqueio
+}
+
 /* ---------------- Persistência ---------------- */
 
 let db = null;
@@ -50,15 +100,20 @@ function loadDb() {
   if (fs.existsSync(DB_FILE)) {
     db = JSON.parse(fs.readFileSync(DB_FILE, 'utf8'));
   } else {
-    const admin = hashPassword('admin123');
+    const gestorPw = hashPassword('admin123');
+    const masterPw = hashPassword('master123');
     db = {
       seq: 1,
-      settings: { points: { ...DEFAULT_POINTS } },
+      settings: { points: { ...DEFAULT_POINTS }, modules: defaultModuleState() },
+      admins: [
+        { id: nextIdRaw(), username: 'master', name: 'Administrador Master', salt: masterPw.salt, hash: masterPw.hash }
+      ],
       managers: [
-        { id: nextIdRaw(), username: 'gestor', name: 'Gestor SESMT', salt: admin.salt, hash: admin.hash }
+        { id: nextIdRaw(), username: 'gestor', name: 'Gestor SESMT', salt: gestorPw.salt, hash: gestorPw.hash }
       ],
       employees: [],
-      events: []
+      events: [],
+      battle: null
     };
     saveDb();
   }
@@ -66,6 +121,16 @@ function loadDb() {
   for (const t of ACTIVITY_TYPES) {
     if (db.settings.points[t] === undefined) db.settings.points[t] = DEFAULT_POINTS[t] || 1;
   }
+  // migração de bancos antigos: garante campos novos
+  if (!db.settings.modules) db.settings.modules = defaultModuleState();
+  for (const id of MODULE_IDS) {
+    if (db.settings.modules[id] === undefined) db.settings.modules[id] = true;
+  }
+  if (!db.admins) {
+    const masterPw = hashPassword('master123');
+    db.admins = [{ id: nextId(), username: 'master', name: 'Administrador Master', salt: masterPw.salt, hash: masterPw.hash }];
+  }
+  if (db.battle === undefined) db.battle = null;
 }
 
 let seqCounter = null;
@@ -103,6 +168,90 @@ function getSession(req) {
   const m = cookie.match(/(?:^|;\s*)sesmt_token=([a-f0-9]+)/);
   if (!m) return null;
   return sessions.get(m[1]) || null;
+}
+
+/* ---------------- DDS Battle (quiz ao vivo via SSE) ---------------- */
+
+/*
+ * Um único battle ativo por vez (db.battle). Estados:
+ *   lobby     -> aceitando entradas, ainda não começou
+ *   pergunta  -> exibindo uma pergunta, aceitando respostas
+ *   revelacao -> resposta correta revelada + placar parcial
+ *   encerrado -> fim, placar final
+ * Os clientes SSE recebem apenas um "ping"; cada um então busca /api/battle
+ * na visão do seu perfil (o colaborador nunca recebe a alternativa correta
+ * antes da revelação).
+ */
+
+const sseClients = new Set(); // cada item: { res, role }
+
+function sseBroadcast() {
+  for (const c of sseClients) {
+    try { c.res.write(`event: update\ndata: ${Date.now()}\n\n`); }
+    catch (e) { sseClients.delete(c); }
+  }
+}
+
+function battleParticipantsArray() {
+  const b = db.battle;
+  if (!b) return [];
+  return Object.values(b.participantes)
+    .sort((a, z) => z.score - a.score || a.nome.localeCompare(z.nome, 'pt-BR'));
+}
+
+function currentQuestion() {
+  const b = db.battle;
+  if (!b || b.perguntaAtual < 0 || b.perguntaAtual >= b.perguntas.length) return null;
+  return b.perguntas[b.perguntaAtual];
+}
+
+/* Visão do battle conforme o perfil. Não vaza a alternativa correta. */
+function battleView(session) {
+  const b = db.battle;
+  if (!b) return { ativo: false };
+  const role = session ? session.role : null;
+  const q = currentQuestion();
+  const revelar = b.status === 'revelacao' || b.status === 'encerrado';
+  const placar = battleParticipantsArray().map(p => ({ nome: p.nome, score: p.score }));
+
+  const base = {
+    ativo: true,
+    id: b.id,
+    titulo: b.titulo,
+    status: b.status,
+    perguntaAtual: b.perguntaAtual,
+    totalPerguntas: b.perguntas.length,
+    totalParticipantes: Object.keys(b.participantes).length,
+    placar
+  };
+
+  if (q) {
+    base.pergunta = {
+      enunciado: q.enunciado,
+      opcoes: q.opcoes,
+      // só envia a correta quando revelado, ou sempre para o gestor (console)
+      correta: (revelar || role === 'gestor') ? q.correta : null
+    };
+    base.respondidos = Object.values(b.participantes).filter(p => p.respostas[b.perguntaAtual] !== undefined).length;
+  }
+
+  if (role === 'colaborador' && session) {
+    const me = b.participantes[session.employeeId];
+    base.entrou = !!me;
+    base.meuScore = me ? me.score : 0;
+    if (me && b.perguntaAtual >= 0) {
+      const r = me.respostas[b.perguntaAtual];
+      base.minhaResposta = r !== undefined ? r.opcao : null;
+      base.acertei = r !== undefined ? r.correta : null;
+    }
+  }
+
+  if (role === 'gestor') {
+    // o gestor enxerga a lista completa de perguntas para gerenciar
+    base.perguntas = b.perguntas.map(p => ({ enunciado: p.enunciado, opcoes: p.opcoes, correta: p.correta }));
+  }
+
+  return base;
 }
 
 /* ---------------- Utilidades HTTP ---------------- */
@@ -212,6 +361,15 @@ function route(method, pattern, opts, handler) {
 
 // --- autenticação ---
 route('POST', /^\/api\/login$/, { public: true }, async (req, res, m, body) => {
+  if (body.perfil === 'admin') {
+    const adm = db.admins.find(u => u.username.toLowerCase() === String(body.usuario || '').toLowerCase().trim());
+    if (!adm) return sendJson(res, 401, { error: 'Usuário ou senha incorretos.' });
+    const check = hashPassword(String(body.senha || ''), adm.salt);
+    if (check.hash !== adm.hash) return sendJson(res, 401, { error: 'Usuário ou senha incorretos.' });
+    const token = createSession({ role: 'admin', userId: adm.id });
+    res.setHeader('Set-Cookie', `sesmt_token=${token}; Path=/; HttpOnly; SameSite=Lax`);
+    return sendJson(res, 200, { ok: true, perfil: 'admin', nome: adm.name });
+  }
   if (body.perfil === 'gestor') {
     const mgr = db.managers.find(u => u.username.toLowerCase() === String(body.usuario || '').toLowerCase().trim());
     if (!mgr) return sendJson(res, 401, { error: 'Usuário ou senha incorretos.' });
@@ -243,12 +401,16 @@ route('POST', /^\/api\/logout$/, { public: true }, async (req, res) => {
 route('GET', /^\/api\/me$/, { public: true }, async (req, res) => {
   const s = getSession(req);
   if (!s) return sendJson(res, 200, { autenticado: false });
+  if (s.role === 'admin') {
+    const adm = db.admins.find(u => u.id === s.userId);
+    return sendJson(res, 200, { autenticado: true, perfil: 'admin', nome: adm ? adm.name : 'Admin', modulos: modulesForRole('admin') });
+  }
   if (s.role === 'gestor') {
     const mgr = db.managers.find(u => u.id === s.userId);
-    return sendJson(res, 200, { autenticado: true, perfil: 'gestor', nome: mgr ? mgr.name : 'Gestor' });
+    return sendJson(res, 200, { autenticado: true, perfil: 'gestor', nome: mgr ? mgr.name : 'Gestor', modulos: modulesForRole('gestor') });
   }
   const emp = db.employees.find(e => e.id === s.employeeId);
-  return sendJson(res, 200, { autenticado: true, perfil: 'colaborador', nome: emp ? emp.nome : '' });
+  return sendJson(res, 200, { autenticado: true, perfil: 'colaborador', nome: emp ? emp.nome : '', modulos: modulesForRole('colaborador') });
 });
 
 route('POST', /^\/api\/senha$/, { role: 'gestor' }, async (req, res, m, body, s) => {
@@ -261,6 +423,38 @@ route('POST', /^\/api\/senha$/, { role: 'gestor' }, async (req, res, m, body, s)
   }
   const nova = hashPassword(String(body.novaSenha));
   mgr.salt = nova.salt; mgr.hash = nova.hash;
+  saveDb();
+  sendJson(res, 200, { ok: true });
+});
+
+// --- módulos / licenças (admin master) ---
+// GET disponível a qualquer perfil: a UI monta o menu a partir DAQUI (fonte única do nome).
+route('GET', /^\/api\/modulos$/, { role: 'any' }, async (req, res, m, body, s) => {
+  sendJson(res, 200, { modulos: modulesForRole(s.role) });
+});
+
+route('PUT', /^\/api\/modulos$/, { role: 'admin' }, async (req, res, m, body) => {
+  const estado = body && typeof body.modulos === 'object' ? body.modulos : null;
+  if (!estado) return sendJson(res, 400, { error: 'Formato inválido.' });
+  for (const def of MODULES) {
+    if (def.core) continue; // core não pode ser desligado
+    if (estado[def.id] !== undefined) db.settings.modules[def.id] = !!estado[def.id];
+  }
+  saveDb();
+  sendJson(res, 200, { ok: true, modulos: modulesForRole('admin') });
+});
+
+// senha do admin master
+route('POST', /^\/api\/admin\/senha$/, { role: 'admin' }, async (req, res, m, body, s) => {
+  const adm = db.admins.find(u => u.id === s.userId);
+  if (!adm) return sendJson(res, 404, { error: 'Administrador não encontrado.' });
+  const atual = hashPassword(String(body.senhaAtual || ''), adm.salt);
+  if (atual.hash !== adm.hash) return sendJson(res, 400, { error: 'Senha atual incorreta.' });
+  if (!body.novaSenha || String(body.novaSenha).length < 6) {
+    return sendJson(res, 400, { error: 'A nova senha deve ter pelo menos 6 caracteres.' });
+  }
+  const nova = hashPassword(String(body.novaSenha));
+  adm.salt = nova.salt; adm.hash = nova.hash;
   saveDb();
   sendJson(res, 200, { ok: true });
 });
@@ -283,7 +477,7 @@ route('PUT', /^\/api\/config\/pontos$/, { role: 'gestor' }, async (req, res, m, 
 });
 
 // --- colaboradores ---
-route('GET', /^\/api\/colaboradores$/, { role: 'gestor' }, async (req, res) => {
+route('GET', /^\/api\/colaboradores$/, { role: 'gestor', module: 'colaboradores' }, async (req, res) => {
   const list = db.employees.map(e => ({ ...e, pontos: employeePoints(e.id).total }));
   sendJson(res, 200, list);
 });
@@ -493,6 +687,144 @@ route('GET', /^\/api\/exportar\/ranking$/, { role: 'gestor' }, async (req, res) 
   res.end('﻿' + lines.join('\n'));
 });
 
+// --- DDS Battle (quiz ao vivo) ---
+
+// Stream SSE: empurra um "ping" a cada mudança; o cliente busca /api/battle.
+route('GET', /^\/api\/battle\/stream$/, { role: 'any' }, async (req, res, m, body, s) => {
+  res.writeHead(200, {
+    'Content-Type': 'text/event-stream; charset=utf-8',
+    'Cache-Control': 'no-cache, no-transform',
+    'Connection': 'keep-alive',
+    'X-Accel-Buffering': 'no'
+  });
+  res.write('retry: 2000\n\n');
+  res.write(`event: update\ndata: ${Date.now()}\n\n`); // estado inicial
+  const client = { res, role: s.role };
+  sseClients.add(client);
+  const keep = setInterval(() => { try { res.write(': keep-alive\n\n'); } catch (e) {} }, 25000);
+  req.on('close', () => { clearInterval(keep); sseClients.delete(client); });
+});
+
+// Estado atual do battle, na visão do perfil.
+route('GET', /^\/api\/battle$/, { role: 'any' }, async (req, res, m, body, s) => {
+  sendJson(res, 200, battleView(s));
+});
+
+// Gestor cria/configura um novo battle.
+route('POST', /^\/api\/battle$/, { role: 'gestor' }, async (req, res, m, body) => {
+  const titulo = String(body.titulo || 'DDS Battle').trim() || 'DDS Battle';
+  const perguntasIn = Array.isArray(body.perguntas) ? body.perguntas : [];
+  if (!perguntasIn.length) return sendJson(res, 400, { error: 'Adicione ao menos uma pergunta.' });
+  const perguntas = [];
+  for (let i = 0; i < perguntasIn.length; i++) {
+    const p = perguntasIn[i] || {};
+    const enunciado = String(p.enunciado || '').trim();
+    const opcoes = Array.isArray(p.opcoes) ? p.opcoes.map(o => String(o || '').trim()).filter(o => o) : [];
+    const correta = Number(p.correta);
+    if (!enunciado) return sendJson(res, 400, { error: `Pergunta ${i + 1}: enunciado vazio.` });
+    if (opcoes.length < 2) return sendJson(res, 400, { error: `Pergunta ${i + 1}: informe ao menos 2 alternativas.` });
+    if (!Number.isInteger(correta) || correta < 0 || correta >= opcoes.length) {
+      return sendJson(res, 400, { error: `Pergunta ${i + 1}: marque a alternativa correta.` });
+    }
+    perguntas.push({ enunciado, opcoes, correta, pontos: Number(p.pontos) > 0 ? Number(p.pontos) : 10 });
+  }
+  db.battle = {
+    id: nextId(),
+    titulo,
+    perguntas,
+    perguntaAtual: -1,
+    status: 'lobby',
+    participantes: {},
+    criadoEm: Date.now()
+  };
+  saveDb();
+  sseBroadcast();
+  sendJson(res, 201, battleView({ role: 'gestor' }));
+});
+
+// Gestor inicia (primeira pergunta).
+route('POST', /^\/api\/battle\/iniciar$/, { role: 'gestor' }, async (req, res) => {
+  const b = db.battle;
+  if (!b) return sendJson(res, 404, { error: 'Nenhum battle criado.' });
+  if (!b.perguntas.length) return sendJson(res, 400, { error: 'Battle sem perguntas.' });
+  b.status = 'pergunta';
+  b.perguntaAtual = 0;
+  saveDb(); sseBroadcast();
+  sendJson(res, 200, battleView({ role: 'gestor' }));
+});
+
+// Gestor revela a resposta da pergunta atual.
+route('POST', /^\/api\/battle\/revelar$/, { role: 'gestor' }, async (req, res) => {
+  const b = db.battle;
+  if (!b || b.status !== 'pergunta') return sendJson(res, 400, { error: 'Não há pergunta em andamento.' });
+  b.status = 'revelacao';
+  saveDb(); sseBroadcast();
+  sendJson(res, 200, battleView({ role: 'gestor' }));
+});
+
+// Gestor avança para a próxima pergunta (ou encerra se for a última).
+route('POST', /^\/api\/battle\/proxima$/, { role: 'gestor' }, async (req, res) => {
+  const b = db.battle;
+  if (!b) return sendJson(res, 404, { error: 'Nenhum battle ativo.' });
+  if (b.perguntaAtual + 1 >= b.perguntas.length) {
+    b.status = 'encerrado';
+  } else {
+    b.perguntaAtual += 1;
+    b.status = 'pergunta';
+  }
+  saveDb(); sseBroadcast();
+  sendJson(res, 200, battleView({ role: 'gestor' }));
+});
+
+// Gestor encerra a qualquer momento.
+route('POST', /^\/api\/battle\/encerrar$/, { role: 'gestor' }, async (req, res) => {
+  const b = db.battle;
+  if (!b) return sendJson(res, 404, { error: 'Nenhum battle ativo.' });
+  b.status = 'encerrado';
+  saveDb(); sseBroadcast();
+  sendJson(res, 200, battleView({ role: 'gestor' }));
+});
+
+// Gestor limpa o battle (volta ao estado sem battle).
+route('DELETE', /^\/api\/battle$/, { role: 'gestor' }, async (req, res) => {
+  db.battle = null;
+  saveDb(); sseBroadcast();
+  sendJson(res, 200, { ok: true });
+});
+
+// Colaborador entra no battle.
+route('POST', /^\/api\/battle\/entrar$/, { role: 'colaborador' }, async (req, res, m, body, s) => {
+  const b = db.battle;
+  if (!b || b.status === 'encerrado') return sendJson(res, 400, { error: 'Nenhum DDS Battle disponível agora.' });
+  const emp = db.employees.find(e => e.id === s.employeeId);
+  if (!emp) return sendJson(res, 404, { error: 'Colaborador não encontrado.' });
+  if (!b.participantes[emp.id]) {
+    b.participantes[emp.id] = { id: emp.id, nome: emp.nome, score: 0, respostas: {} };
+    saveDb(); sseBroadcast();
+  }
+  sendJson(res, 200, battleView(s));
+});
+
+// Colaborador responde a pergunta atual.
+route('POST', /^\/api\/battle\/responder$/, { role: 'colaborador' }, async (req, res, m, body, s) => {
+  const b = db.battle;
+  if (!b || b.status !== 'pergunta') return sendJson(res, 400, { error: 'Nenhuma pergunta em andamento.' });
+  const me = b.participantes[s.employeeId];
+  if (!me) return sendJson(res, 400, { error: 'Você precisa entrar no battle primeiro.' });
+  const qIdx = b.perguntaAtual;
+  if (me.respostas[qIdx] !== undefined) return sendJson(res, 409, { error: 'Você já respondeu esta pergunta.' });
+  const q = b.perguntas[qIdx];
+  const opcao = Number(body.opcao);
+  if (!Number.isInteger(opcao) || opcao < 0 || opcao >= q.opcoes.length) {
+    return sendJson(res, 400, { error: 'Alternativa inválida.' });
+  }
+  const correta = opcao === q.correta;
+  me.respostas[qIdx] = { opcao, correta };
+  if (correta) me.score += q.pontos;
+  saveDb(); sseBroadcast();
+  sendJson(res, 200, battleView(s));
+});
+
 /* ---------------- Arquivos estáticos ---------------- */
 
 const MIME = {
@@ -531,11 +863,19 @@ const server = http.createServer(async (req, res) => {
       const session = getSession(req);
       if (!r.opts.public) {
         if (!session) return sendJson(res, 401, { error: 'Não autenticado.' });
+        if (r.opts.role === 'admin' && session.role !== 'admin') {
+          return sendJson(res, 403, { error: 'Acesso restrito ao administrador master.' });
+        }
         if (r.opts.role === 'gestor' && session.role !== 'gestor') {
           return sendJson(res, 403, { error: 'Acesso restrito ao gestor.' });
         }
         if (r.opts.role === 'colaborador' && session.role !== 'colaborador') {
           return sendJson(res, 403, { error: 'Acesso restrito ao colaborador.' });
+        }
+        // Bloqueio real de módulo no servidor (não basta esconder no front).
+        const mod = r.opts.module || moduleForPath(urlPath);
+        if (mod && session.role !== 'admin' && !isModuleActive(mod)) {
+          return sendJson(res, 403, { error: 'Módulo indisponível. Licença desativada pelo administrador.' });
         }
       }
       const body = (req.method === 'POST' || req.method === 'PUT') ? await readBody(req) : {};

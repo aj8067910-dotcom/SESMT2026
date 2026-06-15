@@ -4,6 +4,9 @@
 let CONFIG = { tipos: [], pontos: {} };
 let EVENTOS = [];
 let COLABORADORES = [];
+let MODULOS = [];          // módulos liberados para o perfil atual (fonte única do nome)
+let PERFIL = null;         // 'gestor' | 'colaborador' | 'admin'
+let battleSSE = null;      // EventSource do DDS Battle
 
 /* ---------------- util ---------------- */
 
@@ -58,8 +61,10 @@ function fecharModalFundo(e) {
 function trocarAbaLogin(qual) {
   document.getElementById('tab-gestor').classList.toggle('active', qual === 'gestor');
   document.getElementById('tab-colab').classList.toggle('active', qual === 'colaborador');
+  document.getElementById('tab-admin').classList.toggle('active', qual === 'admin');
   document.getElementById('form-login-gestor').classList.toggle('hidden', qual !== 'gestor');
   document.getElementById('form-login-colab').classList.toggle('hidden', qual !== 'colaborador');
+  document.getElementById('form-login-admin').classList.toggle('hidden', qual !== 'admin');
   document.getElementById('login-erro').classList.add('hidden');
 }
 
@@ -94,7 +99,21 @@ async function loginColaborador(e) {
   return false;
 }
 
+async function loginAdmin(e) {
+  e.preventDefault();
+  try {
+    await api('/api/login', { method: 'POST', body: {
+      perfil: 'admin',
+      usuario: document.getElementById('login-admin-usuario').value,
+      senha: document.getElementById('login-admin-senha').value
+    }});
+    await iniciar();
+  } catch (err) { mostrarErroLogin(err.message); }
+  return false;
+}
+
 async function sair() {
+  fecharBattleSSE();
   await api('/api/logout', { method: 'POST' });
   location.reload();
 }
@@ -104,35 +123,62 @@ async function iniciar() {
   document.getElementById('tela-login').classList.toggle('hidden', me.autenticado);
   document.getElementById('app-gestor').classList.add('hidden');
   document.getElementById('app-colab').classList.add('hidden');
+  document.getElementById('app-admin').classList.add('hidden');
+  fecharBattleSSE();
   if (!me.autenticado) {
     document.getElementById('tela-login').classList.remove('hidden');
+    return;
+  }
+  PERFIL = me.perfil;
+  MODULOS = me.modulos || [];
+  if (me.perfil === 'admin') {
+    document.getElementById('admin-nome').textContent = me.nome;
+    document.getElementById('app-admin').classList.remove('hidden');
+    await carregarModulosAdmin();
     return;
   }
   CONFIG = await api('/api/config');
   if (me.perfil === 'gestor') {
     document.getElementById('gestor-nome').textContent = me.nome;
     document.getElementById('app-gestor').classList.remove('hidden');
+    montarMenuGestor();
     preencherFiltroTipos();
     await Promise.all([carregarColaboradores(), carregarEventos()]);
-    navegar('dashboard');
+    navegar(MODULOS.length ? MODULOS[0].id : 'dashboard');
+    abrirBattleSSE(); // ouve atualizações do battle mesmo fora da aba
   } else {
     document.getElementById('colab-nome').textContent = me.nome;
     document.getElementById('app-colab').classList.remove('hidden');
     await carregarPainelColaborador();
+    if (moduloAtivo('ddsbattle')) { await carregarBattleColaborador(); abrirBattleSSE(); }
   }
 }
 
-/* ---------------- navegação gestor ---------------- */
+function moduloAtivo(id) {
+  return MODULOS.some(m => m.id === id);
+}
+
+/* ---------------- navegação gestor (menu dinâmico, nome de fonte única) ---------------- */
+
+function montarMenuGestor() {
+  const nav = document.getElementById('gestor-nav');
+  nav.innerHTML = MODULOS.map(m =>
+    `<button data-view="${esc(m.id)}" class="nav-btn" onclick="navegar('${esc(m.id)}')">${esc(m.nome)}</button>`
+  ).join('');
+}
 
 async function navegar(view) {
+  if (!moduloAtivo(view)) view = MODULOS.length ? MODULOS[0].id : 'dashboard';
   document.querySelectorAll('.nav-btn').forEach(b => b.classList.toggle('active', b.dataset.view === view));
   document.querySelectorAll('#app-gestor .view').forEach(v => v.classList.add('hidden'));
-  document.getElementById('view-' + view).classList.remove('hidden');
+  const sec = document.getElementById('view-' + view);
+  if (sec) sec.classList.remove('hidden');
   if (view === 'dashboard') await carregarDashboard();
   if (view === 'eventos') { await carregarEventos(); }
   if (view === 'colaboradores') { await carregarColaboradores(); }
   if (view === 'ranking') await carregarRanking();
   if (view === 'config') renderConfig();
+  if (view === 'ddsbattle') await carregarBattleGestor();
 }
 
 /* ---------------- dashboard ---------------- */
@@ -530,6 +576,309 @@ async function carregarPainelColaborador() {
     hist += `<tr><td>${dataBr(h.data)}</td><td><span class="tag">${esc(h.tipo)}</span></td><td>${esc(h.tema)}</td><td class="pontos-cel">${h.pontos}</td></tr>`;
   }
   document.getElementById('colab-historico').innerHTML = hist;
+}
+
+/* ---------------- admin master: licenças de módulos ---------------- */
+
+let MODULOS_ADMIN = [];
+
+async function carregarModulosAdmin() {
+  const r = await api('/api/modulos');
+  MODULOS_ADMIN = r.modulos;
+  renderModulosAdmin();
+}
+
+function renderModulosAdmin() {
+  const cont = document.getElementById('admin-modulos');
+  cont.innerHTML = MODULOS_ADMIN.map(m => `
+    <label class="lic-linha ${m.core ? 'lic-core' : ''}">
+      <span class="lic-nome">${esc(m.nome)} ${m.core ? '<small>(essencial)</small>' : ''}</span>
+      <span class="switch">
+        <input type="checkbox" data-mod="${esc(m.id)}" ${m.ativo ? 'checked' : ''} ${m.core ? 'disabled' : ''}>
+        <span class="slider"></span>
+      </span>
+    </label>`).join('');
+}
+
+async function salvarModulos() {
+  const modulos = {};
+  document.querySelectorAll('#admin-modulos input[data-mod]').forEach(i => {
+    if (!i.disabled) modulos[i.dataset.mod] = i.checked;
+  });
+  try {
+    const r = await api('/api/modulos', { method: 'PUT', body: { modulos } });
+    MODULOS_ADMIN = r.modulos;
+    renderModulosAdmin();
+    toast('Licenças atualizadas. Gestores e colaboradores já veem a mudança.');
+  } catch (err) { toast(err.message, true); }
+}
+
+async function alterarSenhaAdmin(e) {
+  e.preventDefault();
+  try {
+    await api('/api/admin/senha', { method: 'POST', body: {
+      senhaAtual: document.getElementById('admin-senha-atual').value,
+      novaSenha: document.getElementById('admin-senha-nova').value
+    }});
+    document.getElementById('admin-senha-atual').value = '';
+    document.getElementById('admin-senha-nova').value = '';
+    toast('Senha alterada com sucesso.');
+  } catch (err) { toast(err.message, true); }
+  return false;
+}
+
+/* ---------------- DDS Battle: SSE (push ao vivo, sem delay) ---------------- */
+
+function abrirBattleSSE() {
+  fecharBattleSSE();
+  battleSSE = new EventSource('/api/battle/stream');
+  battleSSE.addEventListener('update', () => {
+    // a cada mudança no servidor, recarrega a visão do battle do perfil atual
+    if (PERFIL === 'gestor') {
+      const v = document.getElementById('view-ddsbattle');
+      if (v && !v.classList.contains('hidden')) carregarBattleGestor();
+    } else if (PERFIL === 'colaborador') {
+      carregarBattleColaborador();
+    }
+  });
+  battleSSE.onerror = () => { /* o EventSource reconecta sozinho */ };
+}
+
+function fecharBattleSSE() {
+  if (battleSSE) { battleSSE.close(); battleSSE = null; }
+}
+
+/* ---------------- DDS Battle: console do gestor ---------------- */
+
+let BATTLE_DRAFT = [];
+
+async function carregarBattleGestor() {
+  const b = await api('/api/battle');
+  const badge = document.getElementById('battle-status-badge');
+  badge.textContent = b.ativo ? rotuloStatus(b.status) : 'Sem battle';
+  const cont = document.getElementById('battle-gestor');
+  if (!b.ativo) { cont.innerHTML = htmlMontarBattle(); return; }
+  if (b.status === 'lobby') { cont.innerHTML = htmlLobbyGestor(b); return; }
+  cont.innerHTML = htmlBattleAoVivoGestor(b);
+}
+
+function rotuloStatus(s) {
+  return { lobby: 'Sala de espera', pergunta: 'Pergunta no ar', revelacao: 'Resposta revelada', encerrado: 'Encerrado' }[s] || s;
+}
+
+function htmlMontarBattle() {
+  const linhas = BATTLE_DRAFT.map((p, i) => htmlPerguntaDraft(p, i)).join('');
+  return `
+    <div class="panel">
+      <h3>Montar novo DDS Battle</h3>
+      <label>Título</label>
+      <input type="text" id="battle-titulo" placeholder="Ex.: DDS Battle — Uso de EPI" value="DDS Battle">
+      <div id="battle-perguntas">${linhas || '<p class="hint">Nenhuma pergunta ainda. Adicione a primeira.</p>'}</div>
+      <button class="btn" style="margin-top:10px" onclick="addPerguntaDraft()">+ Adicionar pergunta</button>
+      <div class="modal-rodape" style="border:0;padding-top:16px">
+        <button class="btn btn-primary" onclick="criarBattle()">Criar e abrir sala</button>
+      </div>
+    </div>`;
+}
+
+function htmlPerguntaDraft(p, i) {
+  const ops = p.opcoes.map((o, j) => `
+    <div class="op-draft">
+      <input type="radio" name="correta-${i}" ${p.correta === j ? 'checked' : ''} onchange="setCorreta(${i},${j})" title="Marcar como correta">
+      <input type="text" value="${esc(o)}" placeholder="Alternativa ${j + 1}" oninput="setOpcao(${i},${j},this.value)">
+      <button class="btn btn-sm btn-perigo" onclick="rmOpcao(${i},${j})" ${p.opcoes.length <= 2 ? 'disabled' : ''}>✕</button>
+    </div>`).join('');
+  return `
+    <div class="pergunta-draft">
+      <div class="pergunta-draft-head">
+        <b>Pergunta ${i + 1}</b>
+        <button class="btn btn-sm btn-perigo" onclick="rmPerguntaDraft(${i})">Remover</button>
+      </div>
+      <input type="text" value="${esc(p.enunciado)}" placeholder="Enunciado da pergunta" oninput="setEnunciado(${i},this.value)">
+      ${ops}
+      <button class="btn btn-sm" onclick="addOpcao(${i})">+ alternativa</button>
+      <small class="hint"> marque o botão à esquerda da alternativa correta</small>
+    </div>`;
+}
+
+function addPerguntaDraft() {
+  BATTLE_DRAFT.push({ enunciado: '', opcoes: ['', ''], correta: 0 });
+  document.getElementById('battle-perguntas').innerHTML = BATTLE_DRAFT.map((p, i) => htmlPerguntaDraft(p, i)).join('');
+}
+function rmPerguntaDraft(i) { BATTLE_DRAFT.splice(i, 1); refreshDraft(); }
+function setEnunciado(i, v) { BATTLE_DRAFT[i].enunciado = v; }
+function setOpcao(i, j, v) { BATTLE_DRAFT[i].opcoes[j] = v; }
+function setCorreta(i, j) { BATTLE_DRAFT[i].correta = j; }
+function addOpcao(i) { if (BATTLE_DRAFT[i].opcoes.length < 5) { BATTLE_DRAFT[i].opcoes.push(''); refreshDraft(); } }
+function rmOpcao(i, j) {
+  const p = BATTLE_DRAFT[i];
+  if (p.opcoes.length <= 2) return;
+  p.opcoes.splice(j, 1);
+  if (p.correta >= p.opcoes.length) p.correta = 0;
+  refreshDraft();
+}
+function refreshDraft() {
+  const el = document.getElementById('battle-perguntas');
+  if (el) el.innerHTML = BATTLE_DRAFT.map((p, i) => htmlPerguntaDraft(p, i)).join('') || '<p class="hint">Nenhuma pergunta ainda.</p>';
+}
+
+async function criarBattle() {
+  const titulo = document.getElementById('battle-titulo').value;
+  if (!BATTLE_DRAFT.length) return toast('Adicione ao menos uma pergunta.', true);
+  try {
+    await api('/api/battle', { method: 'POST', body: { titulo, perguntas: BATTLE_DRAFT } });
+    BATTLE_DRAFT = [];
+    toast('Battle criado. Compartilhe com a equipe e inicie quando quiser.');
+    await carregarBattleGestor();
+  } catch (err) { toast(err.message, true); }
+}
+
+function htmlLobbyGestor(b) {
+  return `
+    <div class="panel battle-stage">
+      <h3>${esc(b.titulo)}</h3>
+      <p class="hint">${b.totalPerguntas} pergunta(s). Os colaboradores entram pela tela deles em <b>DDS Battle</b>.</p>
+      <div class="battle-contador">${b.totalParticipantes}</div>
+      <div class="rotulo">participante(s) na sala</div>
+      ${htmlPlacar(b.placar)}
+      <div class="modal-rodape" style="border:0">
+        <button class="btn btn-perigo" onclick="encerrarBattle(true)">Cancelar</button>
+        <button class="btn btn-primary" onclick="acaoBattle('iniciar')" ${b.totalParticipantes ? '' : ''}>▶ Iniciar battle</button>
+      </div>
+    </div>`;
+}
+
+function htmlBattleAoVivoGestor(b) {
+  const q = b.pergunta;
+  let acoes = '';
+  if (b.status === 'pergunta') {
+    acoes = `<button class="btn btn-primary" onclick="acaoBattle('revelar')">Revelar resposta</button>`;
+  } else if (b.status === 'revelacao') {
+    const ultima = b.perguntaAtual + 1 >= b.totalPerguntas;
+    acoes = `<button class="btn btn-primary" onclick="acaoBattle('proxima')">${ultima ? 'Finalizar e ver pódio' : 'Próxima pergunta ▶'}</button>`;
+  } else if (b.status === 'encerrado') {
+    acoes = `<button class="btn" onclick="novoBattle()">Montar novo battle</button>`;
+  }
+  let corpo;
+  if (b.status === 'encerrado') {
+    corpo = `<h3>🏁 Resultado final — ${esc(b.titulo)}</h3>${htmlPodio(b.placar)}`;
+  } else {
+    const ops = q.opcoes.map((o, j) => `
+      <div class="op-ao-vivo ${j === q.correta && b.status === 'revelacao' ? 'op-correta' : ''}">
+        <span class="op-letra">${String.fromCharCode(65 + j)}</span> ${esc(o)}
+        ${j === q.correta && b.status === 'revelacao' ? ' ✔' : ''}
+      </div>`).join('');
+    corpo = `
+      <div class="battle-q-head">Pergunta ${b.perguntaAtual + 1}/${b.totalPerguntas}
+        <span class="badge">${b.respondidos}/${b.totalParticipantes} responderam</span></div>
+      <h3 class="battle-enunciado">${esc(q.enunciado)}</h3>
+      <div class="ops-ao-vivo">${ops}</div>
+      ${htmlPlacar(b.placar)}`;
+  }
+  return `<div class="panel battle-stage">${corpo}
+    <div class="modal-rodape" style="border:0">${acoes}
+      ${b.status !== 'encerrado' ? `<button class="btn btn-perigo" onclick="encerrarBattle()">Encerrar</button>` : ''}
+    </div></div>`;
+}
+
+function htmlPlacar(placar) {
+  if (!placar || !placar.length) return '<p class="hint">Ninguém pontuou ainda.</p>';
+  let h = '<table class="tabela" style="margin-top:14px"><tr><th>Pos.</th><th>Nome</th><th>Pontos</th></tr>';
+  placar.forEach((p, i) => {
+    const med = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : (i + 1) + 'º';
+    h += `<tr><td class="medalha">${med}</td><td>${esc(p.nome)}</td><td class="pontos-cel">${p.score}</td></tr>`;
+  });
+  return h + '</table>';
+}
+
+function htmlPodio(placar) {
+  if (!placar || !placar.length) return '<p class="hint">Sem participantes pontuados.</p>';
+  return htmlPlacar(placar);
+}
+
+async function acaoBattle(acao) {
+  try { await api('/api/battle/' + acao, { method: 'POST' }); await carregarBattleGestor(); }
+  catch (err) { toast(err.message, true); }
+}
+
+async function encerrarBattle(limpar) {
+  if (!confirm(limpar ? 'Cancelar e descartar este battle?' : 'Encerrar o battle agora?')) return;
+  try {
+    if (limpar) await api('/api/battle', { method: 'DELETE' });
+    else await api('/api/battle/encerrar', { method: 'POST' });
+    await carregarBattleGestor();
+  } catch (err) { toast(err.message, true); }
+}
+
+async function novoBattle() {
+  try { await api('/api/battle', { method: 'DELETE' }); BATTLE_DRAFT = []; await carregarBattleGestor(); }
+  catch (err) { toast(err.message, true); }
+}
+
+/* ---------------- DDS Battle: tela do colaborador ---------------- */
+
+async function carregarBattleColaborador() {
+  if (!moduloAtivo('ddsbattle')) return;
+  const cont = document.getElementById('colab-battle');
+  if (!cont) return;
+  let b;
+  try { b = await api('/api/battle'); } catch (e) { cont.innerHTML = ''; return; }
+  if (!b.ativo || b.status === 'encerrado') {
+    if (b.ativo && b.status === 'encerrado' && b.entrou) {
+      cont.innerHTML = `<div class="panel battle-colab"><h3>🏁 DDS Battle encerrado</h3>
+        <p>Sua pontuação: <b>${b.meuScore} pts</b></p>${htmlPlacar(b.placar)}</div>`;
+    } else { cont.innerHTML = ''; }
+    return;
+  }
+  if (!b.entrou) {
+    cont.innerHTML = `<div class="panel battle-colab destaque-battle">
+      <h3>⚡ ${esc(b.titulo)}</h3>
+      <p>Um DDS Battle está ${b.status === 'lobby' ? 'abrindo' : 'em andamento'}! Entre para participar.</p>
+      <button class="btn btn-primary btn-block" onclick="entrarBattle()">Entrar no battle</button></div>`;
+    return;
+  }
+  if (b.status === 'lobby') {
+    cont.innerHTML = `<div class="panel battle-colab"><h3>⚡ ${esc(b.titulo)}</h3>
+      <p>Você está na sala. Aguarde o gestor iniciar…</p>
+      <div class="battle-contador">${b.totalParticipantes}</div><div class="rotulo">na sala</div></div>`;
+    return;
+  }
+  // pergunta ou revelacao
+  const q = b.pergunta;
+  const jaRespondeu = b.minhaResposta !== null && b.minhaResposta !== undefined;
+  const ops = q.opcoes.map((o, j) => {
+    let cls = 'op-colab';
+    if (b.status === 'revelacao') {
+      if (j === q.correta) cls += ' op-correta';
+      else if (j === b.minhaResposta) cls += ' op-errada';
+    } else if (j === b.minhaResposta) cls += ' op-escolhida';
+    const dis = (jaRespondeu || b.status === 'revelacao') ? 'disabled' : '';
+    return `<button class="${cls}" ${dis} onclick="responderBattle(${j})">
+      <span class="op-letra">${String.fromCharCode(65 + j)}</span> ${esc(o)}</button>`;
+  }).join('');
+  let feedback = '';
+  if (b.status === 'revelacao') {
+    feedback = b.acertei ? '<p class="battle-acerto">✔ Você acertou!</p>'
+      : jaRespondeu ? '<p class="battle-erro-msg">✘ Resposta incorreta.</p>'
+      : '<p class="hint">Você não respondeu a tempo.</p>';
+  } else if (jaRespondeu) {
+    feedback = '<p class="hint">Resposta registrada! Aguarde os demais…</p>';
+  }
+  cont.innerHTML = `<div class="panel battle-colab">
+    <div class="battle-q-head">Pergunta ${b.perguntaAtual + 1}/${b.totalPerguntas} <span class="badge">${b.meuScore} pts</span></div>
+    <h3 class="battle-enunciado">${esc(q.enunciado)}</h3>
+    <div class="ops-colab">${ops}</div>
+    ${feedback}</div>`;
+}
+
+async function entrarBattle() {
+  try { await api('/api/battle/entrar', { method: 'POST' }); await carregarBattleColaborador(); }
+  catch (err) { toast(err.message, true); }
+}
+
+async function responderBattle(opcao) {
+  try { await api('/api/battle/responder', { method: 'POST', body: { opcao } }); await carregarBattleColaborador(); }
+  catch (err) { toast(err.message, true); }
 }
 
 /* ---------------- inicialização ---------------- */

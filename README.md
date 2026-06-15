@@ -21,6 +21,20 @@ Aplicativo web para gestão das atividades de SST com **pontuação por particip
 ### Acesso do Colaborador (visualização)
 - Login somente com a **matrícula**.
 - Acompanha seus pontos totais, posição no ranking, participações por tipo de atividade e histórico completo.
+- **DDS Battle**: participa do quiz de segurança ao vivo respondendo pelo próprio celular.
+
+### Acesso do Admin Master
+- Login com usuário e senha próprios (separado do gestor).
+- **Licenças de acesso**: liga/desliga cada módulo do sistema. Ao desativar um módulo, ele **some do menu** do gestor/colaborador **e fica bloqueado no servidor** — não há como acessá-lo nem pela URL da API.
+- O nome de cada módulo vem de uma **fonte única** no servidor, então é sempre idêntico no Admin Master, no Gestor e no Colaborador.
+- Módulos essenciais (Painel e Configurações) ficam sempre ativos para não travar o sistema.
+
+### DDS Battle — quiz de segurança ao vivo
+- O gestor monta perguntas (com alternativas e a correta), abre a sala e inicia.
+- Os colaboradores entram pela tela deles e respondem pelo celular.
+- O **placar atualiza ao vivo na tela do gestor via Server-Sent Events (push instantâneo)** — sem recarregar a página e sem delay perceptível.
+- O gestor controla o ritmo: exibir pergunta → revelar resposta → próxima → pódio final.
+- O colaborador nunca recebe a alternativa correta antes da revelação (validado no servidor).
 
 ## Como executar
 
@@ -36,11 +50,12 @@ Depois abra no navegador: **http://localhost:3000**
 
 ### Primeiro acesso do gestor
 
-| Usuário | Senha |
-|---------|-------|
-| `gestor` | `admin123` |
+| Perfil | Usuário | Senha |
+|--------|---------|-------|
+| Gestor | `gestor` | `admin123` |
+| Admin Master | `master` | `master123` |
 
-⚠️ **Altere a senha** logo no primeiro acesso, em *Configurações → Alterar senha do gestor*.
+⚠️ **Altere as senhas** logo no primeiro acesso (Gestor: *Configurações → Alterar senha*; Admin Master: tela de licenças → *Alterar senha do admin master*).
 
 ### Acesso na rede da empresa
 
